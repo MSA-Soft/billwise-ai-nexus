@@ -6,11 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
+  const [selectedPatient, setSelectedPatient] = useState<typeof patientBalances[0] | null>(null);
+  const [statementOpen, setStatementOpen] = useState(false);
 
   const patientBalances = [
     {
@@ -85,6 +89,51 @@ const PatientBalanceBilling = () => {
       title: "Payment Plan Setup",
       description: `Payment plan configuration opened for ${patientId}.`,
     });
+  };
+
+  const handleViewDetails = (patient: typeof patientBalances[0]) => {
+    setSelectedPatient(patient);
+    setStatementOpen(true);
+  };
+
+  const handlePrintStatement = () => {
+    window.print();
+  };
+
+  // Generate mock transaction history for the selected patient
+  const getTransactionHistory = (patient: typeof patientBalances[0] | null) => {
+    if (!patient) return [];
+    
+    return [
+      {
+        date: "2024-06-01",
+        description: "Office Visit - Dr. Smith",
+        type: "Charge",
+        amount: 250.00,
+        balance: patient.balance
+      },
+      {
+        date: "2024-05-28",
+        description: "Lab Work - Blood Panel",
+        type: "Charge",
+        amount: 180.00,
+        balance: patient.balance - 250.00
+      },
+      {
+        date: patient.lastPayment,
+        description: `Payment Received - ${patient.paymentMethod}`,
+        type: "Payment",
+        amount: -150.00,
+        balance: patient.balance - 430.00
+      },
+      {
+        date: "2024-04-15",
+        description: "Insurance Adjustment",
+        type: "Adjustment",
+        amount: -80.00,
+        balance: patient.balance - 280.00
+      }
+    ];
   };
 
   const totalBalance = patientBalances.reduce((sum, patient) => sum + patient.balance, 0);
@@ -309,7 +358,11 @@ const PatientBalanceBilling = () => {
                     </div>
 
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewDetails(patient)}
+                      >
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
@@ -399,6 +452,235 @@ const PatientBalanceBilling = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Patient Statement Dialog */}
+      <Dialog open={statementOpen} onOpenChange={setStatementOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Patient Billing Statement</DialogTitle>
+            <DialogDescription>
+              Detailed billing statement for {selectedPatient?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPatient && (
+            <div className="space-y-6 print:p-8">
+              {/* Statement Header */}
+              <div className="flex justify-between items-start pb-4 border-b">
+                <div>
+                  <h2 className="text-2xl font-bold text-primary">Medical Billing Services</h2>
+                  <p className="text-sm text-muted-foreground mt-1">123 Healthcare Drive</p>
+                  <p className="text-sm text-muted-foreground">Medical City, MC 12345</p>
+                  <p className="text-sm text-muted-foreground">Phone: (555) 000-0000</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold">STATEMENT</div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Date: {new Date().toLocaleDateString()}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Account #: {selectedPatient.id}
+                  </div>
+                </div>
+              </div>
+
+              {/* Patient Information */}
+              <div>
+                <h3 className="font-semibold mb-3">Patient Information</h3>
+                <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Patient Name</div>
+                    <div className="font-medium">{selectedPatient.name}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Patient ID</div>
+                    <div className="font-medium">{selectedPatient.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Phone</div>
+                    <div className="font-medium">{selectedPatient.phone}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Email</div>
+                    <div className="font-medium">{selectedPatient.email}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Account Summary */}
+              <div>
+                <h3 className="font-semibold mb-3">Account Summary</h3>
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Previous Balance</span>
+                    <span className="font-medium">${(selectedPatient.balance - 100).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Payments Received</span>
+                    <span className="font-medium text-green-600">-$150.00</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">New Charges</span>
+                    <span className="font-medium">${(selectedPatient.balance + 50).toFixed(2)}</span>
+                  </div>
+                  <Separator className="my-2" />
+                  <div className="flex justify-between text-lg">
+                    <span className="font-semibold">Current Balance</span>
+                    <span className="font-bold">${selectedPatient.balance.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Aging Breakdown */}
+              <div>
+                <h3 className="font-semibold mb-3">Aging Breakdown</h3>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-green-50 p-3 rounded-lg text-center">
+                    <div className="text-xs text-muted-foreground mb-1">Current</div>
+                    <div className="font-semibold">
+                      ${selectedPatient.status === "Current" ? selectedPatient.balance.toFixed(2) : "0.00"}
+                    </div>
+                  </div>
+                  <div className="bg-yellow-50 p-3 rounded-lg text-center">
+                    <div className="text-xs text-muted-foreground mb-1">31-60 Days</div>
+                    <div className="font-semibold">
+                      ${selectedPatient.status === "30+ Days" ? selectedPatient.balance.toFixed(2) : "0.00"}
+                    </div>
+                  </div>
+                  <div className="bg-orange-50 p-3 rounded-lg text-center">
+                    <div className="text-xs text-muted-foreground mb-1">61-90 Days</div>
+                    <div className="font-semibold">
+                      ${selectedPatient.status === "60+ Days" ? selectedPatient.balance.toFixed(2) : "0.00"}
+                    </div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg text-center">
+                    <div className="text-xs text-muted-foreground mb-1">90+ Days</div>
+                    <div className="font-semibold">
+                      ${selectedPatient.status === "90+ Days" ? selectedPatient.balance.toFixed(2) : "0.00"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction History */}
+              <div>
+                <h3 className="font-semibold mb-3">Transaction History</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-3">Date</th>
+                        <th className="text-left p-3">Description</th>
+                        <th className="text-left p-3">Type</th>
+                        <th className="text-right p-3">Amount</th>
+                        <th className="text-right p-3">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getTransactionHistory(selectedPatient).map((transaction, index) => (
+                        <tr key={index} className="border-t">
+                          <td className="p-3">{transaction.date}</td>
+                          <td className="p-3">{transaction.description}</td>
+                          <td className="p-3">
+                            <Badge variant="outline" className="text-xs">
+                              {transaction.type}
+                            </Badge>
+                          </td>
+                          <td className={`p-3 text-right font-medium ${
+                            transaction.amount < 0 ? 'text-green-600' : ''
+                          }`}>
+                            {transaction.amount < 0 ? '-' : ''}${Math.abs(transaction.amount).toFixed(2)}
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            ${transaction.balance.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Payment Information */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="font-semibold mb-3">Payment Information</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Amount Due:</span>
+                    <span className="font-bold text-lg">${selectedPatient.balance.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Due Date:</span>
+                    <span className="font-medium">
+                      {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <Separator className="my-2" />
+                  <div>
+                    <div className="font-medium mb-1">Payment Methods Accepted:</div>
+                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-1">
+                      <li>Credit/Debit Card</li>
+                      <li>Check (payable to: Medical Billing Services)</li>
+                      <li>Online Payment Portal: www.medicalbilling.com/pay</li>
+                      <li>Auto-Pay (enroll for automatic monthly payments)</li>
+                    </ul>
+                  </div>
+                  <div className="mt-3">
+                    <div className="font-medium mb-1">Mail Payments To:</div>
+                    <div className="text-xs text-muted-foreground">
+                      Medical Billing Services<br />
+                      P.O. Box 12345<br />
+                      Medical City, MC 12345
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Related Insurance Claim */}
+              <div className="bg-muted/50 p-4 rounded-lg">
+                <h3 className="font-semibold mb-2">Related Insurance Claim</h3>
+                <div className="text-sm">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-muted-foreground">Claim Number:</span>
+                    <span className="font-medium">{selectedPatient.insuranceClaim}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge variant="outline">Processed</Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="text-xs text-muted-foreground border-t pt-4 space-y-1">
+                <p>Questions about your bill? Contact us at (555) 000-0000 or billing@medicalbilling.com</p>
+                <p>Payment plans available - call us to discuss options that work for you.</p>
+                <p className="font-medium">Thank you for choosing our healthcare services!</p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-2 pt-4 border-t print:hidden">
+                <Button
+                  variant="outline"
+                  onClick={handlePrintStatement}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Print Statement
+                </Button>
+                <Button
+                  onClick={() => {
+                    handleSendStatement(selectedPatient.id);
+                    setStatementOpen(false);
+                  }}
+                >
+                  <Mail className="h-4 w-4 mr-2" />
+                  Email Statement
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
