@@ -14,7 +14,256 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      billing_cycles: {
+        Row: {
+          created_at: string | null
+          day_of_cycle: number
+          frequency: Database["public"]["Enums"]["billing_frequency"]
+          id: string
+          is_active: boolean | null
+          name: string
+          reminder_days: number[] | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_of_cycle?: number
+          frequency?: Database["public"]["Enums"]["billing_frequency"]
+          id?: string
+          is_active?: boolean | null
+          name: string
+          reminder_days?: number[] | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          day_of_cycle?: number
+          frequency?: Database["public"]["Enums"]["billing_frequency"]
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          reminder_days?: number[] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      billing_statements: {
+        Row: {
+          amount_due: number
+          channel: Database["public"]["Enums"]["communication_channel"] | null
+          created_at: string | null
+          delivered_at: string | null
+          due_date: string | null
+          error_message: string | null
+          id: string
+          paid_at: string | null
+          patient_id: string
+          patient_name: string
+          pdf_url: string | null
+          sent_at: string | null
+          statement_date: string
+          status: Database["public"]["Enums"]["statement_status"] | null
+          updated_at: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          amount_due: number
+          channel?: Database["public"]["Enums"]["communication_channel"] | null
+          created_at?: string | null
+          delivered_at?: string | null
+          due_date?: string | null
+          error_message?: string | null
+          id?: string
+          paid_at?: string | null
+          patient_id: string
+          patient_name: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          statement_date?: string
+          status?: Database["public"]["Enums"]["statement_status"] | null
+          updated_at?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          amount_due?: number
+          channel?: Database["public"]["Enums"]["communication_channel"] | null
+          created_at?: string | null
+          delivered_at?: string | null
+          due_date?: string | null
+          error_message?: string | null
+          id?: string
+          paid_at?: string | null
+          patient_id?: string
+          patient_name?: string
+          pdf_url?: string | null
+          sent_at?: string | null
+          statement_date?: string
+          status?: Database["public"]["Enums"]["statement_status"] | null
+          updated_at?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: []
+      }
+      chat_conversations: {
+        Row: {
+          created_at: string | null
+          ended_at: string | null
+          escalated_at: string | null
+          id: string
+          patient_id: string
+          patient_name: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["chat_status"] | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          ended_at?: string | null
+          escalated_at?: string | null
+          id?: string
+          patient_id: string
+          patient_name: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["chat_status"] | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          ended_at?: string | null
+          escalated_at?: string | null
+          id?: string
+          patient_id?: string
+          patient_name?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["chat_status"] | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          is_ai: boolean | null
+          message: string
+          sender_name: string | null
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_ai?: boolean | null
+          message: string
+          sender_name?: string | null
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_ai?: boolean | null
+          message?: string
+          sender_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patient_communication_preferences: {
+        Row: {
+          created_at: string | null
+          email_enabled: boolean | null
+          id: string
+          paper_enabled: boolean | null
+          patient_email: string | null
+          patient_id: string
+          patient_name: string
+          patient_phone: string | null
+          portal_enabled: boolean | null
+          preferred_channel: Database["public"]["Enums"]["communication_channel"]
+          sms_enabled: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          paper_enabled?: boolean | null
+          patient_email?: string | null
+          patient_id: string
+          patient_name: string
+          patient_phone?: string | null
+          portal_enabled?: boolean | null
+          preferred_channel?: Database["public"]["Enums"]["communication_channel"]
+          sms_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          paper_enabled?: boolean | null
+          patient_email?: string | null
+          patient_id?: string
+          patient_name?: string
+          patient_phone?: string | null
+          portal_enabled?: boolean | null
+          preferred_channel?: Database["public"]["Enums"]["communication_channel"]
+          sms_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      payment_reminders: {
+        Row: {
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at: string | null
+          id: string
+          patient_id: string
+          reminder_type: string
+          scheduled_for: string
+          sent_at: string | null
+          statement_id: string | null
+          status: Database["public"]["Enums"]["statement_status"] | null
+        }
+        Insert: {
+          channel: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string | null
+          id?: string
+          patient_id: string
+          reminder_type: string
+          scheduled_for: string
+          sent_at?: string | null
+          statement_id?: string | null
+          status?: Database["public"]["Enums"]["statement_status"] | null
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["communication_channel"]
+          created_at?: string | null
+          id?: string
+          patient_id?: string
+          reminder_type?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          statement_id?: string | null
+          status?: Database["public"]["Enums"]["statement_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_reminders_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "billing_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +272,16 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      billing_frequency: "weekly" | "bi_weekly" | "monthly" | "quarterly"
+      chat_status: "active" | "resolved" | "escalated" | "closed"
+      communication_channel: "email" | "sms" | "paper" | "portal"
+      statement_status:
+        | "pending"
+        | "sent"
+        | "delivered"
+        | "failed"
+        | "viewed"
+        | "paid"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +408,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      billing_frequency: ["weekly", "bi_weekly", "monthly", "quarterly"],
+      chat_status: ["active", "resolved", "escalated", "closed"],
+      communication_channel: ["email", "sms", "paper", "portal"],
+      statement_status: [
+        "pending",
+        "sent",
+        "delivered",
+        "failed",
+        "viewed",
+        "paid",
+      ],
+    },
   },
 } as const
