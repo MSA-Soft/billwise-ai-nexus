@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import BillingChat from "./BillingChat";
 import BillingCycleConfig from "./BillingCycleConfig";
 import CommunicationPreferences from "./CommunicationPreferences";
+import PaymentPlanManagement from "./PaymentPlanManagement";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
@@ -399,24 +400,7 @@ const PatientBalanceBilling = () => {
         </TabsContent>
 
         <TabsContent value="payment-plans" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Payment Plans</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Payment Plan Management</h3>
-                <p className="text-gray-600 mb-4">
-                  Set up flexible payment plans to help patients manage their balances.
-                </p>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Payment Plan
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <PaymentPlanManagement />
         </TabsContent>
 
         <TabsContent value="collections" className="space-y-6">

@@ -229,6 +229,124 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_installments: {
+        Row: {
+          amount: number
+          created_at: string | null
+          due_date: string
+          id: string
+          installment_number: number
+          notes: string | null
+          paid_amount: number | null
+          paid_date: string | null
+          payment_method: string | null
+          payment_plan_id: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          due_date: string
+          id?: string
+          installment_number: number
+          notes?: string | null
+          paid_amount?: number | null
+          paid_date?: string | null
+          payment_method?: string | null
+          payment_plan_id: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          due_date?: string
+          id?: string
+          installment_number?: number
+          notes?: string | null
+          paid_amount?: number | null
+          paid_date?: string | null
+          payment_method?: string | null
+          payment_plan_id?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_installments_payment_plan_id_fkey"
+            columns: ["payment_plan_id"]
+            isOneToOne: false
+            referencedRelation: "payment_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_plans: {
+        Row: {
+          auto_pay: boolean | null
+          created_at: string | null
+          down_payment: number | null
+          end_date: string
+          id: string
+          monthly_payment: number
+          notes: string | null
+          number_of_payments: number
+          payments_completed: number | null
+          remaining_balance: number
+          start_date: string
+          statement_id: string | null
+          status: string | null
+          total_amount: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          auto_pay?: boolean | null
+          created_at?: string | null
+          down_payment?: number | null
+          end_date: string
+          id?: string
+          monthly_payment: number
+          notes?: string | null
+          number_of_payments: number
+          payments_completed?: number | null
+          remaining_balance: number
+          start_date: string
+          statement_id?: string | null
+          status?: string | null
+          total_amount: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          auto_pay?: boolean | null
+          created_at?: string | null
+          down_payment?: number | null
+          end_date?: string
+          id?: string
+          monthly_payment?: number
+          notes?: string | null
+          number_of_payments?: number
+          payments_completed?: number | null
+          remaining_balance?: number
+          start_date?: string
+          statement_id?: string | null
+          status?: string | null
+          total_amount?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_plans_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "billing_statements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_reminders: {
         Row: {
           channel: Database["public"]["Enums"]["communication_channel"]
