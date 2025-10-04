@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      attorney_referrals: {
+        Row: {
+          account_balance_at_referral: number
+          attorney_contact: string | null
+          attorney_email: string | null
+          attorney_firm: string
+          attorney_phone: string | null
+          case_number: string | null
+          collection_account_id: string
+          created_at: string
+          expected_action: string | null
+          id: string
+          notes: string | null
+          referral_amount: number
+          referral_date: string
+          referral_status: Database["public"]["Enums"]["attorney_referral_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_balance_at_referral: number
+          attorney_contact?: string | null
+          attorney_email?: string | null
+          attorney_firm: string
+          attorney_phone?: string | null
+          case_number?: string | null
+          collection_account_id: string
+          created_at?: string
+          expected_action?: string | null
+          id?: string
+          notes?: string | null
+          referral_amount: number
+          referral_date?: string
+          referral_status?: Database["public"]["Enums"]["attorney_referral_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_balance_at_referral?: number
+          attorney_contact?: string | null
+          attorney_email?: string | null
+          attorney_firm?: string
+          attorney_phone?: string | null
+          case_number?: string | null
+          collection_account_id?: string
+          created_at?: string
+          expected_action?: string | null
+          id?: string
+          notes?: string | null
+          referral_amount?: number
+          referral_date?: string
+          referral_status?: Database["public"]["Enums"]["attorney_referral_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attorney_referrals_collection_account_id_fkey"
+            columns: ["collection_account_id"]
+            isOneToOne: false
+            referencedRelation: "collections_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_cycles: {
         Row: {
           created_at: string | null
@@ -177,6 +242,207 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_activities: {
+        Row: {
+          activity_type: Database["public"]["Enums"]["collection_activity_type"]
+          amount_discussed: number | null
+          collection_account_id: string
+          contact_method: Database["public"]["Enums"]["contact_method"] | null
+          created_at: string
+          id: string
+          notes: string | null
+          outcome: string | null
+          performed_by: string | null
+          promise_to_pay_date: string | null
+          user_id: string
+        }
+        Insert: {
+          activity_type: Database["public"]["Enums"]["collection_activity_type"]
+          amount_discussed?: number | null
+          collection_account_id: string
+          contact_method?: Database["public"]["Enums"]["contact_method"] | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcome?: string | null
+          performed_by?: string | null
+          promise_to_pay_date?: string | null
+          user_id: string
+        }
+        Update: {
+          activity_type?: Database["public"]["Enums"]["collection_activity_type"]
+          amount_discussed?: number | null
+          collection_account_id?: string
+          contact_method?: Database["public"]["Enums"]["contact_method"] | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcome?: string | null
+          performed_by?: string | null
+          promise_to_pay_date?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_activities_collection_account_id_fkey"
+            columns: ["collection_account_id"]
+            isOneToOne: false
+            referencedRelation: "collections_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collection_letters: {
+        Row: {
+          collection_account_id: string
+          created_at: string
+          delivery_status: string | null
+          id: string
+          letter_type: Database["public"]["Enums"]["letter_type"]
+          pdf_url: string | null
+          sent_date: string
+          template_name: string
+          user_id: string
+        }
+        Insert: {
+          collection_account_id: string
+          created_at?: string
+          delivery_status?: string | null
+          id?: string
+          letter_type: Database["public"]["Enums"]["letter_type"]
+          pdf_url?: string | null
+          sent_date?: string
+          template_name: string
+          user_id: string
+        }
+        Update: {
+          collection_account_id?: string
+          created_at?: string
+          delivery_status?: string | null
+          id?: string
+          letter_type?: Database["public"]["Enums"]["letter_type"]
+          pdf_url?: string | null
+          sent_date?: string
+          template_name?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_letters_collection_account_id_fkey"
+            columns: ["collection_account_id"]
+            isOneToOne: false
+            referencedRelation: "collections_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      collections_accounts: {
+        Row: {
+          assigned_to: string | null
+          collection_stage: Database["public"]["Enums"]["collection_stage"]
+          collection_status: Database["public"]["Enums"]["collection_status"]
+          created_at: string
+          current_balance: number
+          days_overdue: number
+          id: string
+          last_contact_date: string | null
+          next_action_date: string | null
+          notes: string | null
+          original_balance: number
+          patient_email: string | null
+          patient_id: string | null
+          patient_name: string
+          patient_phone: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          collection_stage?: Database["public"]["Enums"]["collection_stage"]
+          collection_status?: Database["public"]["Enums"]["collection_status"]
+          created_at?: string
+          current_balance: number
+          days_overdue?: number
+          id?: string
+          last_contact_date?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          original_balance: number
+          patient_email?: string | null
+          patient_id?: string | null
+          patient_name: string
+          patient_phone?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_to?: string | null
+          collection_stage?: Database["public"]["Enums"]["collection_stage"]
+          collection_status?: Database["public"]["Enums"]["collection_status"]
+          created_at?: string
+          current_balance?: number
+          days_overdue?: number
+          id?: string
+          last_contact_date?: string | null
+          next_action_date?: string | null
+          notes?: string | null
+          original_balance?: number
+          patient_email?: string | null
+          patient_id?: string | null
+          patient_name?: string
+          patient_phone?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      dispute_claims: {
+        Row: {
+          collection_account_id: string
+          created_at: string
+          dispute_date: string
+          dispute_reason: string
+          dispute_status: Database["public"]["Enums"]["dispute_status"]
+          id: string
+          resolution_date: string | null
+          resolution_notes: string | null
+          supporting_documents: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          collection_account_id: string
+          created_at?: string
+          dispute_date?: string
+          dispute_reason: string
+          dispute_status?: Database["public"]["Enums"]["dispute_status"]
+          id?: string
+          resolution_date?: string | null
+          resolution_notes?: string | null
+          supporting_documents?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          collection_account_id?: string
+          created_at?: string
+          dispute_date?: string
+          dispute_reason?: string
+          dispute_status?: Database["public"]["Enums"]["dispute_status"]
+          id?: string
+          resolution_date?: string | null
+          resolution_notes?: string | null
+          supporting_documents?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispute_claims_collection_account_id_fkey"
+            columns: ["collection_account_id"]
+            isOneToOne: false
+            referencedRelation: "collections_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -415,6 +681,62 @@ export type Database = {
         }
         Relationships: []
       }
+      settlement_offers: {
+        Row: {
+          accepted_date: string | null
+          collection_account_id: string
+          created_at: string
+          expiration_date: string
+          id: string
+          notes: string | null
+          offer_amount: number
+          offer_percentage: number
+          original_amount: number
+          payment_terms: string | null
+          settlement_status: Database["public"]["Enums"]["settlement_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accepted_date?: string | null
+          collection_account_id: string
+          created_at?: string
+          expiration_date: string
+          id?: string
+          notes?: string | null
+          offer_amount: number
+          offer_percentage: number
+          original_amount: number
+          payment_terms?: string | null
+          settlement_status?: Database["public"]["Enums"]["settlement_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accepted_date?: string | null
+          collection_account_id?: string
+          created_at?: string
+          expiration_date?: string
+          id?: string
+          notes?: string | null
+          offer_amount?: number
+          offer_percentage?: number
+          original_amount?: number
+          payment_terms?: string | null
+          settlement_status?: Database["public"]["Enums"]["settlement_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_offers_collection_account_id_fkey"
+            columns: ["collection_account_id"]
+            isOneToOne: false
+            referencedRelation: "collections_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -448,6 +770,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      owns_collection_account: {
+        Args: { _account_id: string; _user_id: string }
+        Returns: boolean
+      }
       owns_payment_plan: {
         Args: { _plan_id: string; _user_id: string }
         Returns: boolean
@@ -455,9 +781,58 @@ export type Database = {
     }
     Enums: {
       app_role: "patient" | "billing_staff" | "admin"
+      attorney_referral_status:
+        | "pending"
+        | "accepted"
+        | "in_progress"
+        | "judgment_obtained"
+        | "collecting"
+        | "closed"
+        | "returned"
       billing_frequency: "weekly" | "bi_weekly" | "monthly" | "quarterly"
       chat_status: "active" | "resolved" | "escalated" | "closed"
+      collection_activity_type:
+        | "phone_call"
+        | "email_sent"
+        | "letter_sent"
+        | "dispute_received"
+        | "promise_to_pay"
+        | "partial_payment"
+        | "settlement_offer"
+        | "note_added"
+      collection_stage:
+        | "early_collection"
+        | "mid_collection"
+        | "late_collection"
+        | "pre_legal"
+      collection_status:
+        | "active"
+        | "payment_plan"
+        | "settled"
+        | "attorney_referral"
+        | "closed"
+        | "dispute"
       communication_channel: "email" | "sms" | "paper" | "portal"
+      contact_method: "phone" | "email" | "mail" | "sms" | "in_person"
+      dispute_status:
+        | "open"
+        | "investigating"
+        | "resolved_patient_favor"
+        | "resolved_practice_favor"
+        | "closed"
+      letter_type:
+        | "initial_notice"
+        | "second_notice"
+        | "final_notice"
+        | "pre_legal_notice"
+        | "cease_communication"
+        | "settlement_agreement"
+      settlement_status:
+        | "pending"
+        | "accepted"
+        | "rejected"
+        | "expired"
+        | "completed"
       statement_status:
         | "pending"
         | "sent"
@@ -593,9 +968,65 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["patient", "billing_staff", "admin"],
+      attorney_referral_status: [
+        "pending",
+        "accepted",
+        "in_progress",
+        "judgment_obtained",
+        "collecting",
+        "closed",
+        "returned",
+      ],
       billing_frequency: ["weekly", "bi_weekly", "monthly", "quarterly"],
       chat_status: ["active", "resolved", "escalated", "closed"],
+      collection_activity_type: [
+        "phone_call",
+        "email_sent",
+        "letter_sent",
+        "dispute_received",
+        "promise_to_pay",
+        "partial_payment",
+        "settlement_offer",
+        "note_added",
+      ],
+      collection_stage: [
+        "early_collection",
+        "mid_collection",
+        "late_collection",
+        "pre_legal",
+      ],
+      collection_status: [
+        "active",
+        "payment_plan",
+        "settled",
+        "attorney_referral",
+        "closed",
+        "dispute",
+      ],
       communication_channel: ["email", "sms", "paper", "portal"],
+      contact_method: ["phone", "email", "mail", "sms", "in_person"],
+      dispute_status: [
+        "open",
+        "investigating",
+        "resolved_patient_favor",
+        "resolved_practice_favor",
+        "closed",
+      ],
+      letter_type: [
+        "initial_notice",
+        "second_notice",
+        "final_notice",
+        "pre_legal_notice",
+        "cease_communication",
+        "settlement_agreement",
+      ],
+      settlement_status: [
+        "pending",
+        "accepted",
+        "rejected",
+        "expired",
+        "completed",
+      ],
       statement_status: [
         "pending",
         "sent",
