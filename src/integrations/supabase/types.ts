@@ -448,6 +448,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      owns_payment_plan: {
+        Args: { _plan_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "patient" | "billing_staff" | "admin"
