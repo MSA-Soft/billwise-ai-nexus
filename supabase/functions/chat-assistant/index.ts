@@ -12,17 +12,71 @@ serve(async (req) => {
   }
 
   try {
-    const { conversationId, message, patientId } = await req.json();
+    // Verify JWT token (automatic via verify_jwt = true)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get user from token
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { conversationId, message } = await req.json();
+    
+    // Validate input
+    if (!conversationId || typeof conversationId !== 'string') {
+      return new Response(
+        JSON.stringify({ error: "Invalid conversationId" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Invalid message" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (message.length > 2000) {
+      return new Response(
+        JSON.stringify({ error: "Message too long (max 2000 characters)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify user owns this conversation
+    const { data: conversation, error: convError } = await supabase
+      .from('chat_conversations')
+      .select('user_id')
+      .eq('id', conversationId)
+      .single();
+
+    if (convError || !conversation || conversation.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized access to conversation" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get conversation history
     const { data: messages } = await supabase
@@ -58,8 +112,6 @@ serve(async (req) => {
             - Setting up payment plans
             - Understanding insurance claims
             - Answering billing questions
-            
-            Patient ID: ${patientId}
             
             Be professional, empathetic, and clear in your responses. If you need to access specific billing data or perform actions like setting up payment plans, let the patient know you'll need to escalate to a billing specialist.`
           },

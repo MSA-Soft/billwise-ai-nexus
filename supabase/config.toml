@@ -1,7 +1,7 @@
 project_id = "aruiufyicvfmppcrebgo"
 
 [functions.chat-assistant]
-verify_jwt = false
+verify_jwt = true
 
 [functions.process-billing-cycle]
-verify_jwt = false
+verify_jwt = true

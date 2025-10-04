@@ -64,6 +64,7 @@ export type Database = {
           statement_date: string
           status: Database["public"]["Enums"]["statement_status"] | null
           updated_at: string | null
+          user_id: string | null
           viewed_at: string | null
         }
         Insert: {
@@ -82,6 +83,7 @@ export type Database = {
           statement_date?: string
           status?: Database["public"]["Enums"]["statement_status"] | null
           updated_at?: string | null
+          user_id?: string | null
           viewed_at?: string | null
         }
         Update: {
@@ -100,6 +102,7 @@ export type Database = {
           statement_date?: string
           status?: Database["public"]["Enums"]["statement_status"] | null
           updated_at?: string | null
+          user_id?: string | null
           viewed_at?: string | null
         }
         Relationships: []
@@ -115,6 +118,7 @@ export type Database = {
           started_at: string | null
           status: Database["public"]["Enums"]["chat_status"] | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -126,6 +130,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["chat_status"] | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -137,6 +142,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["chat_status"] | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -189,6 +195,7 @@ export type Database = {
           preferred_channel: Database["public"]["Enums"]["communication_channel"]
           sms_enabled: boolean | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -203,6 +210,7 @@ export type Database = {
           preferred_channel?: Database["public"]["Enums"]["communication_channel"]
           sms_enabled?: boolean | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -217,6 +225,7 @@ export type Database = {
           preferred_channel?: Database["public"]["Enums"]["communication_channel"]
           sms_enabled?: boolean | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -264,14 +273,66 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "patient" | "billing_staff" | "admin"
       billing_frequency: "weekly" | "bi_weekly" | "monthly" | "quarterly"
       chat_status: "active" | "resolved" | "escalated" | "closed"
       communication_channel: "email" | "sms" | "paper" | "portal"
@@ -409,6 +470,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["patient", "billing_staff", "admin"],
       billing_frequency: ["weekly", "bi_weekly", "monthly", "quarterly"],
       chat_status: ["active", "resolved", "escalated", "closed"],
       communication_channel: ["email", "sms", "paper", "portal"],

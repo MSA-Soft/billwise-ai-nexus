@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +18,7 @@ import {
   Search,
   Plus,
   Download,
-  Eye,
-  Edit
+  LogOut
 } from "lucide-react";
 import BillingModule from "../components/BillingModule";
 import DenialManagement from "../components/DenialManagement";
@@ -25,7 +27,13 @@ import PatientBalanceBilling from "../components/PatientBalanceBilling";
 import ReportsAnalytics from "../components/ReportsAnalytics";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+  };
 
   // Mock data for dashboard metrics
   const dashboardMetrics = {
@@ -56,33 +64,38 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Shield className="h-8 w-8 text-blue-600" />
-                <h1 className="text-2xl font-bold text-gray-900">MedBill AI Pro</h1>
+    <ProtectedRoute>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-white shadow-sm border-b">
+          <div className="px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <Shield className="h-8 w-8 text-blue-600" />
+                  <h1 className="text-2xl font-bold text-gray-900">MedBill AI Pro</h1>
+                </div>
+                <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                  Healthcare Billing Suite
+                </Badge>
               </div>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                Healthcare Billing Suite
-              </Badge>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export Data
-              </Button>
-              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                New Claim
-              </Button>
+              <div className="flex items-center space-x-3">
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Data
+                </Button>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Claim
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       {/* Main Content */}
       <main className="px-6 py-6">
@@ -273,6 +286,7 @@ const Index = () => {
         </Tabs>
       </main>
     </div>
+    </ProtectedRoute>
   );
 };
 
