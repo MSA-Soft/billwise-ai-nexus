@@ -7,12 +7,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer } from "lucide-react";
+import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer, Scale } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import BillingChat from "./BillingChat";
 import BillingCycleConfig from "./BillingCycleConfig";
 import CommunicationPreferences from "./CommunicationPreferences";
 import PaymentPlanManagement from "./PaymentPlanManagement";
+import { CollectionsManagement } from "./CollectionsManagement";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
