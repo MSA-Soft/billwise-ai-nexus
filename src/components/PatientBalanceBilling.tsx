@@ -405,40 +405,7 @@ const PatientBalanceBilling = () => {
         </TabsContent>
 
         <TabsContent value="collections" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Collections Management</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {patientBalances.filter(p => p.status === "90+ Days").map((patient) => (
-                  <div key={patient.id} className="border rounded-lg p-4 bg-red-50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <DollarSign className="h-8 w-8 text-red-500" />
-                        <div>
-                          <div className="font-semibold">{patient.name}</div>
-                          <div className="text-sm text-gray-600">
-                            ${patient.balance.toFixed(2)} • {patient.daysOutstanding} days overdue
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
-                          <Phone className="h-4 w-4 mr-2" />
-                          Call
-                        </Button>
-                        <Button size="sm" className="bg-red-600 hover:bg-red-700">
-                          <Send className="h-4 w-4 mr-2" />
-                          Collections Notice
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <CollectionsManagement />
         </TabsContent>
 
         <TabsContent value="automation" className="space-y-4">

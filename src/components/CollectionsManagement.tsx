@@ -339,6 +339,26 @@ export function CollectionsManagement() {
                           >
                             <HandshakeIcon className="h-3 w-3" />
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedAccount(account.id);
+                              setDialogOpen("attorney");
+                            }}
+                          >
+                            <Scale className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedAccount(account.id);
+                              setDialogOpen("dispute");
+                            }}
+                          >
+                            <AlertTriangle className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
