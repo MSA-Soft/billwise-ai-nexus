@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,9 +10,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Separator } from "@/components/ui/separator";
 import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import BillingChat from "./BillingChat";
-import BillingCycleConfig from "./BillingCycleConfig";
-import CommunicationPreferences from "./CommunicationPreferences";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
@@ -159,13 +157,11 @@ const PatientBalanceBilling = () => {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="patient-balances">Patient Balances</TabsTrigger>
           <TabsTrigger value="payment-plans">Payment Plans</TabsTrigger>
           <TabsTrigger value="collections">Collections</TabsTrigger>
-          <TabsTrigger value="automation">Automation</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
 
         {/* Key Metrics */}
@@ -455,35 +451,7 @@ const PatientBalanceBilling = () => {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="automation" className="space-y-4">
-          <BillingCycleConfig />
-        </TabsContent>
-
-        <TabsContent value="preferences" className="space-y-4">
-          {selectedPatient && (
-            <CommunicationPreferences
-              patientId={selectedPatient.id}
-              patientName={selectedPatient.name}
-            />
-          )}
-          {!selectedPatient && (
-            <Card>
-              <CardContent className="py-8 text-center text-muted-foreground">
-                Select a patient from the Patient Balances tab to manage their communication preferences
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
       </Tabs>
-
-      {/* Live Chat - shown when viewing patient details */}
-      {selectedPatient && (
-        <BillingChat
-          patientId={selectedPatient.id}
-          patientName={selectedPatient.name}
-        />
-      )}
 
       {/* Patient Statement Dialog */}
       <Dialog open={statementOpen} onOpenChange={setStatementOpen}>
