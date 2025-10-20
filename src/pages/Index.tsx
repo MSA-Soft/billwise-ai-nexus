@@ -1,8 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,7 +22,7 @@ import {
 } from "lucide-react";
 import BillingModule from "../components/BillingModule";
 import DenialManagement from "../components/DenialManagement";
-import AuthorizationTracking from "../components/AuthorizationTracking";
+import PriorAuthDashboard from "../components/PriorAuthDashboard";
 import PatientBalanceBilling from "../components/PatientBalanceBilling";
 import ReportsAnalytics from "../components/ReportsAnalytics";
 
@@ -275,7 +273,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="authorization">
-            <AuthorizationTracking />
+            <PriorAuthDashboard />
           </TabsContent>
 
           <TabsContent value="patient-billing">
