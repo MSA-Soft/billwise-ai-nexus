@@ -127,6 +127,35 @@ const PriorAuthDashboard = () => {
     }
   };
 
+  const handleRunWorkflow = async (authId: string) => {
+    try {
+      toast({
+        title: "Running PA Workflow",
+        description: "Checking rules, validating, and submitting...",
+      });
+
+      const { data, error } = await supabase.functions.invoke('pa-workflow', {
+        body: { authorizationId: authId }
+      });
+
+      if (error) throw error;
+
+      const statusText = data?.review_status || 'UPDATED';
+      toast({
+        title: "Workflow Complete",
+        description: `Status: ${statusText}${data?.auth_number ? ` • Auth #: ${data.auth_number}` : ''}`,
+      });
+
+      fetchAuthorizations();
+    } catch (error: any) {
+      toast({
+        title: "Workflow Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -226,6 +255,11 @@ const PriorAuthDashboard = () => {
                             AI Score: {auth.ai_approval_suggestions[0].approval_probability}%
                           </Badge>
                         )}
+                        {auth.auth_number && (
+                          <Badge variant="outline" className="bg-green-50">
+                            Auth #: {auth.auth_number}
+                          </Badge>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                         <div>
@@ -240,6 +274,21 @@ const PriorAuthDashboard = () => {
                         <div>
                           <span className="font-medium">Urgency:</span> {auth.urgency_level?.toUpperCase() || 'ROUTINE'}
                         </div>
+                        {auth.review_status && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Review Status:</span> {auth.review_status}
+                          </div>
+                        )}
+                        {auth.ai_approval_suggestions?.[0]?.missing_elements?.length > 0 && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Missing Elements:</span> {auth.ai_approval_suggestions[0].missing_elements.slice(0,3).join(', ')}
+                          </div>
+                        )}
+                        {auth.submission_ref && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Submission Ref:</span> {auth.submission_ref}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col space-y-2">
@@ -248,6 +297,9 @@ const PriorAuthDashboard = () => {
                           AI Analysis
                         </Button>
                       )}
+                      <Button size="sm" variant="outline" onClick={() => handleRunWorkflow(auth.id)}>
+                        Run Workflow
+                      </Button>
                       <Button size="sm" variant="outline">
                         View Details
                       </Button>
