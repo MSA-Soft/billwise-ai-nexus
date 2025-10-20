@@ -122,6 +122,10 @@ const ADADentalForm = () => {
                           <Checkbox id="other-f" className="h-3 w-3" />
                           <label htmlFor="other-f" className="text-[9px]">F</label>
                         </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="other-u" className="h-3 w-3" />
+                          <label htmlFor="other-u" className="text-[9px]">U</label>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -197,6 +201,10 @@ const ADADentalForm = () => {
                           <Checkbox id="sub-f" className="h-3 w-3" />
                           <label htmlFor="sub-f" className="text-[9px]">F</label>
                         </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="sub-u" className="h-3 w-3" />
+                          <label htmlFor="sub-u" className="text-[9px]">U</label>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -241,17 +249,8 @@ const ADADentalForm = () => {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[9px]">19. Student Status</Label>
-                    <div className="flex gap-2 mt-0.5">
-                      <div className="flex items-center space-x-1">
-                        <Checkbox id="fts" className="h-3 w-3" />
-                        <label htmlFor="fts" className="text-[9px]">FTS</label>
-                      </div>
-                      <div className="flex items-center space-x-1">
-                        <Checkbox id="pts" className="h-3 w-3" />
-                        <label htmlFor="pts" className="text-[9px]">PTS</label>
-                      </div>
-                    </div>
+                    <Label className="text-[9px]">19. Reserved For Future</Label>
+                    <Input className="mt-0.5 h-6 text-[9px]" disabled />
                   </div>
                   <div>
                     <Label className="text-[9px]">20. Name (Last, First, Middle Initial, Suffix), Address, City, State, Zip Code</Label>
@@ -279,6 +278,10 @@ const ADADentalForm = () => {
                           <Checkbox id="pat-f" className="h-3 w-3" />
                           <label htmlFor="pat-f" className="text-[9px]">F</label>
                         </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="pat-u" className="h-3 w-3" />
+                          <label htmlFor="pat-u" className="text-[9px]">U</label>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -298,14 +301,16 @@ const ADADentalForm = () => {
               <table className="w-full text-[9px] border-collapse border border-foreground">
                 <thead>
                   <tr className="bg-muted/30">
-                    <th className="border border-foreground p-0.5 text-left" style={{width: "90px"}}>24. Procedure Date (MM/DD/CCYY)</th>
-                    <th className="border border-foreground p-0.5 text-center" style={{width: "45px"}}>25. Area of Oral Cavity</th>
-                    <th className="border border-foreground p-0.5 text-center" style={{width: "45px"}}>26. Tooth System</th>
-                    <th className="border border-foreground p-0.5 text-center" style={{width: "70px"}}>27. Tooth Number(s) or Letter(s)</th>
-                    <th className="border border-foreground p-0.5 text-center" style={{width: "60px"}}>28. Tooth Surface</th>
-                    <th className="border border-foreground p-0.5 text-center" style={{width: "80px"}}>29. Procedure Code</th>
+                    <th className="border border-foreground p-0.5 text-left" style={{width: "80px"}}>24. Procedure Date (MM/DD/CCYY)</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "40px"}}>25. Area of Oral Cavity</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "35px"}}>26. Tooth System</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "60px"}}>27. Tooth Number(s) or Letter(s)</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "50px"}}>28. Tooth Surface</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "70px"}}>29. Procedure Code</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "35px"}}>29a. Diag. Pointer</th>
+                    <th className="border border-foreground p-0.5 text-center" style={{width: "30px"}}>29b. Qty.</th>
                     <th className="border border-foreground p-0.5 text-left">30. Description</th>
-                    <th className="border border-foreground p-0.5 text-right" style={{width: "80px"}}>31. Fee</th>
+                    <th className="border border-foreground p-0.5 text-right" style={{width: "70px"}}>31. Fee</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -317,6 +322,8 @@ const ADADentalForm = () => {
                       <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0 text-center" /></td>
                       <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0 text-center" maxLength={5} /></td>
                       <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0" placeholder="D####" /></td>
+                      <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0 text-center" maxLength={1} placeholder="A" /></td>
+                      <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0 text-center" type="number" placeholder="1" /></td>
                       <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0" /></td>
                       <td className="border border-foreground p-0.5"><Input className="text-[9px] h-5 border-0 text-right" type="number" step="0.01" placeholder="0.00" /></td>
                     </tr>
@@ -327,17 +334,17 @@ const ADADentalForm = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-0">
-            {/* MISSING TEETH INFORMATION */}
+            {/* MISSING TEETH AND DIAGNOSIS */}
             <div className="border-r border-b border-foreground p-2">
-              <Label className="font-bold text-[10px] mb-1 block uppercase">MISSING TEETH INFORMATION</Label>
+              <Label className="font-bold text-[10px] mb-1 block uppercase">33. Missing Teeth Information</Label>
               <div className="space-y-1">
+                <Label className="text-[9px]">(Place an "X" on each missing tooth.)</Label>
                 <div>
-                  <Label className="text-[9px] font-semibold">34. (Place an 'X' on each missing tooth) - Permanent</Label>
-                  <div className="grid grid-cols-16 gap-0 mt-0.5 text-center">
+                  <div className="grid grid-cols-16 gap-0 text-center">
                     {[...Array(16)].map((_, i) => (
                       <div key={i} className="border border-foreground p-px">
                         <div className="text-[7px]">{i + 1}</div>
-                        <Checkbox id={`perm-${i + 1}`} className="h-2 w-2 mx-auto" />
+                        <Checkbox id={`tooth-${i + 1}`} className="h-2 w-2 mx-auto" />
                       </div>
                     ))}
                   </div>
@@ -345,37 +352,43 @@ const ADADentalForm = () => {
                     {[...Array(16)].map((_, i) => (
                       <div key={i + 16} className="border border-foreground p-px">
                         <div className="text-[7px]">{32 - i}</div>
-                        <Checkbox id={`perm-${32 - i}`} className="h-2 w-2 mx-auto" />
+                        <Checkbox id={`tooth-${32 - i}`} className="h-2 w-2 mx-auto" />
                       </div>
                     ))}
                   </div>
                 </div>
-                <div>
-                  <Label className="text-[9px] font-semibold">Primary</Label>
-                  <div className="grid grid-cols-10 gap-0 mt-0.5 text-center">
-                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((letter) => (
-                      <div key={letter} className="border border-foreground p-px">
-                        <div className="text-[7px]">{letter}</div>
-                        <Checkbox id={`prim-${letter}`} className="h-2 w-2 mx-auto" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-10 gap-0 text-center">
-                    {['T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K'].map((letter) => (
-                      <div key={letter} className="border border-foreground p-px">
-                        <div className="text-[7px]">{letter}</div>
-                        <Checkbox id={`prim-${letter}`} className="h-2 w-2 mx-auto" />
-                      </div>
-                    ))}
-                  </div>
+                <div className="mt-2">
+                  <Label className="text-[9px] font-semibold">34. Diagnosis Code List Qualifier (ICD-10 = AB)</Label>
+                  <Input className="mt-0.5 text-[9px] h-6" placeholder="AB" maxLength={2} />
                 </div>
                 <div>
-                  <Label className="text-[9px]">32. Other Fee(s)</Label>
-                  <Input className="mt-0.5 text-[9px] h-6" type="number" step="0.01" />
+                  <Label className="text-[9px] font-semibold">34a. Diagnosis Code(s)</Label>
+                  <div className="grid grid-cols-4 gap-1 mt-0.5">
+                    <div>
+                      <Label className="text-[8px]">A</Label>
+                      <Input className="text-[9px] h-6" placeholder="Code" />
+                    </div>
+                    <div>
+                      <Label className="text-[8px]">B</Label>
+                      <Input className="text-[9px] h-6" placeholder="Code" />
+                    </div>
+                    <div>
+                      <Label className="text-[8px]">C</Label>
+                      <Input className="text-[9px] h-6" placeholder="Code" />
+                    </div>
+                    <div>
+                      <Label className="text-[8px]">D</Label>
+                      <Input className="text-[9px] h-6" placeholder="Code" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Label className="text-[9px]">31a. Other Fee(s)</Label>
+                  <Input className="mt-0.5 text-[9px] h-6" type="number" step="0.01" placeholder="0.00" />
                 </div>
                 <div>
-                  <Label className="text-[9px] font-semibold">33. Total Fee</Label>
-                  <Input className="mt-0.5 text-[9px] h-6 font-bold" type="number" step="0.01" />
+                  <Label className="text-[9px] font-semibold">32. Total Fee</Label>
+                  <Input className="mt-0.5 text-[9px] h-6 font-bold" type="number" step="0.01" placeholder="0.00" />
                 </div>
               </div>
             </div>
@@ -618,8 +631,8 @@ const ADADentalForm = () => {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[9px]">56A. Provider Specialty Code</Label>
-                    <Input className="mt-0.5 text-[9px] h-6" />
+                    <Label className="text-[9px]">56a. Provider Specialty Code</Label>
+                    <Input className="mt-0.5 text-[9px] h-6" placeholder="122300000X" />
                   </div>
                   <div className="grid grid-cols-2 gap-1">
                     <div>
@@ -638,9 +651,9 @@ const ADADentalForm = () => {
 
           {/* Footer */}
           <div className="text-center text-[8px] text-muted-foreground border-t border-foreground p-1">
-            <p>© 2006 American Dental Association</p>
-            <p>To Reorder call 1-800-947-4746 or go online at www.adacatalog.org</p>
-            <p>(Same as ADA Dental Claim Form - J401, J402, J403, J404)</p>
+            <p>© 2019 American Dental Association</p>
+            <p>To reorder call 800.947.4746 or go online at ADAcatalog.org</p>
+            <p>J430 (Same as ADA Dental Claim Form – J431, J432, J433, J434, J430D)</p>
           </div>
         </CardContent>
       </Card>
