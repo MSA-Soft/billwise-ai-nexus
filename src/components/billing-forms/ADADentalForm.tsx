@@ -336,23 +336,22 @@ const ADADentalForm = () => {
           <div className="grid grid-cols-2 gap-0">
             {/* MISSING TEETH AND DIAGNOSIS */}
             <div className="border-r border-b border-foreground p-2">
-              <Label className="font-bold text-[10px] mb-1 block uppercase">33. Missing Teeth Information</Label>
               <div className="space-y-1">
-                <Label className="text-[9px]">(Place an "X" on each missing tooth.)</Label>
-                <div>
+                <Label className="text-[9px] font-semibold">33. Missing Teeth Information (Place an "X" on each missing tooth.)</Label>
+                <div className="border border-foreground">
                   <div className="grid grid-cols-16 gap-0 text-center">
-                    {[...Array(16)].map((_, i) => (
-                      <div key={i} className="border border-foreground p-px">
-                        <div className="text-[7px]">{i + 1}</div>
-                        <Checkbox id={`tooth-${i + 1}`} className="h-2 w-2 mx-auto" />
+                    {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].map((num) => (
+                      <div key={num} className="border-r border-foreground last:border-r-0 p-1">
+                        <div className="text-[8px]">{num}</div>
+                        <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-16 gap-0 text-center">
-                    {[...Array(16)].map((_, i) => (
-                      <div key={i + 16} className="border border-foreground p-px">
-                        <div className="text-[7px]">{32 - i}</div>
-                        <Checkbox id={`tooth-${32 - i}`} className="h-2 w-2 mx-auto" />
+                  <div className="grid grid-cols-16 gap-0 text-center border-t border-foreground">
+                    {[32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17].map((num) => (
+                      <div key={num} className="border-r border-foreground last:border-r-0 p-1">
+                        <div className="text-[8px]">{num}</div>
+                        <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
                     ))}
                   </div>
