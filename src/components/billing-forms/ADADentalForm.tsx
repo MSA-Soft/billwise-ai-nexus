@@ -3,514 +3,656 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Save, Send } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-// ADA Dental Claim Form (Version 2024)
-// Used for dental services billing
+// ADA Dental Claim Form - Official Format
+// Based on 2006 ADA Dental Claim Form (J401, J402, J403, J404)
 
 const ADADentalForm = () => {
-  const [formData, setFormData] = useState({
-    // HEADER INFORMATION
-    predetermination: false,
-    standard: true,
-    // CARRIER INFORMATION
-    carrierName: "",
-    carrierAddress: "",
-    carrierCity: "",
-    carrierState: "",
-    carrierZip: "",
-    // PATIENT INFORMATION
-    patientLastName: "",
-    patientFirstName: "",
-    patientMiddleInitial: "",
-    patientAddress: "",
-    patientCity: "",
-    patientState: "",
-    patientZip: "",
-    patientDOB: "",
-    patientSex: "",
-    patientId: "",
-    // INSURANCE INFORMATION
-    subscriberName: "",
-    subscriberDOB: "",
-    subscriberSex: "",
-    subscriberId: "",
-    groupNumber: "",
-    relationshipToSubscriber: "",
-    // OTHER COVERAGE
-    otherCoverage: false,
-    otherCarrierName: "",
-    otherSubscriberName: "",
-    otherSubscriberId: "",
-    otherGroupNumber: "",
-    // PROVIDER INFORMATION
-    dentistLastName: "",
-    dentistFirstName: "",
-    dentistLicense: "",
-    dentistNPI: "",
-    dentistTIN: "",
-    dentistAddress: "",
-    dentistCity: "",
-    dentistState: "",
-    dentistZip: "",
-    dentistPhone: "",
-    // BILLING PROVIDER
-    billingProviderName: "",
-    billingProviderAddress: "",
-    billingProviderNPI: "",
-    billingProviderTIN: "",
-    // PLACE OF TREATMENT
-    placeOfTreatment: "",
-    // PROCEDURES (10 lines)
-    procedures: Array(10).fill(null).map(() => ({
-      procedureDate: "",
-      toothCode: "",
-      toothSurface: "",
-      procedureCode: "",
-      description: "",
-      fee: ""
-    })),
-    // MISSING TEETH INFORMATION
-    missingTeeth: {
-      permanent: Array(32).fill(false),
-      primary: Array(20).fill(false)
-    },
-    // ORTHODONTIC TREATMENT
-    orthodonticTreatment: false,
-    orthodonticMonthsRemaining: "",
-    appliancePlaced: false,
-    appliancePlacedDate: "",
-    // PROSTHESIS
-    prosthesis: false,
-    prosthesisType: "",
-    priorPlacementDate: "",
-    // TREATMENT PLAN
-    treatmentPlan: false,
-    // REMARKS
-    remarks: "",
-    // AUTHORIZATION
-    patientSignature: "",
-    patientSignatureDate: "",
-    subscriberSignature: "",
-    subscriberSignatureDate: "",
-    // TOTALS
-    totalFee: ""
-  });
+  const { toast } = useToast();
+  
+  const handleSubmit = () => {
+    toast({
+      title: "Claim Submitted",
+      description: "ADA dental claim has been submitted successfully."
+    });
+  };
 
-  const permanentTeeth = [
-    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
-    "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32"
-  ];
-
-  const primaryTeeth = [
-    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
-    "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"
-  ];
+  const handleSaveDraft = () => {
+    toast({
+      title: "Draft Saved",
+      description: "Your claim has been saved as a draft."
+    });
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <Card className="border-2 border-gray-800">
-        <CardHeader className="bg-purple-50">
-          <CardTitle className="text-center text-xl font-bold">
-            AMERICAN DENTAL ASSOCIATION<br />
-            DENTAL CLAIM FORM<br />
-            <span className="text-sm font-normal">(Version 2024)</span>
+    <div className="space-y-4 max-w-7xl mx-auto">
+      <Card className="border-2">
+        <CardHeader className="bg-muted/50 py-3">
+          <CardTitle className="text-center text-lg font-bold uppercase">
+            ADA Dental Claim Form
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-6">
-          {/* Type of Transaction */}
-          <div className="border-2 border-black p-4 mb-4 bg-yellow-50">
-            <Label className="text-xs font-bold mb-2 block">TYPE OF TRANSACTION</Label>
-            <div className="flex gap-6">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="statement" 
-                  checked={formData.standard}
-                  onCheckedChange={(checked) => setFormData({ ...formData, standard: checked as boolean, predetermination: false })}
-                />
-                <label htmlFor="statement" className="text-sm font-medium">Statement of Actual Services</label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="predetermination"
-                  checked={formData.predetermination}
-                  onCheckedChange={(checked) => setFormData({ ...formData, predetermination: checked as boolean, standard: false })}
-                />
-                <label htmlFor="predetermination" className="text-sm font-medium">Request for Predetermination/Preauthorization</label>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 1 - Insurance Company/Dental Benefit Plan Information */}
-          <div className="border-2 border-blue-600 p-4 mb-4 bg-blue-50">
-            <Label className="text-xs font-bold mb-3 block">SECTION 1 - INSURANCE COMPANY / DENTAL BENEFIT PLAN</Label>
-            <div className="space-y-3">
-              <Input 
-                placeholder="1. Company/Plan Name" 
-                value={formData.carrierName}
-                onChange={(e) => setFormData({ ...formData, carrierName: e.target.value })}
-              />
-              <Input 
-                placeholder="Address" 
-                value={formData.carrierAddress}
-                onChange={(e) => setFormData({ ...formData, carrierAddress: e.target.value })}
-              />
-              <div className="grid grid-cols-3 gap-2">
-                <Input placeholder="City" value={formData.carrierCity} onChange={(e) => setFormData({ ...formData, carrierCity: e.target.value })} />
-                <Input placeholder="State" value={formData.carrierState} onChange={(e) => setFormData({ ...formData, carrierState: e.target.value })} />
-                <Input placeholder="ZIP Code" value={formData.carrierZip} onChange={(e) => setFormData({ ...formData, carrierZip: e.target.value })} />
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2 - Subscriber (Policyholder) Information */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-3 block">SECTION 2 - SUBSCRIBER (POLICYHOLDER) INFORMATION</Label>
-            <div className="grid grid-cols-2 gap-4">
+        <CardContent className="p-4">
+          {/* HEADER INFORMATION */}
+          <div className="border-2 border-foreground p-3 mb-3">
+            <Label className="font-bold text-xs mb-2 block">HEADER INFORMATION</Label>
+            <div className="space-y-2">
               <div>
-                <Label className="text-xs">11. Subscriber Name (Last, First, MI)</Label>
-                <Input 
-                  placeholder="Subscriber Name" 
-                  value={formData.subscriberName}
-                  onChange={(e) => setFormData({ ...formData, subscriberName: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">12. Subscriber ID / SSN</Label>
-                <Input 
-                  placeholder="Subscriber ID" 
-                  value={formData.subscriberId}
-                  onChange={(e) => setFormData({ ...formData, subscriberId: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">13. Subscriber Birth Date</Label>
-                <Input 
-                  type="date"
-                  value={formData.subscriberDOB}
-                  onChange={(e) => setFormData({ ...formData, subscriberDOB: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">14. Sex</Label>
-                <Select value={formData.subscriberSex} onValueChange={(value) => setFormData({ ...formData, subscriberSex: value })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="M">M - Male</SelectItem>
-                    <SelectItem value="F">F - Female</SelectItem>
-                    <SelectItem value="X">X - Unknown</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">15. Group Number</Label>
-                <Input 
-                  placeholder="Group Number" 
-                  value={formData.groupNumber}
-                  onChange={(e) => setFormData({ ...formData, groupNumber: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 3 - Patient Information */}
-          <div className="border-2 border-green-600 p-4 mb-4 bg-green-50">
-            <Label className="text-xs font-bold mb-3 block">SECTION 3 - PATIENT INFORMATION</Label>
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                <Input placeholder="7. Last Name" value={formData.patientLastName} onChange={(e) => setFormData({ ...formData, patientLastName: e.target.value })} />
-                <Input placeholder="First Name" value={formData.patientFirstName} onChange={(e) => setFormData({ ...formData, patientFirstName: e.target.value })} />
-                <Input placeholder="MI" value={formData.patientMiddleInitial} onChange={(e) => setFormData({ ...formData, patientMiddleInitial: e.target.value })} maxLength={1} />
-              </div>
-              <Input placeholder="8. Patient Address" value={formData.patientAddress} onChange={(e) => setFormData({ ...formData, patientAddress: e.target.value })} />
-              <div className="grid grid-cols-3 gap-2">
-                <Input placeholder="City" value={formData.patientCity} onChange={(e) => setFormData({ ...formData, patientCity: e.target.value })} />
-                <Input placeholder="State" value={formData.patientState} onChange={(e) => setFormData({ ...formData, patientState: e.target.value })} />
-                <Input placeholder="ZIP" value={formData.patientZip} onChange={(e) => setFormData({ ...formData, patientZip: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label className="text-xs">9. Patient Birth Date</Label>
-                  <Input type="date" value={formData.patientDOB} onChange={(e) => setFormData({ ...formData, patientDOB: e.target.value })} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">10. Sex</Label>
-                  <Select value={formData.patientSex} onValueChange={(value) => setFormData({ ...formData, patientSex: value })}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="M">M - Male</SelectItem>
-                      <SelectItem value="F">F - Female</SelectItem>
-                      <SelectItem value="X">X - Unknown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">16. Patient ID</Label>
-                  <Input placeholder="Patient ID" value={formData.patientId} onChange={(e) => setFormData({ ...formData, patientId: e.target.value })} className="mt-1" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">17. Relationship to Subscriber</Label>
-                <Select value={formData.relationshipToSubscriber} onValueChange={(value) => setFormData({ ...formData, relationshipToSubscriber: value })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select relationship" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="self">Self</SelectItem>
-                    <SelectItem value="spouse">Spouse</SelectItem>
-                    <SelectItem value="dependent">Dependent Child</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Missing Teeth Information */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-3 block">MISSING TEETH INFORMATION</Label>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">Permanent Teeth (1-32)</Label>
-                <div className="grid grid-cols-16 gap-1">
-                  {permanentTeeth.map((tooth) => (
-                    <div key={tooth} className="text-center">
-                      <Checkbox id={`perm-${tooth}`} className="mx-auto" />
-                      <label htmlFor={`perm-${tooth}`} className="text-[10px] block mt-1">{tooth}</label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">Primary Teeth (A-T)</Label>
-                <div className="grid grid-cols-10 gap-1">
-                  {primaryTeeth.map((tooth) => (
-                    <div key={tooth} className="text-center">
-                      <Checkbox id={`prim-${tooth}`} className="mx-auto" />
-                      <label htmlFor={`prim-${tooth}`} className="text-[10px] block mt-1">{tooth}</label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Procedure Information */}
-          <div className="border-2 border-black p-4 mb-4 bg-purple-50">
-            <Label className="text-xs font-bold mb-4 block">DENTAL PROCEDURES (CDT Codes)</Label>
-            <div className="space-y-3">
-              {[0, 1, 2, 3, 4].map((index) => (
-                <div key={index} className="border p-3 bg-white rounded">
-                  <Label className="text-xs font-semibold mb-2 block">Procedure {index + 1}</Label>
-                  <div className="grid grid-cols-6 gap-2">
-                    <div>
-                      <Label className="text-[10px]">Date</Label>
-                      <Input type="date" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Tooth #/Letter</Label>
-                      <Input placeholder="14" className="text-xs" maxLength={2} />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Surface</Label>
-                      <Input placeholder="MOD" className="text-xs" maxLength={5} />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Procedure Code</Label>
-                      <Input placeholder="D2391" className="text-xs" />
-                    </div>
-                    <div className="col-span-2">
-                      <Label className="text-[10px]">Description</Label>
-                      <Input placeholder="Resin-based composite - 1 surface" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Fee</Label>
-                      <Input type="number" placeholder="185.00" className="text-xs" step="0.01" />
-                    </div>
+                <Label className="text-xs mb-1 block">1. Type of Transaction (Mark all applicable boxes)</Label>
+                <div className="flex gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="statement" />
+                    <label htmlFor="statement" className="text-xs">Statement of Actual Services</label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="predetermination" />
+                    <label htmlFor="predetermination" className="text-xs">Request for Predetermination/Preauthorization</label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="epsdt" />
+                    <label htmlFor="epsdt" className="text-xs">EPSDT/Title XIX</label>
                   </div>
                 </div>
-              ))}
+              </div>
+              <div>
+                <Label className="text-xs">2. Predetermination/Preauthorization Number</Label>
+                <Input className="mt-1" placeholder="Enter number if applicable" />
+              </div>
             </div>
           </div>
 
-          {/* Prosthesis Information */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-3 block">PROSTHESIS / ORTHODONTIC INFORMATION</Label>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-6">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="prosthesis"
-                    checked={formData.prosthesis}
-                    onCheckedChange={(checked) => setFormData({ ...formData, prosthesis: checked as boolean })}
-                  />
-                  <label htmlFor="prosthesis" className="text-sm">Initial Placement of Prosthesis</label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="replacement" />
-                  <label htmlFor="replacement" className="text-sm">Replacement of Prosthesis</label>
-                </div>
-              </div>
-              {formData.prosthesis && (
-                <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* LEFT COLUMN */}
+            <div className="space-y-3">
+              {/* INSURANCE COMPANY */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">INSURANCE COMPANY/DENTAL BENEFIT PLAN INFORMATION</Label>
+                <div className="space-y-2">
                   <div>
-                    <Label className="text-xs">Prior Placement Date (if replacement)</Label>
-                    <Input type="date" value={formData.priorPlacementDate} onChange={(e) => setFormData({ ...formData, priorPlacementDate: e.target.value })} className="mt-1" />
-                  </div>
-                </div>
-              )}
-              <div>
-                <div className="flex items-center space-x-2 mb-2">
-                  <Checkbox 
-                    id="ortho"
-                    checked={formData.orthodonticTreatment}
-                    onCheckedChange={(checked) => setFormData({ ...formData, orthodonticTreatment: checked as boolean })}
-                  />
-                  <label htmlFor="ortho" className="text-sm font-medium">Orthodontic Treatment</label>
-                </div>
-                {formData.orthodonticTreatment && (
-                  <div className="grid grid-cols-2 gap-4 ml-6">
-                    <div>
-                      <Label className="text-xs">Months of Treatment Remaining</Label>
-                      <Input 
-                        type="number" 
-                        value={formData.orthodonticMonthsRemaining}
-                        onChange={(e) => setFormData({ ...formData, orthodonticMonthsRemaining: e.target.value })}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Appliance Placement Date</Label>
-                      <Input 
-                        type="date"
-                        value={formData.appliancePlacedDate}
-                        onChange={(e) => setFormData({ ...formData, appliancePlacedDate: e.target.value })}
-                        className="mt-1"
-                      />
+                    <Label className="text-xs">3. Company/Plan Name, Address, City, State, Zip Code</Label>
+                    <Input className="mt-1" placeholder="Company/Plan Name" />
+                    <Input className="mt-1" placeholder="Address" />
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      <Input placeholder="City" />
+                      <Input placeholder="State" />
+                      <Input placeholder="Zip" />
                     </div>
                   </div>
-                )}
+                </div>
+              </div>
+
+              {/* OTHER COVERAGE */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">OTHER COVERAGE</Label>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">4. Other Dental or Medical Coverage?</Label>
+                    <div className="flex gap-4 mt-1">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="no-coverage" />
+                        <label htmlFor="no-coverage" className="text-xs">No (Skip 5-11)</label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="yes-coverage" />
+                        <label htmlFor="yes-coverage" className="text-xs">Yes (Complete 5-11)</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">5. Name of Policyholder/Subscriber in #4 (Last, First, Middle Initial, Suffix)</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">6. Date of Birth (MM/DD/CCYY)</Label>
+                      <Input type="date" className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">7. Gender</Label>
+                      <div className="flex gap-2 mt-1">
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="other-m" />
+                          <label htmlFor="other-m" className="text-xs">M</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="other-f" />
+                          <label htmlFor="other-f" className="text-xs">F</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">8. Policyholder/Subscriber ID (SSN or ID#)</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">9. Plan/Group Number</Label>
+                      <Input className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">10. Patient's Relationship to Person Named in #5</Label>
+                      <div className="flex gap-2 mt-1 flex-wrap">
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="rel-self" />
+                          <label htmlFor="rel-self" className="text-xs">Self</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="rel-spouse" />
+                          <label htmlFor="rel-spouse" className="text-xs">Spouse</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="rel-dependent" />
+                          <label htmlFor="rel-dependent" className="text-xs">Dependent</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="rel-other" />
+                          <label htmlFor="rel-other" className="text-xs">Other</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">11. Other Insurance Company/Dental Benefit Plan Name, Address, City, State, Zip Code</Label>
+                    <Input className="mt-1" placeholder="Company Name" />
+                    <Input className="mt-1" placeholder="Address, City, State, Zip" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div className="space-y-3">
+              {/* POLICYHOLDER/SUBSCRIBER INFORMATION */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">POLICYHOLDER/SUBSCRIBER INFORMATION (For Insurance Company Named in #3)</Label>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">12. Policyholder/Subscriber Name (Last, First, Middle Initial, Suffix), Address, City, State, Zip Code</Label>
+                    <Input className="mt-1" placeholder="Name" />
+                    <Input className="mt-1" placeholder="Address" />
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      <Input placeholder="City" />
+                      <Input placeholder="State" />
+                      <Input placeholder="Zip" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">13. Date of Birth (MM/DD/CCYY)</Label>
+                      <Input type="date" className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">14. Gender</Label>
+                      <div className="flex gap-2 mt-1">
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="sub-m" />
+                          <label htmlFor="sub-m" className="text-xs">M</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="sub-f" />
+                          <label htmlFor="sub-f" className="text-xs">F</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">15. Policyholder/Subscriber ID (SSN or ID#)</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">16. Plan/Group Number</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">17. Employer Name</Label>
+                    <Input className="mt-1" />
+                  </div>
+                </div>
+              </div>
+
+              {/* PATIENT INFORMATION */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">PATIENT INFORMATION</Label>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">18. Relationship to Policyholder/Subscriber in #12 Above</Label>
+                    <div className="flex gap-2 mt-1 flex-wrap">
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="pat-self" />
+                        <label htmlFor="pat-self" className="text-xs">Self</label>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="pat-spouse" />
+                        <label htmlFor="pat-spouse" className="text-xs">Spouse</label>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="pat-dependent" />
+                        <label htmlFor="pat-dependent" className="text-xs">Dependent Child</label>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="pat-other" />
+                        <label htmlFor="pat-other" className="text-xs">Other</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">19. Student Status</Label>
+                    <div className="flex gap-3 mt-1">
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="fts" />
+                        <label htmlFor="fts" className="text-xs">FTS</label>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Checkbox id="pts" />
+                        <label htmlFor="pts" className="text-xs">PTS</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">20. Name (Last, First, Middle Initial, Suffix), Address, City, State, Zip Code</Label>
+                    <Input className="mt-1" placeholder="Name" />
+                    <Input className="mt-1" placeholder="Address" />
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      <Input placeholder="City" />
+                      <Input placeholder="State" />
+                      <Input placeholder="Zip" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">21. Date of Birth (MM/DD/CCYY)</Label>
+                      <Input type="date" className="mt-1" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">22. Gender</Label>
+                      <div className="flex gap-2 mt-1">
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="pat-m" />
+                          <label htmlFor="pat-m" className="text-xs">M</label>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Checkbox id="pat-f" />
+                          <label htmlFor="pat-f" className="text-xs">F</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">23. Patient ID/Account # (Assigned by Dentist)</Label>
+                    <Input className="mt-1" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Remarks */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold">REMARKS</Label>
-            <Textarea
-              value={formData.remarks}
-              onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="mt-2"
-              rows={3}
-              placeholder="Additional information or special considerations..."
-            />
+          {/* RECORD OF SERVICES PROVIDED */}
+          <div className="border-2 border-foreground p-3 mb-3">
+            <Label className="font-bold text-xs mb-2 block">RECORD OF SERVICES PROVIDED</Label>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-foreground">
+                    <th className="border-r border-foreground p-1 text-left w-20">24. Procedure Date (MM/DD/CCYY)</th>
+                    <th className="border-r border-foreground p-1 text-center w-12">25. Area of Oral Cavity</th>
+                    <th className="border-r border-foreground p-1 text-center w-12">26. Tooth System</th>
+                    <th className="border-r border-foreground p-1 text-center w-16">27. Tooth Number(s) or Letter(s)</th>
+                    <th className="border-r border-foreground p-1 text-center w-16">28. Tooth Surface</th>
+                    <th className="border-r border-foreground p-1 text-center w-20">29. Procedure Code</th>
+                    <th className="border-r border-foreground p-1 text-left flex-1">30. Description</th>
+                    <th className="p-1 text-right w-20">31. Fee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...Array(10)].map((_, i) => (
+                    <tr key={i} className="border-b border-muted">
+                      <td className="border-r border-muted p-1">{i + 1}. <Input className="text-xs h-7" type="date" /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7 text-center" maxLength={2} /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7 text-center" maxLength={2} /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7 text-center" /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7 text-center" maxLength={5} /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7" placeholder="D####" /></td>
+                      <td className="border-r border-muted p-1"><Input className="text-xs h-7" /></td>
+                      <td className="p-1"><Input className="text-xs h-7 text-right" type="number" step="0.01" placeholder="0.00" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          {/* Provider Information */}
-          <div className="border-2 border-orange-600 p-4 mb-4 bg-orange-50">
-            <Label className="text-xs font-bold mb-4 block">TREATING DENTIST AND BILLING PROVIDER</Label>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* MISSING TEETH INFORMATION */}
+            <div className="border border-foreground p-3">
+              <Label className="font-bold text-xs mb-2 block">MISSING TEETH INFORMATION</Label>
+              <div className="space-y-2">
                 <div>
-                  <Label className="text-xs font-bold">Treating Dentist Name</Label>
-                  <Input 
-                    placeholder="Last Name, First Name" 
-                    value={formData.dentistLastName}
-                    onChange={(e) => setFormData({ ...formData, dentistLastName: e.target.value })}
-                    className="mt-1"
-                  />
+                  <Label className="text-xs font-semibold">34. (Place an 'X' on each missing tooth) - Permanent</Label>
+                  <div className="grid grid-cols-16 gap-px mt-1 text-center">
+                    {[...Array(16)].map((_, i) => (
+                      <div key={i} className="border border-muted p-px">
+                        <Checkbox id={`perm-${i + 1}`} className="scale-75" />
+                        <div className="text-[8px]">{i + 1}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-16 gap-px text-center">
+                    {[...Array(16)].map((_, i) => (
+                      <div key={i + 16} className="border border-muted p-px">
+                        <Checkbox id={`perm-${32 - i}`} className="scale-75" />
+                        <div className="text-[8px]">{32 - i}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div>
-                  <Label className="text-xs">Dentist NPI (Required)</Label>
-                  <Input 
-                    placeholder="10-digit NPI" 
-                    value={formData.dentistNPI}
-                    onChange={(e) => setFormData({ ...formData, dentistNPI: e.target.value })}
-                    className="mt-1"
-                    maxLength={10}
-                  />
+                  <Label className="text-xs font-semibold">Primary</Label>
+                  <div className="grid grid-cols-10 gap-px mt-1 text-center">
+                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'].map((letter) => (
+                      <div key={letter} className="border border-muted p-px">
+                        <Checkbox id={`prim-${letter}`} className="scale-75" />
+                        <div className="text-[8px]">{letter}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-10 gap-px text-center">
+                    {['T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K'].map((letter) => (
+                      <div key={letter} className="border border-muted p-px">
+                        <Checkbox id={`prim-${letter}`} className="scale-75" />
+                        <div className="text-[8px]">{letter}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">32. Other Fee(s)</Label>
+                  <Input className="mt-1 text-xs" type="number" step="0.01" />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">33. Total Fee</Label>
+                  <Input className="mt-1 text-xs font-bold" type="number" step="0.01" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs">Dentist License Number</Label>
-                  <Input 
-                    value={formData.dentistLicense}
-                    onChange={(e) => setFormData({ ...formData, dentistLicense: e.target.value })}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Dentist Tax ID / TIN</Label>
-                  <Input 
-                    value={formData.dentistTIN}
-                    onChange={(e) => setFormData({ ...formData, dentistTIN: e.target.value })}
-                    className="mt-1"
-                  />
+            </div>
+
+            {/* REMARKS */}
+            <div className="border border-foreground p-3">
+              <Label className="font-bold text-xs mb-2 block">35. Remarks</Label>
+              <Textarea className="mt-1 text-xs min-h-[180px]" placeholder="Additional information..." />
+            </div>
+          </div>
+
+          {/* AUTHORIZATIONS */}
+          <div className="border border-foreground p-3 mb-3">
+            <Label className="font-bold text-xs mb-2 block">AUTHORIZATIONS</Label>
+            <div className="space-y-2">
+              <div className="text-xs">
+                <p>36. I have been informed of the treatment plan and associated fees. I agree to be responsible for all charges for dental services and materials not paid by my dental benefit plan, unless prohibited by law, or the treating dentist or dental practice has a contractual agreement with my plan prohibiting all or a portion of such charges. To the extent permitted by law, I consent to your use and disclosure of my protected health information to carry out payment activities in connection with this claim.</p>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label className="text-xs">Patient/Guardian signature</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" className="mt-1" />
+                  </div>
                 </div>
               </div>
-              <div>
-                <Label className="text-xs">Dentist Address</Label>
-                <Input 
-                  placeholder="Street Address"
-                  value={formData.dentistAddress}
-                  onChange={(e) => setFormData({ ...formData, dentistAddress: e.target.value })}
-                  className="mt-1"
-                />
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  <Input placeholder="City" value={formData.dentistCity} onChange={(e) => setFormData({ ...formData, dentistCity: e.target.value })} />
-                  <Input placeholder="State" value={formData.dentistState} onChange={(e) => setFormData({ ...formData, dentistState: e.target.value })} />
-                  <Input placeholder="ZIP" value={formData.dentistZip} onChange={(e) => setFormData({ ...formData, dentistZip: e.target.value })} />
-                  <Input placeholder="Phone" value={formData.dentistPhone} onChange={(e) => setFormData({ ...formData, dentistPhone: e.target.value })} />
+              <div className="text-xs">
+                <p>37. I hereby authorize and direct payment of the dental benefits otherwise payable to me, directly to the below named dentist or dental entity.</p>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div>
+                    <Label className="text-xs">Subscriber signature</Label>
+                    <Input className="mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" className="mt-1" />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Ancillary Information */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-2 block">PLACE OF TREATMENT</Label>
-            <Select value={formData.placeOfTreatment} onValueChange={(value) => setFormData({ ...formData, placeOfTreatment: value })}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select place of treatment" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="11">11 - Office</SelectItem>
-                <SelectItem value="12">12 - Home</SelectItem>
-                <SelectItem value="21">21 - Inpatient Hospital</SelectItem>
-                <SelectItem value="22">22 - Outpatient Hospital</SelectItem>
-                <SelectItem value="23">23 - Emergency Room - Hospital</SelectItem>
-                <SelectItem value="24">24 - Ambulatory Surgical Center</SelectItem>
-                <SelectItem value="32">32 - Nursing Facility</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {/* ANCILLARY CLAIM/TREATMENT INFORMATION */}
+            <div className="border border-foreground p-3">
+              <Label className="font-bold text-xs mb-2 block">ANCILLARY CLAIM/TREATMENT INFORMATION</Label>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">38. Place of Treatment</Label>
+                  <div className="flex gap-3 mt-1 flex-wrap">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="provider-office" />
+                      <label htmlFor="provider-office" className="text-xs">Provider's Office</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="hospital" />
+                      <label htmlFor="hospital" className="text-xs">Hospital</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="ecf" />
+                      <label htmlFor="ecf" className="text-xs">ECF</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="other-place" />
+                      <label htmlFor="other-place" className="text-xs">Other</label>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">39. Number of Enclosures (00 to 99)</Label>
+                  <div className="flex gap-3 mt-1">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="radiographs" />
+                      <label htmlFor="radiographs" className="text-xs">Radiographs</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="oral-images" />
+                      <label htmlFor="oral-images" className="text-xs">Oral Images</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="models" />
+                      <label htmlFor="models" className="text-xs">Models</label>
+                    </div>
+                  </div>
+                  <Input className="mt-1 text-xs" maxLength={2} placeholder="00" />
+                </div>
+                <div>
+                  <Label className="text-xs">40. Is Treatment for Orthodontics?</Label>
+                  <div className="flex gap-3 mt-1">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="ortho-no" />
+                      <label htmlFor="ortho-no" className="text-xs">No (Skip 41-42)</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="ortho-yes" />
+                      <label htmlFor="ortho-yes" className="text-xs">Yes (Complete 41-42)</label>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">42. Months of Treatment Remaining</Label>
+                    <Input className="mt-1 text-xs" type="number" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">41. Date Appliance Placed (MM/DD/CCYY)</Label>
+                    <Input type="date" className="mt-1 text-xs" />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">43. Replacement of Prosthesis?</Label>
+                  <div className="flex gap-3 mt-1">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="pros-no" />
+                      <label htmlFor="pros-no" className="text-xs">No (Skip 44)</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="pros-yes" />
+                      <label htmlFor="pros-yes" className="text-xs">Yes (Complete 44)</label>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">44. Date Prior Placement (MM/DD/CCYY)</Label>
+                  <Input type="date" className="mt-1 text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">45. Treatment Resulting from</Label>
+                  <div className="space-y-1 mt-1">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="occupational" />
+                      <label htmlFor="occupational" className="text-xs">Occupational illness/injury</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="auto-accident" />
+                      <label htmlFor="auto-accident" className="text-xs">Auto accident</label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="other-accident" />
+                      <label htmlFor="other-accident" className="text-xs">Other accident</label>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">46. Date of Accident (MM/DD/CCYY)</Label>
+                  <Input type="date" className="mt-1 text-xs" />
+                </div>
+                <div>
+                  <Label className="text-xs">47. Auto Accident State</Label>
+                  <Input className="mt-1 text-xs" maxLength={2} />
+                </div>
+              </div>
+            </div>
+
+            {/* BILLING AND TREATING DENTIST */}
+            <div className="space-y-3">
+              {/* BILLING DENTIST */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">BILLING DENTIST OR DENTAL ENTITY (Leave blank if dentist or dental entity is not submitting claim on behalf of the patient or insured/subscriber)</Label>
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">48. Name, Address, City, State, Zip Code</Label>
+                    <Input className="mt-1 text-xs" placeholder="Name" />
+                    <Input className="mt-1 text-xs" placeholder="Address" />
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      <Input placeholder="City" className="text-xs" />
+                      <Input placeholder="State" className="text-xs" />
+                      <Input placeholder="Zip" className="text-xs" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">49. NPI</Label>
+                      <Input className="mt-1 text-xs" maxLength={10} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">50. License Number</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">51. SSN or TIN</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">52A. Additional Provider ID</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">52. Phone Number</Label>
+                      <Input type="tel" className="mt-1 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">58. Additional Provider ID</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* TREATING DENTIST */}
+              <div className="border border-foreground p-3">
+                <Label className="font-bold text-xs mb-2 block">TREATING DENTIST AND TREATMENT LOCATION INFORMATION</Label>
+                <div className="space-y-2">
+                  <div className="text-xs">
+                    <p>53. I hereby certify that the procedures as indicated by date are in progress (for procedures that require multiple visits) or have been completed.</p>
+                    <div className="grid grid-cols-2 gap-4 mt-2">
+                      <div>
+                        <Label className="text-xs">Signed (Treating Dentist)</Label>
+                        <Input className="mt-1 text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Date</Label>
+                        <Input type="date" className="mt-1 text-xs" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">54. NPI</Label>
+                      <Input className="mt-1 text-xs" maxLength={10} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">55. License Number</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">56. Address, City, State, Zip Code</Label>
+                    <Input className="mt-1 text-xs" placeholder="Address" />
+                    <div className="grid grid-cols-3 gap-1 mt-1">
+                      <Input placeholder="City" className="text-xs" />
+                      <Input placeholder="State" className="text-xs" />
+                      <Input placeholder="Zip" className="text-xs" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">56A. Provider Specialty Code</Label>
+                    <Input className="mt-1 text-xs" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">57. Phone Number</Label>
+                      <Input type="tel" className="mt-1 text-xs" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">58. Additional Provider ID</Label>
+                      <Input className="mt-1 text-xs" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Total Fee */}
-          <div className="border-2 border-black p-4 bg-yellow-50">
-            <Label className="text-xs font-bold">TOTAL FEE</Label>
-            <Input
-              type="number"
-              value={formData.totalFee}
-              onChange={(e) => setFormData({ ...formData, totalFee: e.target.value })}
-              className="mt-2 text-lg font-bold"
-              placeholder="$0.00"
-              step="0.01"
-            />
+          {/* Footer */}
+          <div className="text-center text-xs text-muted-foreground border-t pt-2">
+            <p>© 2006 American Dental Association</p>
+            <p>To Reorder call 1-800-947-4746 or go online at www.adacatalog.org</p>
+            <p>(Same as ADA Dental Claim Form - J401, J402, J403, J404)</p>
           </div>
 
-          <div className="mt-4 text-xs text-gray-600 text-center">
-            <p>ADA Dental Claim Form - Version 2024</p>
-            <p>© American Dental Association - For dental services billing</p>
+          {/* Action Buttons */}
+          <div className="flex gap-3 mt-4 justify-end">
+            <Button variant="outline" onClick={handleSaveDraft}>
+              <Save className="h-4 w-4 mr-2" />
+              Save Draft
+            </Button>
+            <Button onClick={handleSubmit}>
+              <Send className="h-4 w-4 mr-2" />
+              Submit Claim
+            </Button>
           </div>
         </CardContent>
       </Card>
