@@ -26,23 +26,24 @@ const PriorAuthDashboard = () => {
   const fetchAuthorizations = async () => {
     try {
       const { data, error } = await supabase
-        .from('authorization_requests')
+        .from('authorization_requests' as any)
         .select(`
           *,
-          payers(name, payer_id_code),
-          ai_approval_suggestions(score, analyzed_at)
+          insurance_payers(name, payer_id_code),
+          ai_approval_suggestions(completeness_score, medical_necessity_score, approval_probability, analyzed_at)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setAuthorizations(data || []);
+      const authData = (data || []) as any[];
+      setAuthorizations(authData);
 
       // Calculate stats
-      const total = data?.length || 0;
-      const pending = data?.filter(a => a.status === 'pending' || a.status === 'submitted').length || 0;
-      const approved = data?.filter(a => a.status === 'approved').length || 0;
-      const denied = data?.filter(a => a.status === 'denied').length || 0;
+      const total = authData.length;
+      const pending = authData.filter(a => a.status === 'pending' || a.status === 'submitted').length;
+      const approved = authData.filter(a => a.status === 'approved').length;
+      const denied = authData.filter(a => a.status === 'denied').length;
       const approvalRate = total > 0 ? Math.round((approved / (approved + denied)) * 100) : 0;
 
       setStats({ total, pending, approved, denied, approvalRate });
@@ -222,22 +223,22 @@ const PriorAuthDashboard = () => {
                         {getStatusBadge(auth.status)}
                         {auth.ai_approval_suggestions?.length > 0 && (
                           <Badge variant="outline" className="bg-blue-50">
-                            AI Score: {auth.ai_approval_suggestions[0].score}%
+                            AI Score: {auth.ai_approval_suggestions[0].approval_probability}%
                           </Badge>
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                         <div>
-                          <span className="font-medium">Procedure:</span> {auth.procedure_code} - {auth.procedure_description}
+                          <span className="font-medium">Service:</span> {auth.service_type}
                         </div>
                         <div>
-                          <span className="font-medium">Payer:</span> {auth.payer_name}
+                          <span className="font-medium">Payer:</span> {auth.insurance_payers?.name || auth.payer_name_custom || 'N/A'}
                         </div>
                         <div>
-                          <span className="font-medium">Requested:</span> {new Date(auth.requested_start_date).toLocaleDateString()}
+                          <span className="font-medium">Requested:</span> {auth.service_start_date ? new Date(auth.service_start_date).toLocaleDateString() : 'N/A'}
                         </div>
                         <div>
-                          <span className="font-medium">Urgency:</span> {auth.urgency.toUpperCase()}
+                          <span className="font-medium">Urgency:</span> {auth.urgency_level?.toUpperCase() || 'ROUTINE'}
                         </div>
                       </div>
                     </div>
@@ -270,7 +271,7 @@ const PriorAuthDashboard = () => {
                     .map(auth => (
                       <div key={auth.id} className="border-l-4 border-yellow-500 pl-4">
                         <p className="font-medium">{auth.patient_name}</p>
-                        <p className="text-sm text-muted-foreground">{auth.procedure_description}</p>
+                        <p className="text-sm text-muted-foreground">{auth.service_type}</p>
                       </div>
                     ))}
                 </div>

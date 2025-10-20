@@ -45,8 +45,9 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess }: Authoriza
 
   const fetchPayers = async () => {
     const { data } = await supabase
-      .from('payers')
+      .from('insurance_payers' as any)
       .select('*')
+      .eq('is_active', true)
       .order('name');
     
     if (data) {
@@ -68,12 +69,23 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess }: Authoriza
       const selectedPayer = payers.find(p => p.id === formData.payer_id);
       
       const { error } = await supabase
-        .from('authorization_requests')
+        .from('authorization_requests' as any)
         .insert({
-          ...formData,
-          payer_name: selectedPayer?.name || formData.payer_name,
-          diagnosis_codes: formData.diagnosis_codes.split(',').map(c => c.trim()),
-          created_by: user.id,
+          user_id: user.id,
+          patient_name: formData.patient_name,
+          patient_dob: formData.patient_dob || null,
+          patient_member_id: formData.patient_member_id,
+          payer_id: formData.payer_id || null,
+          payer_name_custom: selectedPayer ? null : formData.payer_name,
+          provider_name_custom: formData.requesting_physician,
+          provider_npi_custom: formData.provider_npi,
+          service_type: formData.procedure_description,
+          units_requested: formData.units_requested,
+          service_start_date: formData.requested_start_date || null,
+          urgency_level: formData.urgency,
+          diagnosis_codes: formData.diagnosis_codes.split(',').map(c => c.trim()).filter(c => c),
+          procedure_codes: formData.procedure_code ? [formData.procedure_code] : [],
+          clinical_indication: formData.clinical_indication,
           status: 'draft'
         });
 
