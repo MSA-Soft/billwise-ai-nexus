@@ -333,85 +333,78 @@ const ADADentalForm = () => {
             </div>
           </div>
 
-          <div className="border-b border-foreground">
-            <div className="grid grid-cols-[2fr_2fr_1fr] gap-0">
-              {/* MISSING TEETH - LEFT */}
-              <div className="border-r border-foreground p-2">
-                <Label className="text-[9px] font-semibold mb-1 block">33. Missing Teeth Information (Place an "X" on each missing tooth.)</Label>
-                <div className="border border-foreground">
-                  <div className="grid grid-cols-16 gap-0">
-                    {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].map((num) => (
-                      <div key={`top-${num}`} className="border-r border-foreground last:border-r-0 text-center p-0.5">
-                        <div className="text-[8px] mb-0.5">{num}</div>
+          {/* COMBINED ROW: Missing Teeth, Diagnosis, Fees */}
+          <div className="border-b border-foreground flex">
+            {/* MISSING TEETH - LEFT */}
+            <div className="border-r border-foreground p-2 flex-[2]">
+              <Label className="text-[9px] font-semibold block mb-1">33. Missing Teeth Information (Place an "X" on each missing tooth.)</Label>
+              <div className="border border-foreground inline-block">
+                <div className="flex">
+                  {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].map((num) => (
+                    <div key={`top-${num}`} className="border-r border-foreground last:border-r-0 text-center" style={{width: "22px"}}>
+                      <div className="text-[8px] py-0.5">{num}</div>
+                      <div className="pb-1">
                         <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-16 gap-0 border-t border-foreground">
-                    {[32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17].map((num) => (
-                      <div key={`bottom-${num}`} className="border-r border-foreground last:border-r-0 text-center p-0.5">
-                        <div className="text-[8px] mb-0.5">{num}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex border-t border-foreground">
+                  {[32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17].map((num) => (
+                    <div key={`bottom-${num}`} className="border-r border-foreground last:border-r-0 text-center" style={{width: "22px"}}>
+                      <div className="text-[8px] py-0.5">{num}</div>
+                      <div className="pb-1">
                         <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              
-              {/* DIAGNOSIS CODES - CENTER */}
-              <div className="border-r border-foreground p-2">
-                <div className="space-y-1">
-                  <div>
-                    <Label className="text-[9px] font-semibold">34. Diagnosis Code List Qualifier</Label>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Input className="text-[9px] h-6 w-16" placeholder="AB" maxLength={2} />
-                      <span className="text-[8px] text-muted-foreground">( ICD-10 = AB )</span>
-                    </div>
+            </div>
+            
+            {/* DIAGNOSIS CODES - CENTER */}
+            <div className="border-r border-foreground p-2 flex-[2]">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="flex-1">
+                  <Label className="text-[9px] font-semibold block mb-0.5">34. Diagnosis Code List Qualifier</Label>
+                  <Input className="text-[9px] h-6 w-12" placeholder="AB" maxLength={2} />
+                </div>
+                <span className="text-[8px] text-muted-foreground mt-5">( ICD-10 = AB )</span>
+              </div>
+              <div>
+                <Label className="text-[9px] font-semibold block mb-0.5">34a. Diagnosis Code(s)</Label>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                  <div className="flex items-center gap-1">
+                    <Label className="text-[8px] w-3">A</Label>
+                    <Input className="text-[9px] h-6 flex-1" />
                   </div>
-                  <div>
-                    <Label className="text-[9px] font-semibold">34a. Diagnosis Code(s)</Label>
-                    <div className="grid grid-cols-2 gap-2 mt-0.5">
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-[8px] w-4">A</Label>
-                          <Input className="text-[9px] h-6 flex-1" />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-[8px] w-4">C</Label>
-                          <Input className="text-[9px] h-6 flex-1" />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-[8px] w-4">B</Label>
-                          <Input className="text-[9px] h-6 flex-1" />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-[8px] w-4">D</Label>
-                          <Input className="text-[9px] h-6 flex-1" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-[8px] text-muted-foreground mt-0.5">(Primary diagnosis in "A")</div>
+                  <div className="flex items-center gap-1">
+                    <Label className="text-[8px] w-3">C</Label>
+                    <Input className="text-[9px] h-6 flex-1" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Label className="text-[8px] w-3">B</Label>
+                    <Input className="text-[9px] h-6 flex-1" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Label className="text-[8px] w-3">D</Label>
+                    <Input className="text-[9px] h-6 flex-1" />
                   </div>
                 </div>
+                <div className="text-[7px] text-muted-foreground mt-0.5">(Primary diagnosis in "A")</div>
               </div>
-              
-              {/* FEES - RIGHT */}
-              <div className="p-2">
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-[9px] font-semibold">31a. Other Fee(s)</Label>
-                    <Input className="mt-0.5 text-[9px] h-6" type="number" step="0.01" placeholder="0.00" />
-                  </div>
-                  <div>
-                    <Label className="text-[9px] font-semibold">32. Total Fee</Label>
-                    <Input className="mt-0.5 text-[9px] h-7 font-bold" type="number" step="0.01" placeholder="0.00" />
-                  </div>
+            </div>
+            
+            {/* FEES - RIGHT */}
+            <div className="p-2 flex-[1]">
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-[9px] font-semibold block mb-0.5">31a. Other Fee(s)</Label>
+                  <Input className="text-[9px] h-6" type="number" step="0.01" placeholder="0.00" />
+                </div>
+                <div>
+                  <Label className="text-[9px] font-semibold block mb-0.5">32. Total Fee</Label>
+                  <Input className="text-[9px] h-7 font-bold" type="number" step="0.01" placeholder="0.00" />
                 </div>
               </div>
             </div>
