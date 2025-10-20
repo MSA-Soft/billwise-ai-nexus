@@ -1,405 +1,623 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { Save, Send } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-// UB-04 (CMS-1450) Institutional Claim Form
-// Used for hospitals, skilled nursing facilities, home health agencies
+// UB-04 Institutional Claim Form (CMS-1450)
+// Exact replication of official form layout
 
 const UB04Form = () => {
-  const [formData, setFormData] = useState({
-    // Field 1 - Provider Name, Address, Phone
-    providerName: "",
-    providerAddress: "",
-    providerCity: "",
-    providerState: "",
-    providerZip: "",
-    providerPhone: "",
-    // Field 2 - Pay-To Provider Name and Address
-    payToName: "",
-    payToAddress: "",
-    // Field 3a-3b - Patient Control Number and Medical Record Number
-    patientControlNumber: "",
-    medicalRecordNumber: "",
-    // Field 4 - Type of Bill
-    typeOfBill: "",
-    // Field 5 - Federal Tax Number
-    federalTaxNumber: "",
-    // Field 6 - Statement Covers Period
-    statementFromDate: "",
-    statementToDate: "",
-    // Field 8 - Patient Name
-    patientName: "",
-    // Field 9 - Patient Address
-    patientAddress: "",
-    patientCity: "",
-    patientState: "",
-    patientZip: "",
-    // Field 10 - Patient Birth Date
-    patientDOB: "",
-    // Field 11 - Patient Sex
-    patientSex: "",
-    // Field 12 - Admission Date
-    admissionDate: "",
-    // Field 13 - Admission Hour
-    admissionHour: "",
-    // Field 14 - Admission Type
-    admissionType: "",
-    // Field 15 - Admission Source
-    admissionSource: "",
-    // Field 16 - Discharge Hour
-    dischargeHour: "",
-    // Field 17 - Patient Status
-    patientStatus: "",
-    // Field 18-28 - Condition Codes
-    conditionCodes: Array(11).fill(""),
-    // Field 31-34 - Occurrence Codes and Dates
-    occurrenceCodes: Array(4).fill({ code: "", date: "" }),
-    // Field 35-36 - Occurrence Span Codes
-    occurrenceSpan: Array(2).fill({ code: "", from: "", through: "" }),
-    // Field 39-41 - Value Codes and Amounts
-    valueCodes: Array(4).fill({ code: "", amount: "" }),
-    // Field 42 - Revenue Code Lines (23 lines max)
-    revenueLines: Array(23).fill(null).map(() => ({
-      revenueCode: "",
-      description: "",
-      hcpcs: "",
-      serviceDate: "",
-      serviceUnits: "",
-      totalCharges: "",
-      nonCoveredCharges: ""
-    })),
-    // Field 50 - Payer Information (3 payers)
-    payers: Array(3).fill({ name: "", id: "", payerIdentifier: "" }),
-    // Field 58 - Insured's Name
-    insuredName: "",
-    // Field 60 - Insured's Unique ID
-    insuredId: "",
-    // Field 66 - Diagnosis and Procedure Code ICD Version Indicator
-    icdVersion: "0",
-    // Field 67 - Principal Diagnosis Code
-    principalDiagnosis: "",
-    // Field 67A-Q - Other Diagnosis Codes
-    otherDiagnoses: Array(17).fill(""),
-    // Field 69 - Admitting Diagnosis
-    admittingDiagnosis: "",
-    // Field 70 - Patient Reason Diagnosis
-    patientReasonDiagnosis: "",
-    // Field 74 - Principal Procedure Code and Date
-    principalProcedure: "",
-    principalProcedureDate: "",
-    // Field 74a-e - Other Procedure Codes and Dates
-    otherProcedures: Array(5).fill({ code: "", date: "" }),
-    // Field 76 - Attending Provider Name and Identifiers
-    attendingProvider: "",
-    attendingProviderNPI: "",
-    // Field 77 - Operating Provider
-    operatingProvider: "",
-    operatingProviderNPI: "",
-    // Field 78-79 - Other Providers
-    otherProvider1: "",
-    otherProvider1NPI: "",
-    otherProvider2: "",
-    otherProvider2NPI: "",
-    // Field 80 - Remarks
-    remarks: "",
-    // Field 81 - Code-Code Field
-    codeCodeField: ""
-  });
+  const { toast } = useToast();
+  
+  const handleSubmit = () => {
+    toast({
+      title: "Claim Submitted",
+      description: "UB-04 institutional claim has been submitted successfully."
+    });
+  };
+
+  const handleSaveDraft = () => {
+    toast({
+      title: "Draft Saved",
+      description: "Your claim has been saved as a draft."
+    });
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <Card className="border-2 border-gray-800">
-        <CardHeader className="bg-blue-50">
-          <CardTitle className="text-center text-xl font-bold">
-            UB-04 UNIFORM BILLING FORM<br />
-            <span className="text-sm font-normal">(CMS-1450 / Institutional Claim)</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
-          {/* Provider Information - Fields 1-2 */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="border-2 border-black p-4 bg-yellow-50">
-              <Label className="text-xs font-bold">1. PROVIDER NAME, ADDRESS, ZIP CODE & PHONE</Label>
-              <Input placeholder="Provider Name" className="mt-2" value={formData.providerName} onChange={(e) => setFormData({ ...formData, providerName: e.target.value })} />
-              <Input placeholder="Address" className="mt-2" value={formData.providerAddress} onChange={(e) => setFormData({ ...formData, providerAddress: e.target.value })} />
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <Input placeholder="City" value={formData.providerCity} onChange={(e) => setFormData({ ...formData, providerCity: e.target.value })} />
-                <Input placeholder="State" value={formData.providerState} onChange={(e) => setFormData({ ...formData, providerState: e.target.value })} />
-                <Input placeholder="ZIP" value={formData.providerZip} onChange={(e) => setFormData({ ...formData, providerZip: e.target.value })} />
+    <div className="max-w-[11in] mx-auto bg-background">
+      <Card className="border border-foreground shadow-none">
+        <CardContent className="p-0">
+          {/* TOP SECTION - Provider Info */}
+          <div className="border-b border-foreground flex">
+            {/* Field 1 - Billing Provider */}
+            <div className="flex-1 border-r border-foreground p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">1. PROVIDER NAME, ADDRESS, ZIP CODE & PHONE NUMBER</Label>
+              <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="Provider Name" />
+              <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="Address" />
+              <div className="flex gap-0.5">
+                <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="City, State, Zip" />
+                <Input className="h-5 text-[8px] w-24 border-0 p-0.5" placeholder="Phone" />
               </div>
-              <Input placeholder="Phone" className="mt-2" value={formData.providerPhone} onChange={(e) => setFormData({ ...formData, providerPhone: e.target.value })} />
             </div>
-            <div className="border p-4">
-              <Label className="text-xs font-bold">2. PAY-TO NAME & ADDRESS</Label>
-              <Input placeholder="Pay-To Provider Name" className="mt-2" value={formData.payToName} onChange={(e) => setFormData({ ...formData, payToName: e.target.value })} />
-              <Input placeholder="Pay-To Address" className="mt-2" value={formData.payToAddress} onChange={(e) => setFormData({ ...formData, payToAddress: e.target.value })} />
+            
+            {/* Field 2 - Pay-To Provider */}
+            <div className="w-48 border-r border-foreground p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">2. PAY-TO NAME AND ADDRESS</Label>
+              <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" />
+              <Input className="h-5 text-[8px] border-0 p-0.5" />
+            </div>
+            
+            {/* Field 3a - Patient Control Number */}
+            <div className="w-32 border-r border-foreground p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">3a. PAT. CNTL #</Label>
+              <Input className="h-5 text-[8px] border-0 p-0.5" />
+            </div>
+            
+            {/* Field 3b - Medical Record Number */}
+            <div className="w-32 p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">3b. MED REC #</Label>
+              <Input className="h-5 text-[8px] border-0 p-0.5" />
             </div>
           </div>
 
-          {/* Patient Control and Medical Record - Fields 3a-3b */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="border p-4">
-              <Label className="text-xs font-bold">3a. PATIENT CONTROL NO.</Label>
-              <Input value={formData.patientControlNumber} onChange={(e) => setFormData({ ...formData, patientControlNumber: e.target.value })} className="mt-2" />
-            </div>
-            <div className="border p-4">
-              <Label className="text-xs font-bold">3b. MEDICAL RECORD NO.</Label>
-              <Input value={formData.medicalRecordNumber} onChange={(e) => setFormData({ ...formData, medicalRecordNumber: e.target.value })} className="mt-2" />
-            </div>
-            <div className="border p-4 bg-red-50">
-              <Label className="text-xs font-bold">4. TYPE OF BILL (Required)</Label>
-              <Input 
-                value={formData.typeOfBill} 
-                onChange={(e) => setFormData({ ...formData, typeOfBill: e.target.value })} 
-                className="mt-2" 
-                placeholder="0131 (Example)"
-                maxLength={4}
-              />
-              <p className="text-[10px] text-gray-600 mt-1">4-digit code (e.g., 0131 for Hospital Inpatient)</p>
-            </div>
-          </div>
-
-          {/* Statement Covers Period - Field 6 */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold">6. STATEMENT COVERS PERIOD</Label>
-            <div className="grid grid-cols-2 gap-4 mt-2">
-              <div>
-                <Label className="text-xs">FROM</Label>
-                <Input type="date" value={formData.statementFromDate} onChange={(e) => setFormData({ ...formData, statementFromDate: e.target.value })} />
+          {/* Field 4 & 5 Row */}
+          <div className="border-b border-foreground flex">
+            <div className="w-32 border-r border-foreground p-1 bg-pink-100">
+              <Label className="text-[7px] font-bold block mb-0.5 text-pink-800">4. TYPE OF BILL</Label>
+              <div className="flex gap-px">
+                <Input className="h-6 text-[8px] w-7 border border-foreground p-0.5 text-center font-mono bg-white" maxLength={1} />
+                <Input className="h-6 text-[8px] w-7 border border-foreground p-0.5 text-center font-mono bg-white" maxLength={1} />
+                <Input className="h-6 text-[8px] w-7 border border-foreground p-0.5 text-center font-mono bg-white" maxLength={1} />
+                <Input className="h-6 text-[8px] w-7 border border-foreground p-0.5 text-center font-mono bg-white" maxLength={1} />
               </div>
-              <div>
-                <Label className="text-xs">THROUGH</Label>
-                <Input type="date" value={formData.statementToDate} onChange={(e) => setFormData({ ...formData, statementToDate: e.target.value })} />
+            </div>
+            
+            <div className="flex-1 p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">5. FED. TAX NO.</Label>
+              <Input className="h-6 text-[8px] border-0 p-0.5" />
+            </div>
+            
+            <div className="w-48 border-l border-foreground p-1">
+              <Label className="text-[7px] font-bold block mb-0.5">6. STATEMENT COVERS PERIOD</Label>
+              <div className="flex gap-0.5">
+                <Input type="date" className="h-5 text-[7px] flex-1 border-0 p-0.5" />
+                <span className="text-[8px] self-center">THROUGH</span>
+                <Input type="date" className="h-5 text-[7px] flex-1 border-0 p-0.5" />
               </div>
             </div>
           </div>
 
-          {/* Patient Information - Fields 8-11 */}
-          <div className="border-2 border-blue-600 p-4 mb-4 bg-blue-50">
-            <Label className="text-xs font-bold mb-2 block">PATIENT INFORMATION</Label>
-            <div className="grid grid-cols-1 gap-4">
-              <div>
-                <Label className="text-xs font-bold">8. PATIENT NAME (Last, First, MI)</Label>
-                <Input value={formData.patientName} onChange={(e) => setFormData({ ...formData, patientName: e.target.value })} className="mt-2" />
+          {/* MAIN GRID SECTION */}
+          <div className="flex">
+            {/* LEFT COLUMN - Patient Info & Codes */}
+            <div className="w-[35%] border-r border-foreground">
+              {/* Field 7 - Not Used */}
+              <div className="border-b border-foreground p-1 bg-gray-100">
+                <Label className="text-[7px] text-gray-500">7. (NOT USED)</Label>
               </div>
-              <div>
-                <Label className="text-xs font-bold">9. PATIENT ADDRESS</Label>
-                <Input placeholder="Street Address" className="mt-2" value={formData.patientAddress} onChange={(e) => setFormData({ ...formData, patientAddress: e.target.value })} />
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <Input placeholder="City" value={formData.patientCity} onChange={(e) => setFormData({ ...formData, patientCity: e.target.value })} />
-                  <Input placeholder="State" value={formData.patientState} onChange={(e) => setFormData({ ...formData, patientState: e.target.value })} />
-                  <Input placeholder="ZIP" value={formData.patientZip} onChange={(e) => setFormData({ ...formData, patientZip: e.target.value })} />
+
+              {/* Field 8 - Patient Name */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold">8. PATIENT NAME</Label>
+                <div className="flex gap-0.5 mt-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="Last" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="First" />
+                  <Input className="h-5 text-[8px] w-12 border-0 p-0.5" placeholder="MI" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs font-bold">10. PATIENT BIRTH DATE</Label>
-                  <Input type="date" value={formData.patientDOB} onChange={(e) => setFormData({ ...formData, patientDOB: e.target.value })} className="mt-2" />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold">11. PATIENT SEX</Label>
-                  <Select value={formData.patientSex} onValueChange={(value) => setFormData({ ...formData, patientSex: value })}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="M">M - Male</SelectItem>
-                      <SelectItem value="F">F - Female</SelectItem>
-                      <SelectItem value="U">U - Unknown</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+              {/* Field 9 - Patient Address */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold">9. PATIENT ADDRESS</Label>
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5" placeholder="Street" />
+                <div className="flex gap-0.5 mt-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="City" />
+                  <Input className="h-5 text-[8px] w-12 border-0 p-0.5" placeholder="ST" />
+                  <Input className="h-5 text-[8px] w-20 border-0 p-0.5" placeholder="Zip" />
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Admission Information - Fields 12-17 */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-2 block">ADMISSION INFORMATION</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label className="text-xs">12. ADMISSION DATE</Label>
-                <Input type="date" value={formData.admissionDate} onChange={(e) => setFormData({ ...formData, admissionDate: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs">13. ADMISSION HOUR</Label>
-                <Input type="time" value={formData.admissionHour} onChange={(e) => setFormData({ ...formData, admissionHour: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs">14. ADMISSION TYPE</Label>
-                <Select value={formData.admissionType} onValueChange={(value) => setFormData({ ...formData, admissionType: value })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 - Emergency</SelectItem>
-                    <SelectItem value="2">2 - Urgent</SelectItem>
-                    <SelectItem value="3">3 - Elective</SelectItem>
-                    <SelectItem value="4">4 - Newborn</SelectItem>
-                    <SelectItem value="5">5 - Trauma</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">15. ADMISSION SOURCE</Label>
-                <Input placeholder="Code" value={formData.admissionSource} onChange={(e) => setFormData({ ...formData, admissionSource: e.target.value })} className="mt-1" maxLength={2} />
-              </div>
-              <div>
-                <Label className="text-xs">16. DISCHARGE HOUR</Label>
-                <Input type="time" value={formData.dischargeHour} onChange={(e) => setFormData({ ...formData, dischargeHour: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label className="text-xs">17. PATIENT STATUS</Label>
-                <Select value={formData.patientStatus} onValueChange={(value) => setFormData({ ...formData, patientStatus: value })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="01">01 - Discharged to Home</SelectItem>
-                    <SelectItem value="02">02 - Discharged to SNF</SelectItem>
-                    <SelectItem value="03">03 - Discharged to ICF</SelectItem>
-                    <SelectItem value="20">20 - Expired</SelectItem>
-                    <SelectItem value="30">30 - Still Patient</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Revenue Code Lines - Field 42 */}
-          <div className="border-2 border-black p-4 mb-4 bg-green-50">
-            <Label className="text-xs font-bold mb-4 block">42-49. REVENUE CODE DETAILS (Service Lines)</Label>
-            <div className="space-y-3">
-              {[0, 1, 2, 3, 4].map((index) => (
-                <div key={index} className="border p-3 bg-white rounded">
-                  <Label className="text-xs font-semibold mb-2 block">Line {index + 1}</Label>
-                  <div className="grid grid-cols-7 gap-2">
-                    <div>
-                      <Label className="text-[10px]">Rev Code</Label>
-                      <Input placeholder="0450" className="text-xs" maxLength={4} />
+              {/* Fields 10-11 - Birthdate & Sex */}
+              <div className="flex border-b border-foreground">
+                <div className="flex-1 border-r border-foreground p-1">
+                  <Label className="text-[7px] font-bold">10. BIRTHDATE</Label>
+                  <Input type="date" className="h-5 text-[8px] mt-0.5 border-0 p-0.5" />
+                </div>
+                <div className="w-16 p-1">
+                  <Label className="text-[7px] font-bold">11. SEX</Label>
+                  <div className="flex gap-1 mt-0.5">
+                    <div className="flex items-center space-x-0.5">
+                      <Checkbox id="sex-m" className="h-2.5 w-2.5" />
+                      <label htmlFor="sex-m" className="text-[7px]">M</label>
                     </div>
-                    <div className="col-span-2">
-                      <Label className="text-[10px]">Description</Label>
-                      <Input placeholder="Emergency Room" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">HCPCS/Rate</Label>
-                      <Input placeholder="99285" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Service Date</Label>
-                      <Input type="date" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Units</Label>
-                      <Input type="number" placeholder="1" className="text-xs" />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">Total Charges</Label>
-                      <Input type="number" placeholder="0.00" className="text-xs" step="0.01" />
+                    <div className="flex items-center space-x-0.5">
+                      <Checkbox id="sex-f" className="h-2.5 w-2.5" />
+                      <label htmlFor="sex-f" className="text-[7px]">F</label>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Payer Information - Fields 50-58 */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-2 block">PAYER INFORMATION</Label>
-            {[0, 1, 2].map((index) => (
-              <div key={index} className="border p-3 mb-2 bg-gray-50 rounded">
-                <Label className="text-xs font-semibold mb-2 block">Payer {index + 1}</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <Input placeholder="Payer Name" className="text-sm" />
-                  <Input placeholder="Payer ID" className="text-sm" />
-                  <Input placeholder="Payer Identifier" className="text-sm" />
+              {/* Fields 12-13 - Admission Date & Hour */}
+              <div className="flex border-b border-foreground">
+                <div className="flex-1 border-r border-foreground p-1">
+                  <Label className="text-[7px] font-bold">12. ADMISSION DATE</Label>
+                  <Input type="date" className="h-5 text-[8px] mt-0.5 border-0 p-0.5" />
+                </div>
+                <div className="w-16 p-1">
+                  <Label className="text-[7px] font-bold">13. HR</Label>
+                  <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={2} placeholder="00" />
                 </div>
               </div>
-            ))}
-          </div>
 
-          {/* Diagnosis Codes - Fields 66-70 */}
-          <div className="border-2 border-red-600 p-4 mb-4 bg-red-50">
-            <Label className="text-xs font-bold mb-2 block">DIAGNOSIS CODES (ICD-10-CM)</Label>
-            <div className="mb-4">
-              <Label className="text-xs">66. ICD VERSION INDICATOR</Label>
-              <Select value={formData.icdVersion} onValueChange={(value) => setFormData({ ...formData, icdVersion: value })}>
-                <SelectTrigger className="mt-1 w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">0 - ICD-10-CM</SelectItem>
-                  <SelectItem value="9">9 - ICD-9-CM</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              <div className="col-span-4">
-                <Label className="text-xs font-bold">67. PRINCIPAL DIAGNOSIS CODE</Label>
-                <Input value={formData.principalDiagnosis} onChange={(e) => setFormData({ ...formData, principalDiagnosis: e.target.value })} placeholder="M54.5" className="mt-1" />
-              </div>
-              {[...Array(8)].map((_, i) => (
-                <div key={i}>
-                  <Label className="text-xs">67{String.fromCharCode(65 + i)}. Other Dx</Label>
-                  <Input placeholder={`Diagnosis ${i + 2}`} className="text-xs mt-1" />
+              {/* Fields 14-16 - Type, Source, DHR */}
+              <div className="flex border-b border-foreground">
+                <div className="w-14 border-r border-foreground p-1">
+                  <Label className="text-[7px] font-bold">14. TYPE</Label>
+                  <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={1} />
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Procedure Codes - Field 74 */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold mb-2 block">74. PRINCIPAL PROCEDURE CODE & DATE</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <Input placeholder="Procedure Code" value={formData.principalProcedure} onChange={(e) => setFormData({ ...formData, principalProcedure: e.target.value })} />
-              <Input type="date" value={formData.principalProcedureDate} onChange={(e) => setFormData({ ...formData, principalProcedureDate: e.target.value })} />
-            </div>
-          </div>
-
-          {/* Provider Information - Fields 76-79 */}
-          <div className="border-2 border-green-600 p-4 mb-4 bg-green-50">
-            <Label className="text-xs font-bold mb-4 block">PROVIDER INFORMATION (NPI Required)</Label>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-xs font-bold">76. ATTENDING PROVIDER NAME & IDENTIFIERS</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Input placeholder="Provider Name" value={formData.attendingProvider} onChange={(e) => setFormData({ ...formData, attendingProvider: e.target.value })} />
-                  <Input placeholder="NPI (Required)" value={formData.attendingProviderNPI} onChange={(e) => setFormData({ ...formData, attendingProviderNPI: e.target.value })} />
+                <div className="w-14 border-r border-foreground p-1">
+                  <Label className="text-[7px] font-bold">15. SRC</Label>
+                  <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={1} />
+                </div>
+                <div className="flex-1 p-1">
+                  <Label className="text-[7px] font-bold">16. DHR</Label>
+                  <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={2} placeholder="00" />
                 </div>
               </div>
-              <div>
-                <Label className="text-xs">77. OPERATING PROVIDER</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Input placeholder="Provider Name" value={formData.operatingProvider} onChange={(e) => setFormData({ ...formData, operatingProvider: e.target.value })} />
-                  <Input placeholder="NPI" value={formData.operatingProviderNPI} onChange={(e) => setFormData({ ...formData, operatingProviderNPI: e.target.value })} />
+
+              {/* Field 17 - Status */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold">17. STAT</Label>
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={2} />
+              </div>
+
+              {/* Fields 18-28 - Condition Codes */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">18-28. CONDITION CODES</Label>
+                <div className="grid grid-cols-6 gap-0.5">
+                  {[...Array(11)].map((_, i) => (
+                    <Input key={i} className="h-5 text-[8px] border border-foreground p-0.5 text-center" maxLength={2} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Fields 29-30 - ACDT State */}
+              <div className="flex border-b border-foreground">
+                <div className="w-16 border-r border-foreground p-1">
+                  <Label className="text-[7px] font-bold">29. ACDT ST</Label>
+                  <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 text-center" maxLength={2} />
+                </div>
+                <div className="flex-1 p-1">
+                  <Label className="text-[7px] font-bold">30. (NOT USED)</Label>
+                </div>
+              </div>
+
+              {/* Fields 31-34 - Occurrence Codes & Dates */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">31-34. OCCURRENCE CODE - DATE</Label>
+                <div className="space-y-0.5">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex gap-0.5">
+                      <Label className="text-[7px] w-6 self-center">3{i + 1}</Label>
+                      <Input className="h-5 text-[8px] w-10 border border-foreground p-0.5 text-center" maxLength={2} />
+                      <Input type="date" className="h-5 text-[7px] flex-1 border border-foreground p-0.5" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Fields 35-36 - Occurrence Span */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">35-36. OCCURRENCE SPAN - FROM/THROUGH</Label>
+                <div className="space-y-0.5">
+                  {[35, 36].map((num) => (
+                    <div key={num} className="flex gap-0.5">
+                      <Label className="text-[7px] w-6 self-center">{num}</Label>
+                      <Input className="h-5 text-[8px] w-10 border border-foreground p-0.5 text-center" maxLength={2} />
+                      <Input type="date" className="h-5 text-[7px] flex-[2] border border-foreground p-0.5" />
+                      <Input type="date" className="h-5 text-[7px] flex-[2] border border-foreground p-0.5" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field 37 - Not Used */}
+              <div className="border-b border-foreground p-1 bg-gray-100">
+                <Label className="text-[7px] text-gray-500">37. (NOT USED)</Label>
+              </div>
+
+              {/* Field 38 - Responsible Party */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">38. RESPONSIBLE PARTY NAME AND ADDRESS</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="Name" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="Address" />
+              </div>
+
+              {/* Fields 39-41 - Value Codes */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">39-41. VALUE CODES | AMOUNT</Label>
+                <div className="space-y-0.5">
+                  {[39, 40, 41].map((num, i) => (
+                    <div key={num} className="flex gap-0.5">
+                      <Label className="text-[7px] w-6 self-center">{num}</Label>
+                      <div className="flex gap-0.5 flex-1">
+                        <Input className="h-5 text-[8px] w-10 border border-foreground p-0.5 text-center" maxLength={2} placeholder="a" />
+                        <Input className="h-5 text-[8px] flex-1 border border-foreground p-0.5 text-right" placeholder="0.00" />
+                        <Input className="h-5 text-[8px] w-10 border border-foreground p-0.5 text-center" maxLength={2} placeholder="b" />
+                        <Input className="h-5 text-[8px] flex-1 border border-foreground p-0.5 text-right" placeholder="0.00" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* CENTER - Revenue Code Lines */}
+            <div className="flex-1 relative">
+              {/* Vertical "PAGE OF" Banner */}
+              <div className="absolute left-0 top-0 bottom-0 w-6 bg-pink-200 flex items-center justify-center border-r border-foreground">
+                <div className="transform -rotate-90 whitespace-nowrap origin-center">
+                  <span className="text-[9px] font-bold text-pink-800 tracking-wider">PAGE OF</span>
+                </div>
+              </div>
+
+              <div className="ml-6">
+                {/* Creation Date Header */}
+                <div className="bg-pink-200 border-b border-foreground p-0.5 text-center">
+                  <span className="text-[7px] font-bold text-pink-800 tracking-wide">CREATION DATE</span>
+                </div>
+
+                {/* Totals Banner */}
+                <div className="bg-pink-200 border-b border-foreground p-1 text-center">
+                  <span className="text-[8px] font-bold text-pink-800 tracking-wider">TOTALS</span>
+                </div>
+
+                {/* Revenue Code Grid Header */}
+                <div className="border-b border-foreground bg-gray-50">
+                  <table className="w-full text-[6px]">
+                    <thead>
+                      <tr>
+                        <th className="border-r border-foreground p-0.5 text-left font-bold" style={{width: "10%"}}>42<br/>REV.<br/>CD.</th>
+                        <th className="border-r border-foreground p-0.5 text-left font-bold" style={{width: "25%"}}>43<br/>DESCRIPTION</th>
+                        <th className="border-r border-foreground p-0.5 text-center font-bold" style={{width: "15%"}}>44<br/>HCPCS/RATE/<br/>HIPPS CODE</th>
+                        <th className="border-r border-foreground p-0.5 text-center font-bold" style={{width: "10%"}}>45<br/>SERV.<br/>DATE</th>
+                        <th className="border-r border-foreground p-0.5 text-center font-bold" style={{width: "10%"}}>46<br/>SERV.<br/>UNITS</th>
+                        <th className="border-r border-foreground p-0.5 text-right font-bold" style={{width: "15%"}}>47<br/>TOTAL<br/>CHARGES</th>
+                        <th className="border-r border-foreground p-0.5 text-right font-bold" style={{width: "15%"}}>48<br/>NON-COVERED<br/>CHARGES</th>
+                        <th className="p-0.5 text-center font-bold" style={{width: "5%"}}>49</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...Array(23)].map((_, i) => (
+                        <tr key={i} className="border-t border-foreground hover:bg-gray-50">
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-center" maxLength={4} />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5" />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-center" />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-center" maxLength={6} />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-center" />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-right" />
+                          </td>
+                          <td className="border-r border-foreground p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-right" />
+                          </td>
+                          <td className="p-0">
+                            <Input className="h-4 text-[7px] border-0 p-0.5 text-center" maxLength={1} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN - Payer Info */}
+            <div className="w-[28%] border-l border-foreground">
+              {/* Field 50 - Payer Name */}
+              <div className="border-b border-foreground p-1 bg-pink-200">
+                <Label className="text-[7px] font-bold text-pink-800 block mb-0.5">50. PAYER NAME</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5 bg-white" placeholder="A" />
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 bg-white" placeholder="B" />
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 bg-white" placeholder="C" />
+              </div>
+
+              {/* Field 51 - Health Plan ID */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">51. HEALTH PLAN ID</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 52 - Release Info */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">52. REL. INFO</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="A" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="B" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="C" />
+                </div>
+              </div>
+
+              {/* Field 53 - Assignment */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">53. ASG. BEN.</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="A" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="B" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={1} placeholder="C" />
+                </div>
+              </div>
+
+              {/* Field 54 - Prior Payments */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">54. PRIOR PAYMENTS</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="A - 0.00" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="B - 0.00" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="C - 0.00" />
+                </div>
+              </div>
+
+              {/* Field 55 - Est Amount Due */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">55. EST. AMOUNT DUE</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="A - 0.00" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="B - 0.00" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-right" placeholder="C - 0.00" />
+                </div>
+              </div>
+
+              {/* Field 56 - NPI */}
+              <div className="border-b border-foreground p-1 bg-pink-200">
+                <Label className="text-[7px] font-bold text-pink-800 block mb-0.5">56. NPI</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5 bg-white" maxLength={10} placeholder="A" />
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 bg-white" maxLength={10} placeholder="B" />
+                <Input className="h-5 text-[8px] mt-0.5 border-0 p-0.5 bg-white" maxLength={10} placeholder="C" />
+              </div>
+
+              {/* Field 57 - Other Provider ID */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">57. OTHER PROVIDER ID</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 58 - Insured's Name */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">58. INSURED'S NAME</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 59 - P.Rel */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">59. P. REL.</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={2} placeholder="A" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={2} placeholder="B" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5 text-center" maxLength={2} placeholder="C" />
+                </div>
+              </div>
+
+              {/* Field 60 - Insured's Unique ID */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">60. INSURED'S UNIQUE ID</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 61 - Group Name */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">61. GROUP NAME</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 62 - Insurance Group Number */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">62. INSURANCE GROUP NO.</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 63 - Treatment Auth Codes */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">63. TREATMENT AUTHORIZATION CODES</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 64 - Doc Control Number */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">64. DOC. CONTROL NUMBER</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 65 - Employer Name */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">65. EMPLOYER NAME</Label>
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="A" />
+                <Input className="h-5 text-[8px] mb-0.5 border-0 p-0.5" placeholder="B" />
+                <Input className="h-5 text-[8px] border-0 p-0.5" placeholder="C" />
+              </div>
+
+              {/* Field 66 - DX Version */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">66. DX VER.</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5 text-center" maxLength={1} placeholder="0" />
+              </div>
+
+              {/* Field 67 - Principal & Other Diagnosis */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">67. PRINCIPAL DIAGNOSIS</Label>
+                <Input className="h-5 text-[8px] mb-1 border-0 p-0.5" />
+                <Label className="text-[6px] block mb-0.5">67A-Q. OTHER DIAGNOSIS</Label>
+                <div className="grid grid-cols-2 gap-0.5">
+                  {[...Array(12)].map((_, i) => (
+                    <Input key={i} className="h-4 text-[7px] border border-foreground p-0.5" />
+                  ))}
+                </div>
+              </div>
+
+              {/* Field 68 - Not Used */}
+              <div className="border-b border-foreground p-1 bg-gray-100">
+                <Label className="text-[7px] text-gray-500">68. (NOT USED)</Label>
+              </div>
+
+              {/* Field 69 - Admitting Diagnosis */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">69. ADMITTING DIAGNOSIS</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5" />
+              </div>
+
+              {/* Field 70 - Patient Reason Dx */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">70. PATIENT REASON DX</Label>
+                <div className="flex gap-0.5">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="A" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="B" />
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" placeholder="C" />
+                </div>
+              </div>
+
+              {/* Field 71 - PPS Code */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">71. PPS CODE</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5" />
+              </div>
+
+              {/* Field 72 - ECI */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">72. ECI</Label>
+                <div className="grid grid-cols-3 gap-0.5">
+                  {[...Array(3)].map((_, i) => (
+                    <Input key={i} className="h-5 text-[8px] border border-foreground p-0.5 text-center" maxLength={2} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Field 73 - Not Used */}
+              <div className="border-b border-foreground p-1 bg-gray-100">
+                <Label className="text-[7px] text-gray-500">73. (NOT USED)</Label>
+              </div>
+
+              {/* Field 74 - Principal Procedure */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">74. PRINCIPAL PROCEDURE CODE | DATE</Label>
+                <div className="flex gap-0.5 mb-1">
+                  <Input className="h-5 text-[8px] flex-1 border-0 p-0.5" />
+                  <Input type="date" className="h-5 text-[7px] w-20 border-0 p-0.5" />
+                </div>
+                <Label className="text-[6px] block mb-0.5">74A-E. OTHER PROCEDURE CODE | DATE</Label>
+                <div className="space-y-0.5">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex gap-0.5">
+                      <Input className="h-4 text-[7px] flex-1 border border-foreground p-0.5" />
+                      <Input type="date" className="h-4 text-[6px] w-16 border border-foreground p-0.5" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field 75 - Not Used */}
+              <div className="border-b border-foreground p-1 bg-gray-100">
+                <Label className="text-[7px] text-gray-500">75. (NOT USED)</Label>
+              </div>
+
+              {/* Field 76 - Attending */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">76. ATTENDING | NPI</Label>
+                <div className="flex gap-0.5 mb-0.5">
+                  <Input className="h-4 text-[7px] w-10 border-0 p-0.5 text-center" maxLength={2} placeholder="QUAL" />
+                  <Input className="h-4 text-[7px] flex-1 border-0 p-0.5" placeholder="NPI" maxLength={10} />
+                </div>
+                <Input className="h-4 text-[7px] border-0 p-0.5" placeholder="LAST | FIRST" />
+              </div>
+
+              {/* Field 77 - Operating */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">77. OPERATING | NPI</Label>
+                <div className="flex gap-0.5 mb-0.5">
+                  <Input className="h-4 text-[7px] w-10 border-0 p-0.5 text-center" maxLength={2} placeholder="QUAL" />
+                  <Input className="h-4 text-[7px] flex-1 border-0 p-0.5" placeholder="NPI" maxLength={10} />
+                </div>
+                <Input className="h-4 text-[7px] border-0 p-0.5" placeholder="LAST | FIRST" />
+              </div>
+
+              {/* Fields 78-79 - Other Physicians */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">78-79. OTHER | NPI</Label>
+                {[78, 79].map((num) => (
+                  <div key={num} className="mb-0.5">
+                    <div className="flex gap-0.5">
+                      <Input className="h-4 text-[7px] w-10 border border-foreground p-0.5 text-center" maxLength={2} placeholder="QUAL" />
+                      <Input className="h-4 text-[7px] flex-1 border border-foreground p-0.5" placeholder="NPI" maxLength={10} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Field 80 - Remarks */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">80. REMARKS</Label>
+                <Input className="h-5 text-[8px] border-0 p-0.5" />
+              </div>
+
+              {/* Field 81 - Code-Code */}
+              <div className="border-b border-foreground p-1">
+                <Label className="text-[7px] font-bold block mb-0.5">81. CODE-CODE</Label>
+                <div className="grid grid-cols-4 gap-0.5">
+                  {[...Array(4)].map((_, i) => (
+                    <Input key={i} className="h-5 text-[8px] border border-foreground p-0.5 text-center" maxLength={2} />
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Remarks - Field 80 */}
-          <div className="border p-4 mb-4">
-            <Label className="text-xs font-bold">80. REMARKS</Label>
-            <Textarea
-              value={formData.remarks}
-              onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="mt-2"
-              rows={3}
-              placeholder="Additional information or remarks..."
-            />
-          </div>
-
-          <div className="mt-4 text-xs text-gray-600 text-center">
-            <p>Form UB-04 (CMS-1450) - Institutional Claim Format</p>
-            <p>For hospitals, skilled nursing facilities, and other institutional providers</p>
+          {/* FOOTER */}
+          <div className="text-center text-[7px] text-muted-foreground border-t border-foreground p-1 bg-gray-50">
+            <p>APPROVED OMB NO. 0938-0997 FORM CMS-1450 (UB-04)</p>
           </div>
         </CardContent>
       </Card>
+
+      {/* Action Buttons */}
+      <div className="flex gap-3 mt-4 justify-end px-4">
+        <Button variant="outline" onClick={handleSaveDraft}>
+          <Save className="h-4 w-4 mr-2" />
+          Save Draft
+        </Button>
+        <Button onClick={handleSubmit}>
+          <Send className="h-4 w-4 mr-2" />
+          Submit Claim
+        </Button>
+      </div>
     </div>
   );
 };
