@@ -333,69 +333,96 @@ const ADADentalForm = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-0">
-            {/* MISSING TEETH AND DIAGNOSIS */}
-            <div className="border-r border-b border-foreground p-2">
-              <div className="space-y-1">
-                <Label className="text-[9px] font-semibold">33. Missing Teeth Information (Place an "X" on each missing tooth.)</Label>
+          <div className="border-b border-foreground">
+            <div className="grid grid-cols-[2fr_2fr_1fr] gap-0">
+              {/* MISSING TEETH - LEFT */}
+              <div className="border-r border-foreground p-2">
+                <Label className="text-[9px] font-semibold mb-1 block">33. Missing Teeth Information (Place an "X" on each missing tooth.)</Label>
                 <div className="border border-foreground">
-                  <div className="grid grid-cols-16 gap-0 text-center">
+                  <div className="grid grid-cols-16 gap-0">
                     {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16].map((num) => (
-                      <div key={num} className="border-r border-foreground last:border-r-0 p-1">
-                        <div className="text-[8px]">{num}</div>
+                      <div key={`top-${num}`} className="border-r border-foreground last:border-r-0 text-center p-0.5">
+                        <div className="text-[8px] mb-0.5">{num}</div>
                         <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-16 gap-0 text-center border-t border-foreground">
+                  <div className="grid grid-cols-16 gap-0 border-t border-foreground">
                     {[32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17].map((num) => (
-                      <div key={num} className="border-r border-foreground last:border-r-0 p-1">
-                        <div className="text-[8px]">{num}</div>
+                      <div key={`bottom-${num}`} className="border-r border-foreground last:border-r-0 text-center p-0.5">
+                        <div className="text-[8px] mb-0.5">{num}</div>
                         <Checkbox id={`tooth-${num}`} className="h-2.5 w-2.5 mx-auto" />
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className="mt-2">
-                  <Label className="text-[9px] font-semibold">34. Diagnosis Code List Qualifier (ICD-10 = AB)</Label>
-                  <Input className="mt-0.5 text-[9px] h-6" placeholder="AB" maxLength={2} />
-                </div>
-                <div>
-                  <Label className="text-[9px] font-semibold">34a. Diagnosis Code(s)</Label>
-                  <div className="grid grid-cols-4 gap-1 mt-0.5">
-                    <div>
-                      <Label className="text-[8px]">A</Label>
-                      <Input className="text-[9px] h-6" placeholder="Code" />
-                    </div>
-                    <div>
-                      <Label className="text-[8px]">B</Label>
-                      <Input className="text-[9px] h-6" placeholder="Code" />
-                    </div>
-                    <div>
-                      <Label className="text-[8px]">C</Label>
-                      <Input className="text-[9px] h-6" placeholder="Code" />
-                    </div>
-                    <div>
-                      <Label className="text-[8px]">D</Label>
-                      <Input className="text-[9px] h-6" placeholder="Code" />
+              </div>
+              
+              {/* DIAGNOSIS CODES - CENTER */}
+              <div className="border-r border-foreground p-2">
+                <div className="space-y-1">
+                  <div>
+                    <Label className="text-[9px] font-semibold">34. Diagnosis Code List Qualifier</Label>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Input className="text-[9px] h-6 w-16" placeholder="AB" maxLength={2} />
+                      <span className="text-[8px] text-muted-foreground">( ICD-10 = AB )</span>
                     </div>
                   </div>
+                  <div>
+                    <Label className="text-[9px] font-semibold">34a. Diagnosis Code(s)</Label>
+                    <div className="grid grid-cols-2 gap-2 mt-0.5">
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[8px] w-4">A</Label>
+                          <Input className="text-[9px] h-6 flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[8px] w-4">C</Label>
+                          <Input className="text-[9px] h-6 flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[8px] w-4">B</Label>
+                          <Input className="text-[9px] h-6 flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[8px] w-4">D</Label>
+                          <Input className="text-[9px] h-6 flex-1" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-[8px] text-muted-foreground mt-0.5">(Primary diagnosis in "A")</div>
+                  </div>
                 </div>
-                <div className="mt-2">
-                  <Label className="text-[9px]">31a. Other Fee(s)</Label>
-                  <Input className="mt-0.5 text-[9px] h-6" type="number" step="0.01" placeholder="0.00" />
-                </div>
-                <div>
-                  <Label className="text-[9px] font-semibold">32. Total Fee</Label>
-                  <Input className="mt-0.5 text-[9px] h-6 font-bold" type="number" step="0.01" placeholder="0.00" />
+              </div>
+              
+              {/* FEES - RIGHT */}
+              <div className="p-2">
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-[9px] font-semibold">31a. Other Fee(s)</Label>
+                    <Input className="mt-0.5 text-[9px] h-6" type="number" step="0.01" placeholder="0.00" />
+                  </div>
+                  <div>
+                    <Label className="text-[9px] font-semibold">32. Total Fee</Label>
+                    <Input className="mt-0.5 text-[9px] h-7 font-bold" type="number" step="0.01" placeholder="0.00" />
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* REMARKS */}
-            <div className="border-b border-foreground p-2">
-              <Label className="font-bold text-[10px] mb-1 block uppercase">35. Remarks</Label>
-              <Textarea className="mt-0.5 text-[9px] min-h-[200px] resize-none" placeholder="Additional information..." />
+          {/* REMARKS */}
+          <div className="border-b border-foreground">
+            <div className="p-2">
+
+              <Label className="text-[9px] font-semibold mb-1 block">35. Remarks</Label>
+              <Textarea className="text-[9px] min-h-[60px] resize-none" placeholder="Additional information..." />
             </div>
           </div>
 
