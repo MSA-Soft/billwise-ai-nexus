@@ -149,11 +149,21 @@ const PatientBalanceBilling = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold">Patient Balance Billing</h2>
         <div className="flex space-x-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => {
+            toast({
+              title: "Bulk Statements",
+              description: "Preparing to send statements to all patients..."
+            });
+          }}>
             <Mail className="h-4 w-4 mr-2" />
             Bulk Statements
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+            toast({
+              title: "Payment Plan Setup",
+              description: "Opening payment plan configuration..."
+            });
+          }}>
             <Plus className="h-4 w-4 mr-2" />
             Payment Plan
           </Button>
@@ -380,7 +390,12 @@ const PatientBalanceBilling = () => {
                         <Mail className="h-4 w-4 mr-2" />
                         Send Statement
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        toast({
+                          title: "Calling Patient",
+                          description: `Initiating call to ${patient.phone}`
+                        });
+                      }}>
                         <Phone className="h-4 w-4 mr-2" />
                         Call Patient
                       </Button>

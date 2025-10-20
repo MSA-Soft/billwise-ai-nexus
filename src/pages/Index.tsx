@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import { 
   FileText, 
   AlertCircle, 
@@ -29,6 +30,7 @@ import ReportsAnalytics from "../components/ReportsAnalytics";
 const Index = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const { toast } = useToast();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -80,11 +82,13 @@ const Index = () => {
                 </Badge>
               </div>
               <div className="flex items-center space-x-3">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => {
+                  toast({ title: "Export Started", description: "Your data export is being prepared..." });
+                }}>
                   <Download className="h-4 w-4 mr-2" />
                   Export Data
                 </Button>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => setActiveTab("billing")}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Claim
                 </Button>
@@ -246,15 +250,17 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Button className="h-20 flex-col space-y-2 bg-blue-600 hover:bg-blue-700">
+                  <Button className="h-20 flex-col space-y-2 bg-blue-600 hover:bg-blue-700" onClick={() => setActiveTab("billing")}>
                     <Plus className="h-6 w-6" />
                     <span>Create New Claim</span>
                   </Button>
-                  <Button variant="outline" className="h-20 flex-col space-y-2">
+                  <Button variant="outline" className="h-20 flex-col space-y-2" onClick={() => {
+                    toast({ title: "Search Feature", description: "Opening claims search..." });
+                  }}>
                     <Search className="h-6 w-6" />
                     <span>Search Claims</span>
                   </Button>
-                  <Button variant="outline" className="h-20 flex-col space-y-2">
+                  <Button variant="outline" className="h-20 flex-col space-y-2" onClick={() => setActiveTab("reports")}>
                     <TrendingUp className="h-6 w-6" />
                     <span>Generate Report</span>
                   </Button>
