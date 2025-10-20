@@ -248,7 +248,12 @@ const PriorAuthDashboard = () => {
                           AI Analysis
                         </Button>
                       )}
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => {
+                        toast({
+                          title: "Authorization Details",
+                          description: `Viewing details for ${auth.patient_name}`
+                        });
+                      }}>
                         View Details
                       </Button>
                     </div>

@@ -88,11 +88,21 @@ const DenialManagement = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold">Denial Management</h2>
         <div className="flex space-x-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => {
+            toast({
+              title: "Syncing Denials",
+              description: "Fetching latest denial data from payers..."
+            });
+          }}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Sync Denials
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-700">
+          <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+            toast({
+              title: "Generating Report",
+              description: "Creating denial management report..."
+            });
+          }}>
             <TrendingUp className="h-4 w-4 mr-2" />
             Generate Report
           </Button>
@@ -177,7 +187,12 @@ const DenialManagement = () => {
                       }`}>
                         {denial.trend}
                       </span>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        toast({
+                          title: "Denial Details",
+                          description: `Viewing details for ${denial.code}: ${denial.reason}`
+                        });
+                      }}>
                         <Eye className="h-4 w-4" />
                       </Button>
                     </div>
@@ -252,11 +267,21 @@ const DenialManagement = () => {
                     </div>
 
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        toast({
+                          title: "Claim Details",
+                          description: `Viewing details for ${claim.id}`
+                        });
+                      }}>
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        toast({
+                          title: "Edit Claim",
+                          description: `Editing denial for ${claim.id}`
+                        });
+                      }}>
                         <Edit className="h-4 w-4 mr-2" />
                         Edit Claim
                       </Button>
@@ -349,7 +374,12 @@ const DenialManagement = () => {
                 <p className="text-gray-600 mb-4">
                   Our AI system automatically generates appeals based on denial patterns and historical success rates.
                 </p>
-                <Button className="bg-blue-600 hover:bg-blue-700">
+                <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+                  toast({
+                    title: "AI Appeals Configuration",
+                    description: "Opening AI appeals settings..."
+                  });
+                }}>
                   Configure AI Appeals
                 </Button>
               </div>

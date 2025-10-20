@@ -46,7 +46,12 @@ const BillingModule = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold">Medical Billing Management</h2>
-        <Button className="bg-blue-600 hover:bg-blue-700">
+        <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+          toast({
+            title: "New Claim",
+            description: "Opening new claim form..."
+          });
+        }}>
           <FileText className="h-4 w-4 mr-2" />
           New Claim
         </Button>
@@ -163,7 +168,12 @@ const BillingModule = () => {
               </div>
 
               <div className="flex space-x-4">
-                <Button variant="outline">
+                <Button variant="outline" onClick={() => {
+                  toast({
+                    title: "Draft Saved",
+                    description: "Your claim has been saved as a draft."
+                  });
+                }}>
                   <Save className="h-4 w-4 mr-2" />
                   Save Draft
                 </Button>
@@ -183,7 +193,12 @@ const BillingModule = () => {
                 <CardTitle>Claims Management</CardTitle>
                 <div className="flex space-x-2">
                   <Input placeholder="Search claims..." className="w-64" />
-                  <Button variant="outline">
+                  <Button variant="outline" onClick={() => {
+                    toast({
+                      title: "Import Claims",
+                      description: "Opening claims import wizard..."
+                    });
+                  }}>
                     <Upload className="h-4 w-4 mr-2" />
                     Import
                   </Button>
@@ -208,13 +223,19 @@ const BillingModule = () => {
                         <Badge className={getStatusColor(claim.status)}>{claim.status}</Badge>
                       </div>
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => {
+                          toast({ title: "View Claim", description: `Viewing details for ${claim.id}` });
+                        }}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => {
+                          toast({ title: "Edit Claim", description: `Editing ${claim.id}` });
+                        }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={() => {
+                          toast({ title: "Delete Claim", description: `${claim.id} has been deleted`, variant: "destructive" });
+                        }}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
