@@ -9,6 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Upload, Send, Save, Eye, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import CMS1500Form from "./billing-forms/CMS1500Form";
+import UB04Form from "./billing-forms/UB04Form";
+import ADADentalForm from "./billing-forms/ADADentalForm";
 
 const BillingModule = () => {
   const [selectedFormat, setSelectedFormat] = useState("hcfa");
@@ -65,12 +68,12 @@ const BillingModule = () => {
         </TabsList>
 
         <TabsContent value="create" className="space-y-6">
+          {/* Format Selection */}
           <Card>
             <CardHeader>
-              <CardTitle>Create New Medical Claim</CardTitle>
+              <CardTitle>Select Claim Form Type</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Format Selection */}
+            <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {billingFormats.map((format) => (
                   <Card 
@@ -92,98 +95,15 @@ const BillingModule = () => {
                   </Card>
                 ))}
               </div>
-
-              {/* Claim Form */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Patient Information</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input id="firstName" placeholder="Enter first name" />
-                    </div>
-                    <div>
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input id="lastName" placeholder="Enter last name" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="dob">Date of Birth</Label>
-                    <Input id="dob" type="date" />
-                  </div>
-                  <div>
-                    <Label htmlFor="memberId">Member ID</Label>
-                    <Input id="memberId" placeholder="Enter member ID" />
-                  </div>
-                  <div>
-                    <Label htmlFor="insurance">Insurance Provider</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select insurance provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="aetna">Aetna</SelectItem>
-                        <SelectItem value="bcbs">Blue Cross Blue Shield</SelectItem>
-                        <SelectItem value="cigna">Cigna</SelectItem>
-                        <SelectItem value="humana">Humana</SelectItem>
-                        <SelectItem value="medicare">Medicare</SelectItem>
-                        <SelectItem value="medicaid">Medicaid</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Service Information</h3>
-                  <div>
-                    <Label htmlFor="serviceDate">Date of Service</Label>
-                    <Input id="serviceDate" type="date" />
-                  </div>
-                  <div>
-                    <Label htmlFor="procedureCode">Procedure Code</Label>
-                    <Input id="procedureCode" placeholder="Enter CPT/HCPCS code" />
-                  </div>
-                  <div>
-                    <Label htmlFor="diagnosisCode">Diagnosis Code</Label>
-                    <Input id="diagnosisCode" placeholder="Enter ICD-10 code" />
-                  </div>
-                  <div>
-                    <Label htmlFor="chargeAmount">Charge Amount</Label>
-                    <Input id="chargeAmount" type="number" placeholder="0.00" step="0.01" />
-                  </div>
-                  <div>
-                    <Label htmlFor="provider">Provider</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="dr-smith">Dr. John Smith</SelectItem>
-                        <SelectItem value="dr-johnson">Dr. Sarah Johnson</SelectItem>
-                        <SelectItem value="dr-davis">Dr. Mike Davis</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex space-x-4">
-                <Button variant="outline" onClick={() => {
-                  toast({
-                    title: "Draft Saved",
-                    description: "Your claim has been saved as a draft."
-                  });
-                }}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Draft
-                </Button>
-                <Button onClick={handleSubmitClaim} className="bg-blue-600 hover:bg-blue-700">
-                  <Send className="h-4 w-4 mr-2" />
-                  Submit Claim
-                </Button>
-              </div>
             </CardContent>
           </Card>
+
+          {/* Display Selected Form */}
+          <div className="mt-6">
+            {selectedFormat === "hcfa" && <CMS1500Form />}
+            {selectedFormat === "ub04" && <UB04Form />}
+            {selectedFormat === "ada" && <ADADentalForm />}
+          </div>
         </TabsContent>
 
         <TabsContent value="manage" className="space-y-6">
