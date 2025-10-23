@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Separator } from "@/components/ui/separator";
 import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer, Scale } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useBillingStatements } from "@/hooks/useBillingStatements";
 import BillingChat from "./BillingChat";
 import BillingCycleConfig from "./BillingCycleConfig";
 import CommunicationPreferences from "./CommunicationPreferences";
@@ -17,59 +18,19 @@ import { CollectionsManagement } from "./CollectionsManagement";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
-  const [selectedPatient, setSelectedPatient] = useState<typeof patientBalances[0] | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [statementOpen, setStatementOpen] = useState(false);
-
-  const patientBalances = [
-    {
-      id: "PAT-001",
-      name: "John Smith",
-      balance: 450.00,
-      lastPayment: "2024-05-15",
-      paymentMethod: "Auto-Pay",
-      status: "Current",
-      phone: "(555) 123-4567",
-      email: "john.smith@email.com",
-      insuranceClaim: "CLM-2024-001",
-      daysOutstanding: 15
-    },
-    {
-      id: "PAT-002",
-      name: "Sarah Johnson",
-      balance: 1275.80,
-      lastPayment: "2024-04-22",
-      paymentMethod: "Manual",
-      status: "30+ Days",
-      phone: "(555) 234-5678",
-      email: "sarah.johnson@email.com",
-      insuranceClaim: "CLM-2024-002",
-      daysOutstanding: 38
-    },
-    {
-      id: "PAT-003",
-      name: "Mike Davis",
-      balance: 89.25,
-      lastPayment: "2024-06-10",
-      paymentMethod: "Credit Card",
-      status: "Current",
-      phone: "(555) 345-6789",
-      email: "mike.davis@email.com",
-      insuranceClaim: "CLM-2024-003",
-      daysOutstanding: 5
-    },
-    {
-      id: "PAT-004",
-      name: "Emily Wilson",
-      balance: 2340.50,
-      lastPayment: "2024-03-15",
-      paymentMethod: "Check",
-      status: "90+ Days",
-      phone: "(555) 456-7890",
-      email: "emily.wilson@email.com",
-      insuranceClaim: "CLM-2024-004",
-      daysOutstanding: 106
-    }
-  ];
+  
+  const {
+    statements,
+    loading: statementsLoading,
+    error: statementsError,
+    fetchStatements,
+    createStatement,
+    updateStatement,
+    deleteStatement,
+    sendStatement,
+  } = useBillingStatements();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -140,8 +101,22 @@ const PatientBalanceBilling = () => {
     ];
   };
 
-  const totalBalance = patientBalances.reduce((sum, patient) => sum + patient.balance, 0);
-  const currentBalance = patientBalances.filter(p => p.status === "Current").reduce((sum, patient) => sum + patient.balance, 0);
+  // Create patientBalances array from statements for compatibility
+  const patientBalances = statements.map(statement => ({
+    id: statement.patient_id,
+    name: statement.patient_name,
+    balance: statement.amount_due,
+    status: statement.status === "current" ? "Current" : 
+            statement.status === "overdue" ? "30+ Days" : "Current",
+    lastPayment: statement.paid_at ? new Date(statement.paid_at).toLocaleDateString() : "Never",
+    paymentMethod: "Manual", // Default payment method
+    email: `${statement.patient_name.toLowerCase().replace(/\s+/g, '.')}@email.com`,
+    phone: "(555) 123-4567"
+  }));
+
+  // Calculate balances from statements
+  const totalBalance = statements.reduce((sum, statement) => sum + statement.amount_due, 0);
+  const currentBalance = statements.filter(s => s.status === "current").reduce((sum, statement) => sum + statement.amount_due, 0);
   const overdueBalance = totalBalance - currentBalance;
 
   return (
@@ -150,19 +125,39 @@ const PatientBalanceBilling = () => {
         <h2 className="text-3xl font-bold">Patient Balance Billing</h2>
         <div className="flex space-x-2">
           <Button variant="outline" onClick={() => {
-            toast({
-              title: "Bulk Statements",
-              description: "Preparing to send statements to all patients..."
-            });
+            const confirmed = confirm(`Send statements to ${patientBalances.length} patients?`);
+            if (confirmed) {
+              // Simulate bulk statement sending
+              const statementsSent = patientBalances.filter(p => p.balance > 0).length;
+              toast({
+                title: "Bulk Statements Sent",
+                description: `Statements sent to ${statementsSent} patients with outstanding balances`
+              });
+            }
           }}>
             <Mail className="h-4 w-4 mr-2" />
             Bulk Statements
           </Button>
           <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
-            toast({
-              title: "Payment Plan Setup",
-              description: "Opening payment plan configuration..."
-            });
+            const patientName = prompt("Enter patient name for payment plan setup:");
+            if (patientName) {
+              const patient = patientBalances.find(p => p.name.toLowerCase().includes(patientName.toLowerCase()));
+              if (patient) {
+                const planAmount = prompt(`Enter monthly payment amount for ${patient.name} (Balance: $${patient.balance}):`);
+                if (planAmount && !isNaN(Number(planAmount))) {
+                  const months = Math.ceil(patient.balance / Number(planAmount));
+                  toast({
+                    title: "Payment Plan Created",
+                    description: `${patient.name}: $${planAmount}/month for ${months} months`
+                  });
+                }
+              } else {
+                toast({
+                  title: "Patient Not Found",
+                  description: "Please check the patient name and try again"
+                });
+              }
+            }
           }}>
             <Plus className="h-4 w-4 mr-2" />
             Payment Plan

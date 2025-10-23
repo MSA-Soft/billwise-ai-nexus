@@ -12,6 +12,41 @@ import { useToast } from "@/hooks/use-toast";
 const AuthorizationTracking = () => {
   const { toast } = useToast();
 
+  const [selectedAuth, setSelectedAuth] = useState<any>(null);
+  const [viewOpen, setViewOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+
+  const handleViewDetails = (authId: string) => {
+    const auth = authorizations.find(a => a.id === authId);
+    if (auth) {
+      setSelectedAuth(auth);
+      setViewOpen(true);
+    }
+  };
+
+  const handleUpdateStatus = (authId: string) => {
+    const auth = authorizations.find(a => a.id === authId);
+    if (auth) {
+      setSelectedAuth(auth);
+      setUpdateOpen(true);
+    }
+  };
+
+  const handleUseVisit = (authId: string) => {
+    const auth = authorizations.find(a => a.id === authId);
+    if (auth) {
+      // Update the authorization status to "Used"
+      const updatedAuths = authorizations.map(a => 
+        a.id === authId ? { ...a, status: 'Used', usedDate: new Date().toISOString().split('T')[0] } : a
+      );
+      
+      toast({
+        title: "Visit Authorized",
+        description: `Authorization used for ${auth.patientName} on ${new Date().toLocaleDateString()}`,
+      });
+    }
+  };
+
   const authorizations = [
     {
       id: "AUTH-2024-001",
@@ -220,16 +255,28 @@ const AuthorizationTracking = () => {
                     </div>
 
                     <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewDetails(auth.id)}
+                      >
                         <Eye className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleUpdateStatus(auth.id)}
+                      >
                         <Edit className="h-4 w-4 mr-2" />
                         Update Status
                       </Button>
                       {auth.status === "Approved" && (
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                        <Button 
+                          size="sm" 
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleUseVisit(auth.id)}
+                        >
                           <CheckCircle className="h-4 w-4 mr-2" />
                           Use Visit
                         </Button>
@@ -392,6 +439,75 @@ const AuthorizationTracking = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* View Details Dialog */}
+      {selectedAuth && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Authorization Details</h3>
+            <div className="space-y-3">
+              <div><strong>Patient:</strong> {selectedAuth.patientName}</div>
+              <div><strong>Procedure:</strong> {selectedAuth.procedure}</div>
+              <div><strong>Status:</strong> {selectedAuth.status}</div>
+              <div><strong>Requested Date:</strong> {selectedAuth.requestedDate}</div>
+              <div><strong>Expires:</strong> {selectedAuth.expiresDate}</div>
+              <div><strong>Provider:</strong> {selectedAuth.provider}</div>
+              <div><strong>Insurance:</strong> {selectedAuth.insurance}</div>
+              <div><strong>Notes:</strong> {selectedAuth.notes}</div>
+            </div>
+            <div className="flex justify-end mt-6">
+              <Button onClick={() => {
+                setViewOpen(false);
+                setSelectedAuth(null);
+              }}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Status Dialog */}
+      {selectedAuth && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Update Authorization Status</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">New Status</label>
+                <Select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="denied">Denied</SelectItem>
+                    <SelectItem value="used">Used</SelectItem>
+                    <SelectItem value="expired">Expired</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Notes</label>
+                <Input placeholder="Add update notes..." />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2 mt-6">
+              <Button variant="outline" onClick={() => {
+                setUpdateOpen(false);
+                setSelectedAuth(null);
+              }}>Cancel</Button>
+              <Button onClick={() => {
+                toast({
+                  title: "Status Updated",
+                  description: `Authorization status updated for ${selectedAuth.patientName}`,
+                });
+                setUpdateOpen(false);
+                setSelectedAuth(null);
+              }}>Update</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

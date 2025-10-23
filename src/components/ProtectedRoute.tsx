@@ -9,6 +9,20 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // For development/testing - bypass authentication
+    const isDevelopment = import.meta.env.DEV;
+    
+    if (isDevelopment) {
+      // Create a mock user for development
+      setUser({
+        id: 'dev-user-123',
+        email: 'dev@example.com',
+        user_metadata: { full_name: 'Development User' }
+      } as any);
+      setLoading(false);
+      return;
+    }
+
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {

@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Upload, Send, Save, Eye, Edit, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import CMS1500Form from "./billing-forms/CMS1500Form";
 import UB04Form from "./billing-forms/UB04Form";
 import ADADentalForm from "./billing-forms/ADADentalForm";
@@ -23,16 +24,32 @@ const BillingModule = () => {
     { value: "ada", label: "ADA (Dental)", description: "For dental services and procedures" }
   ];
 
-  const mockClaims = [
-    { id: "CLM-2024-001", patient: "John Smith", format: "HCFA", amount: 450.00, status: "Submitted", date: "2024-06-28" },
-    { id: "CLM-2024-002", patient: "Sarah Johnson", format: "UB-04", amount: 1275.50, status: "Processing", date: "2024-06-29" },
-    { id: "CLM-2024-003", patient: "Mike Davis", format: "ADA", amount: 325.75, status: "Paid", date: "2024-06-30" },
-  ];
+  const [claims, setClaims] = useState([
+    { id: "CLM-2024-001", patient: "Ahmad Hassan", format: "HCFA", amount: 450.00, status: "Submitted", date: "2024-06-28" },
+    { id: "CLM-2024-002", patient: "Fatima Al-Zahra", format: "UB-04", amount: 1275.50, status: "Processing", date: "2024-06-29" },
+    { id: "CLM-2024-003", patient: "Omar Abdullah", format: "ADA", amount: 325.75, status: "Paid", date: "2024-06-30" },
+  ] as Array<{ id: string; patient: string; format: string; amount: number; status: string; date: string }>);
+
+  const [viewOpen, setViewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [selectedClaim, setSelectedClaim] = useState<null | { id: string; patient: string; format: string; amount: number; status: string; date: string }>(null);
 
   const handleSubmitClaim = () => {
+    // Simulate claim submission process
+    const newClaim = {
+      id: `CLM-${Date.now()}`,
+      patient: `Patient ${claims.length + 1}`,
+      format: selectedFormat.toUpperCase(),
+      amount: Math.floor(Math.random() * 2000) + 100,
+      status: "Submitted",
+      date: new Date().toISOString().split('T')[0]
+    };
+    
+    setClaims(prev => [newClaim, ...prev]);
+    
     toast({
       title: "Claim Submitted Successfully",
-      description: "Your claim has been submitted for processing.",
+      description: `Claim ${newClaim.id} has been submitted for processing.`,
     });
   };
 
@@ -45,14 +62,53 @@ const BillingModule = () => {
     }
   };
 
+  const handleView = (claimId: string) => {
+    const claim = claims.find(c => c.id === claimId) || null;
+    setSelectedClaim(claim);
+    setViewOpen(!!claim);
+  };
+
+  const handleEdit = (claimId: string) => {
+    const claim = claims.find(c => c.id === claimId) || null;
+    setSelectedClaim(claim);
+    setEditOpen(!!claim);
+  };
+
+  const handleDelete = (claimId: string) => {
+    const claim = claims.find(c => c.id === claimId);
+    if (!claim) return;
+    if (confirm(`Delete claim ${claim.id} for ${claim.patient}?`)) {
+      setClaims(prev => prev.filter(c => c.id !== claimId));
+      toast({ title: "Claim deleted", description: `${claim.id} removed.` });
+    }
+  };
+
+  const handleEditSave = () => {
+    if (!selectedClaim) return;
+    setClaims(prev => prev.map(c => c.id === selectedClaim.id ? selectedClaim : c));
+    setEditOpen(false);
+    toast({ title: "Claim updated", description: `${selectedClaim.id} saved.` });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold">Medical Billing Management</h2>
         <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => {
+          // Create new claim
+          const newClaim = {
+            id: `CLM-${Date.now()}`,
+            patient: `Patient ${claims.length + 1}`,
+            amount: Math.floor(Math.random() * 5000) + 100,
+            status: 'Pending',
+            date: new Date().toISOString().split('T')[0],
+            provider: 'Dr. Smith',
+            diagnosis: 'General Checkup'
+          };
+          setClaims(prev => [newClaim, ...prev]);
           toast({
-            title: "New Claim",
-            description: "Opening new claim form..."
+            title: "New Claim Created",
+            description: `Claim ${newClaim.id} added for ${newClaim.patient}`
           });
         }}>
           <FileText className="h-4 w-4 mr-2" />
@@ -127,7 +183,7 @@ const BillingModule = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockClaims.map((claim) => (
+                {claims.map((claim) => (
                   <div key={claim.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="flex items-center space-x-4">
                       <FileText className="h-8 w-8 text-blue-600" />
@@ -143,19 +199,13 @@ const BillingModule = () => {
                         <Badge className={getStatusColor(claim.status)}>{claim.status}</Badge>
                       </div>
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => {
-                          toast({ title: "View Claim", description: `Viewing details for ${claim.id}` });
-                        }}>
+                        <Button variant="outline" size="sm" onClick={() => handleView(claim.id)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => {
-                          toast({ title: "Edit Claim", description: `Editing ${claim.id}` });
-                        }}>
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(claim.id)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => {
-                          toast({ title: "Delete Claim", description: `${claim.id} has been deleted`, variant: "destructive" });
-                        }}>
+                        <Button variant="outline" size="sm" onClick={() => handleDelete(claim.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -214,6 +264,63 @@ const BillingModule = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* View Dialog */}
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Claim Details</DialogTitle>
+          </DialogHeader>
+          {selectedClaim && (
+            <div className="space-y-2 text-sm">
+              <div><span className="font-medium">Claim ID:</span> {selectedClaim.id}</div>
+              <div><span className="font-medium">Patient:</span> {selectedClaim.patient}</div>
+              <div><span className="font-medium">Format:</span> {selectedClaim.format}</div>
+              <div><span className="font-medium">Amount:</span> ${selectedClaim.amount.toFixed(2)}</div>
+              <div><span className="font-medium">Status:</span> {selectedClaim.status}</div>
+              <div><span className="font-medium">Date:</span> {selectedClaim.date}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Claim</DialogTitle>
+          </DialogHeader>
+          {selectedClaim && (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="edit-patient">Patient</Label>
+                <Input id="edit-patient" value={selectedClaim.patient} onChange={(e) => setSelectedClaim({ ...(selectedClaim as any), patient: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="edit-amount">Amount</Label>
+                <Input id="edit-amount" type="number" step="0.01" value={selectedClaim.amount} onChange={(e) => setSelectedClaim({ ...(selectedClaim as any), amount: parseFloat(e.target.value || '0') })} />
+              </div>
+              <div>
+                <Label htmlFor="edit-status">Status</Label>
+                <Select value={selectedClaim.status} onValueChange={(v) => setSelectedClaim({ ...(selectedClaim as any), status: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Submitted">Submitted</SelectItem>
+                    <SelectItem value="Processing">Processing</SelectItem>
+                    <SelectItem value="Paid">Paid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end space-x-2 pt-2">
+                <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                <Button onClick={handleEditSave}>Save</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
