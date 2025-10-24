@@ -42,7 +42,7 @@ const AuthorizationTracking = () => {
       
       toast({
         title: "Visit Authorized",
-        description: `Authorization used for ${auth.patientName} on ${new Date().toLocaleDateString()}`,
+        description: `Authorization used for ${auth.patient} on ${new Date().toLocaleDateString()}`,
       });
     }
   };
