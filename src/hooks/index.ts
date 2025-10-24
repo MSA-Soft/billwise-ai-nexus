@@ -1,6 +1,5 @@
 // Hooks barrel export
 
-export { useAuth } from './useAuth';
 export { useCollections } from './useCollections';
 export { useBillingStatements } from './useBillingStatements';
 export { useAuthorizationRequests } from './useAuthorizationRequests';

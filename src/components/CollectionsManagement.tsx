@@ -464,3 +464,5 @@ export function CollectionsManagement() {
     </div>
   );
 }
+
+export default CollectionsManagement;

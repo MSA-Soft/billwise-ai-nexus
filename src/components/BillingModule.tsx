@@ -99,11 +99,10 @@ const BillingModule = () => {
           const newClaim = {
             id: `CLM-${Date.now()}`,
             patient: `Patient ${claims.length + 1}`,
+            format: 'CMS-1500',
             amount: Math.floor(Math.random() * 5000) + 100,
             status: 'Pending',
-            date: new Date().toISOString().split('T')[0],
-            provider: 'Dr. Smith',
-            diagnosis: 'General Checkup'
+            date: new Date().toISOString().split('T')[0]
           };
           setClaims(prev => [newClaim, ...prev]);
           toast({
