@@ -26,7 +26,7 @@ import {
   Eye,
   Play,
   Pause,
-  Stop
+  Square
 } from 'lucide-react';
 import { getEDIService } from '@/services/ediService';
 

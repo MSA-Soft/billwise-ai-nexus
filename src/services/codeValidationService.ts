@@ -9,6 +9,15 @@ export interface CodeValidationResult {
   warnings: string[];
   errors: string[];
   suggestions: string[];
+  codeType?: string;
+  timestamp?: string;
+  denialRisk?: {
+    riskLevel: string;
+    riskScore: number;
+    riskFactors: any[];
+    denialProbability?: number;
+  };
+  recommendations?: string[];
 }
 
 export interface ICD10Code {
@@ -159,6 +168,43 @@ export class CodeValidationService {
     } catch (error) {
       result.errors.push('Error validating CPT code');
       console.error('CPT validation error:', error);
+    }
+
+    return result;
+  }
+
+  // Validate CDT (Dental) Code
+  async validateCDT(code: string): Promise<CodeValidationResult> {
+    const result: CodeValidationResult = {
+      isValid: false,
+      code: code.toUpperCase(),
+      description: '',
+      category: 'Dental',
+      warnings: [],
+      errors: [],
+      suggestions: [],
+    };
+
+    try {
+      const cleanCode = code.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      
+      if (!cleanCode || cleanCode.length !== 5) {
+        result.errors.push('CDT code must be 5 characters (D followed by 4 digits)');
+        return result;
+      }
+
+      if (!/^D[0-9]{4}$/.test(cleanCode)) {
+        result.errors.push('CDT code must start with D followed by 4 digits');
+        return result;
+      }
+
+      // For now, mark as valid if format is correct
+      result.isValid = true;
+      result.description = 'Dental procedure code';
+      
+    } catch (error) {
+      result.errors.push('Error validating CDT code');
+      console.error('CDT validation error:', error);
     }
 
     return result;
