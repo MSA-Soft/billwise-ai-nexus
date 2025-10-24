@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useMobile } from "@/hooks/use-mobile";
 import {
   LayoutDashboard,
   FileText,
@@ -93,6 +94,16 @@ interface SidebarProps {
 export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isCustomerSetupOpen, setIsCustomerSetupOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const isMobile = useMobile();
+
+  // Auto-collapse on mobile
+  useEffect(() => {
+    if (isMobile) {
+      setIsCollapsed(true);
+      setIsMobileMenuOpen(false);
+    }
+  }, [isMobile]);
 
   const navigationItems = [
     {
@@ -270,13 +281,29 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
 
   const handleItemClick = (itemId: string) => {
     onPageChange?.(itemId);
+    // Close mobile menu after selection
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+    }
   };
 
   return (
-    <div className={cn(
-      "flex flex-col h-screen bg-white border-r border-gray-200 transition-all duration-300 sticky top-0",
-      isCollapsed ? "w-16" : "w-64"
-    )}>
+    <>
+      {/* Mobile Overlay */}
+      {isMobile && isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div className={cn(
+        "flex flex-col h-screen bg-white border-r border-gray-200 transition-all duration-300 sticky top-0 z-50",
+        isCollapsed ? "w-16" : "w-64",
+        isMobile && !isMobileMenuOpen && "hidden lg:flex",
+        isMobile && isMobileMenuOpen && "fixed inset-y-0 left-0 z-50"
+      )}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         {!isCollapsed && (
@@ -493,7 +520,8 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
           )}
         </Button>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

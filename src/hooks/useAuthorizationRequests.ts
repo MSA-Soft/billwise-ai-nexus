@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { databaseService } from '@/services/databaseService';
 
 export interface AuthorizationRequest {
   id: string;
@@ -10,20 +10,20 @@ export interface AuthorizationRequest {
   payer_name_custom: string | null;
   provider_name_custom: string | null;
   provider_npi_custom: string | null;
+  service_type: string | null;
+  service_start_date: string | null;
+  service_end_date: string | null;
   procedure_codes: string[] | null;
   diagnosis_codes: string[] | null;
   clinical_indication: string | null;
-  service_start_date: string | null;
-  service_end_date: string | null;
   urgency_level: string | null;
+  units_requested: number | null;
   status: string | null;
-  auth_number: string | null;
   review_status: string | null;
+  auth_number: string | null;
   ack_status: string | null;
   submission_ref: string | null;
   pa_required: boolean | null;
-  service_type: string | null;
-  units_requested: number | null;
   user_id: string;
   created_at: string;
   updated_at: string;
@@ -37,13 +37,8 @@ export const useAuthorizationRequests = () => {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('authorization_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setRequests(data || []);
+      const data = await databaseService.getAuthorizationRequests();
+      setRequests(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -53,13 +48,7 @@ export const useAuthorizationRequests = () => {
 
   const createRequest = async (requestData: Partial<AuthorizationRequest>) => {
     try {
-      const { data, error } = await supabase
-        .from('authorization_requests')
-        .insert([requestData])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.createAuthorizationRequest(requestData);
       setRequests(prev => [data, ...prev]);
       return data;
     } catch (err: any) {
@@ -70,14 +59,7 @@ export const useAuthorizationRequests = () => {
 
   const updateRequest = async (id: string, updates: Partial<AuthorizationRequest>) => {
     try {
-      const { data, error } = await supabase
-        .from('authorization_requests')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.updateAuthorizationRequest(id, updates);
       setRequests(prev => prev.map(req => req.id === id ? data : req));
       return data;
     } catch (err: any) {
@@ -86,41 +68,38 @@ export const useAuthorizationRequests = () => {
     }
   };
 
-  const deleteRequest = async (id: string) => {
+  const getRequestById = async (id: string): Promise<AuthorizationRequest> => {
     try {
-      const { error } = await supabase
-        .from('authorization_requests')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      setRequests(prev => prev.filter(req => req.id !== id));
+      const data = await databaseService.getAuthorizationRequests();
+      const request = data.find(req => req.id === id);
+      if (!request) {
+        throw new Error('Authorization request not found');
+      }
+      return request;
     } catch (err: any) {
       setError(err.message);
       throw err;
     }
   };
 
-  const submitRequest = async (id: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('authorization_requests')
-        .update({
-          status: 'submitted',
-          submission_ref: `REF-${Date.now()}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
+  const getRequestsByStatus = (status: string): AuthorizationRequest[] => {
+    return requests.filter(req => req.status === status);
+  };
 
-      if (error) throw error;
-      setRequests(prev => prev.map(req => req.id === id ? data : req));
-      return data;
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    }
+  const getRequestsByUrgency = (urgency: string): AuthorizationRequest[] => {
+    return requests.filter(req => req.urgency_level === urgency);
+  };
+
+  const getPendingRequests = (): AuthorizationRequest[] => {
+    return requests.filter(req => req.status === 'pending' || req.status === null);
+  };
+
+  const getApprovedRequests = (): AuthorizationRequest[] => {
+    return requests.filter(req => req.status === 'approved');
+  };
+
+  const getDeniedRequests = (): AuthorizationRequest[] => {
+    return requests.filter(req => req.status === 'denied');
   };
 
   useEffect(() => {
@@ -134,7 +113,11 @@ export const useAuthorizationRequests = () => {
     fetchRequests,
     createRequest,
     updateRequest,
-    deleteRequest,
-    submitRequest,
+    getRequestById,
+    getRequestsByStatus,
+    getRequestsByUrgency,
+    getPendingRequests,
+    getApprovedRequests,
+    getDeniedRequests,
   };
 };

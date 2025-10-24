@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { databaseService } from '@/services/databaseService';
 
 export interface CollectionAccount {
   id: string;
@@ -40,13 +40,8 @@ export const useCollections = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('collections_accounts')
-        .select('*')
-        .order('days_overdue', { ascending: false });
-
-      if (error) throw error;
-      setAccounts(data || []);
+      const data = await databaseService.getCollectionsAccounts();
+      setAccounts(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -56,14 +51,8 @@ export const useCollections = () => {
 
   const fetchActivities = async () => {
     try {
-      const { data, error } = await supabase
-        .from('collection_activities')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setActivities(data || []);
+      const data = await databaseService.getCollectionActivities();
+      setActivities(data);
     } catch (err: any) {
       setError(err.message);
     }
@@ -71,13 +60,7 @@ export const useCollections = () => {
 
   const createAccount = async (accountData: Partial<CollectionAccount>) => {
     try {
-      const { data, error } = await supabase
-        .from('collections_accounts')
-        .insert([accountData])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.createCollectionAccount(accountData);
       setAccounts(prev => [data, ...prev]);
       return data;
     } catch (err: any) {
@@ -88,14 +71,7 @@ export const useCollections = () => {
 
   const updateAccount = async (id: string, updates: Partial<CollectionAccount>) => {
     try {
-      const { data, error } = await supabase
-        .from('collections_accounts')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.updateCollectionAccount(id, updates);
       setAccounts(prev => prev.map(acc => acc.id === id ? data : acc));
       return data;
     } catch (err: any) {
@@ -106,12 +82,7 @@ export const useCollections = () => {
 
   const deleteAccount = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('collections_accounts')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await databaseService.deleteCollectionAccount(id);
       setAccounts(prev => prev.filter(acc => acc.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -121,13 +92,7 @@ export const useCollections = () => {
 
   const addActivity = async (activityData: Partial<CollectionActivity>) => {
     try {
-      const { data, error } = await supabase
-        .from('collection_activities')
-        .insert([activityData])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.createCollectionActivity(activityData);
       setActivities(prev => [data, ...prev]);
       return data;
     } catch (err: any) {

@@ -2,8 +2,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+// Get environment variables with fallbacks
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://pusaxbvoiplsjflmnnyh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1c2F4YnZvaXBsc2pmbG1ubnloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMzQxNDEsImV4cCI6MjA3NjYxMDE0MX0.Va-Xss-A4mgl7dECObWLMWlb0VwEuTPdPfwmXbEdFbk';
+
+// Log environment status (only in development)
+if (import.meta.env.DEV) {
+  console.log('🔧 Supabase Configuration:');
+  console.log('URL:', import.meta.env.VITE_SUPABASE_URL ? '✅ From .env' : '⚠️ Using fallback');
+  console.log('Key:', import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? '✅ From .env' : '⚠️ Using fallback');
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

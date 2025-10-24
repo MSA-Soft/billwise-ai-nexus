@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import BillingWorkflow from '@/components/BillingWorkflow';
 import QuickActions from '@/components/QuickActions';
 import AuthorizationWorkflow from '@/components/AuthorizationWorkflow';
@@ -15,9 +15,21 @@ import { Statements } from '@/components/Statements';
 import { Superbills } from '@/components/Superbills';
 import { Labels } from '@/components/Labels';
 import Layout from '@/components/Layout';
+import { runAllTests } from '@/utils/testConnection';
 
 const Index: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('billing');
+
+  // Test database connection on component mount
+  useEffect(() => {
+    runAllTests().then(success => {
+      if (success) {
+        console.log('🎉 Database connection verified on Index page!');
+      } else {
+        console.warn('⚠️ Database connection issues detected on Index page');
+      }
+    });
+  }, []);
 
   const renderContent = () => {
     switch (activeTab) {

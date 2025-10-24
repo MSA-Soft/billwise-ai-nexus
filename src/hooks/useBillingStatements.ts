@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { databaseService } from '@/services/databaseService';
 
 export interface BillingStatement {
   id: string;
@@ -29,13 +29,8 @@ export const useBillingStatements = () => {
   const fetchStatements = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('billing_statements')
-        .select('*')
-        .order('statement_date', { ascending: false });
-
-      if (error) throw error;
-      setStatements(data || []);
+      const data = await databaseService.getBillingStatements();
+      setStatements(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -45,13 +40,7 @@ export const useBillingStatements = () => {
 
   const createStatement = async (statementData: Partial<BillingStatement>) => {
     try {
-      const { data, error } = await supabase
-        .from('billing_statements')
-        .insert([statementData])
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.createBillingStatement(statementData);
       setStatements(prev => [data, ...prev]);
       return data;
     } catch (err: any) {
@@ -62,14 +51,7 @@ export const useBillingStatements = () => {
 
   const updateStatement = async (id: string, updates: Partial<BillingStatement>) => {
     try {
-      const { data, error } = await supabase
-        .from('billing_statements')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.updateBillingStatement(id, updates);
       setStatements(prev => prev.map(stmt => stmt.id === id ? data : stmt));
       return data;
     } catch (err: any) {
@@ -80,12 +62,7 @@ export const useBillingStatements = () => {
 
   const deleteStatement = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('billing_statements')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await databaseService.deleteBillingStatement(id);
       setStatements(prev => prev.filter(stmt => stmt.id !== id));
     } catch (err: any) {
       setError(err.message);
@@ -95,18 +72,7 @@ export const useBillingStatements = () => {
 
   const sendStatement = async (id: string, channel: string) => {
     try {
-      const { data, error } = await supabase
-        .from('billing_statements')
-        .update({
-          status: 'sent',
-          channel,
-          sent_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
+      const data = await databaseService.sendBillingStatement(id, channel);
       setStatements(prev => prev.map(stmt => stmt.id === id ? data : stmt));
       return data;
     } catch (err: any) {

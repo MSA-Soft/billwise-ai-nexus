@@ -13,59 +13,43 @@ import {
   Users,
   Calendar
 } from 'lucide-react';
+import { useAnalytics } from '@/hooks/useAnalytics';
+import { useBillingStatements } from '@/hooks/useBillingStatements';
 
 const BillingWorkflow: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
+  const { dashboardMetrics, loading: analyticsLoading } = useAnalytics();
+  const { statements, loading: statementsLoading } = useBillingStatements();
 
-  const mockData = {
-    overview: {
-      totalClaims: 1247,
-      pendingClaims: 89,
-      approvedClaims: 1156,
-      deniedClaims: 2,
-      totalRevenue: 245678.50,
-      monthlyGrowth: 12.5
-    },
-    recentClaims: [
-      {
-        id: 'CLM-001',
-        patient: 'John Smith',
-        amount: 1250.00,
-        status: 'approved',
-        date: '2024-01-15',
-        payer: 'Blue Cross'
-      },
-      {
-        id: 'CLM-002',
-        patient: 'Sarah Johnson',
-        amount: 850.00,
-        status: 'pending',
-        date: '2024-01-14',
-        payer: 'Aetna'
-      },
-      {
-        id: 'CLM-003',
-        patient: 'Mike Davis',
-        amount: 2100.00,
-        status: 'approved',
-        date: '2024-01-13',
-        payer: 'Cigna'
-      }
-    ]
-  };
+  const recentStatements = statements.slice(0, 5);
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | null) => {
     switch (status) {
-      case 'approved':
+      case 'paid':
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
-      case 'denied':
+      case 'failed':
         return 'bg-red-100 text-red-800';
+      case 'sent':
+        return 'bg-blue-100 text-blue-800';
+      case 'delivered':
+        return 'bg-purple-100 text-purple-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (analyticsLoading || statementsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading billing data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -85,24 +69,24 @@ const BillingWorkflow: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Claims</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Statements</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.overview.totalClaims.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{dashboardMetrics.billing.totalStatements.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +12% from last month
+              All time statements
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Claims</CardTitle>
+            <CardTitle className="text-sm font-medium">Pending Statements</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.overview.pendingClaims}</div>
+            <div className="text-2xl font-bold">{dashboardMetrics.billing.pending}</div>
             <p className="text-xs text-muted-foreground">
               Awaiting processing
             </p>
@@ -111,26 +95,26 @@ const BillingWorkflow: React.FC = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Approved Claims</CardTitle>
+            <CardTitle className="text-sm font-medium">Paid Statements</CardTitle>
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockData.overview.approvedClaims}</div>
+            <div className="text-2xl font-bold">{dashboardMetrics.billing.paid}</div>
             <p className="text-xs text-muted-foreground">
-              {((mockData.overview.approvedClaims / mockData.overview.totalClaims) * 100).toFixed(1)}% success rate
+              Successfully paid
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${mockData.overview.totalRevenue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">${dashboardMetrics.billing.totalAmount.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +{mockData.overview.monthlyGrowth}% from last month
+              All time billing amount
             </p>
           </CardContent>
         </Card>
@@ -150,21 +134,21 @@ const BillingWorkflow: React.FC = () => {
             {/* Recent Claims */}
             <Card>
               <CardHeader>
-                <CardTitle>Recent Claims</CardTitle>
+                <CardTitle>Recent Statements</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {mockData.recentClaims.map((claim) => (
-                    <div key={claim.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  {recentStatements.map((statement) => (
+                    <div key={statement.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="space-y-1">
-                        <p className="font-medium">{claim.patient}</p>
-                        <p className="text-sm text-muted-foreground">{claim.id} • {claim.payer}</p>
-                        <p className="text-sm text-muted-foreground">{claim.date}</p>
+                        <p className="font-medium">{statement.patient_name}</p>
+                        <p className="text-sm text-muted-foreground">{statement.id} • Patient ID: {statement.patient_id}</p>
+                        <p className="text-sm text-muted-foreground">{new Date(statement.statement_date).toLocaleDateString()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-medium">${claim.amount.toLocaleString()}</p>
-                        <Badge className={getStatusColor(claim.status)}>
-                          {claim.status}
+                        <p className="font-medium">${statement.amount_due.toLocaleString()}</p>
+                        <Badge className={getStatusColor(statement.status)}>
+                          {statement.status || 'pending'}
                         </Badge>
                       </div>
                     </div>
@@ -205,21 +189,21 @@ const BillingWorkflow: React.FC = () => {
         <TabsContent value="claims" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>All Claims</CardTitle>
+              <CardTitle>All Statements</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockData.recentClaims.map((claim) => (
-                  <div key={claim.id} className="flex items-center justify-between p-4 border rounded-lg">
+                {statements.map((statement) => (
+                  <div key={statement.id} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="space-y-1">
-                      <p className="font-medium">{claim.patient}</p>
-                      <p className="text-sm text-muted-foreground">{claim.id} • {claim.payer}</p>
-                      <p className="text-sm text-muted-foreground">{claim.date}</p>
+                      <p className="font-medium">{statement.patient_name}</p>
+                      <p className="text-sm text-muted-foreground">{statement.id} • Patient ID: {statement.patient_id}</p>
+                      <p className="text-sm text-muted-foreground">{new Date(statement.statement_date).toLocaleDateString()}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium">${claim.amount.toLocaleString()}</p>
-                      <Badge className={getStatusColor(claim.status)}>
-                        {claim.status}
+                      <p className="font-medium">${statement.amount_due.toLocaleString()}</p>
+                      <Badge className={getStatusColor(statement.status)}>
+                        {statement.status || 'pending'}
                       </Badge>
                     </div>
                   </div>
