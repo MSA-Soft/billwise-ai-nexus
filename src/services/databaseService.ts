@@ -69,7 +69,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('collections_accounts')
-        .insert([accountData])
+        .insert([accountData as any])
         .select()
         .single();
 
@@ -143,7 +143,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('collection_activities')
-        .insert([activityData])
+        .insert([activityData as any])
         .select()
         .single();
 
@@ -217,7 +217,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('billing_statements')
-        .insert([statementData])
+        .insert([statementData as any])
         .select()
         .single();
 
@@ -265,7 +265,7 @@ export class DatabaseService {
       const { data, error } = await supabase
         .from('billing_statements')
         .update({
-          status: 'sent',
+          status: 'sent' as const,
           channel,
           sent_at: new Date().toISOString()
         })
@@ -299,7 +299,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('authorization_requests')
-        .insert([requestData])
+        .insert([requestData as any])
         .select()
         .single();
 
@@ -348,7 +348,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('payment_plans')
-        .insert([planData])
+        .insert([planData as any])
         .select()
         .single();
 

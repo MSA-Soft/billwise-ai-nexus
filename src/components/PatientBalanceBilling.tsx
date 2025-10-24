@@ -362,8 +362,8 @@ const PatientBalanceBilling = () => {
                         <div className="font-medium">{patient.lastPayment}</div>
                       </div>
                       <div>
-                        <div className="text-sm text-gray-600">Related Claim</div>
-                        <div className="font-medium">{patient.insuranceClaim}</div>
+                        <div className="text-sm text-gray-600">Payment Method</div>
+                        <div className="font-medium">{patient.paymentMethod}</div>
                       </div>
                     </div>
 

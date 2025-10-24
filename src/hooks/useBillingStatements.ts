@@ -70,7 +70,7 @@ export const useBillingStatements = () => {
     }
   };
 
-  const sendStatement = async (id: string, channel: string) => {
+  const sendStatement = async (id: string, channel: 'email' | 'paper' | 'portal' | 'sms') => {
     try {
       const data = await databaseService.sendBillingStatement(id, channel);
       setStatements(prev => prev.map(stmt => stmt.id === id ? data : stmt));
