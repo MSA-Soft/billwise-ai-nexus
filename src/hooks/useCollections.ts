@@ -10,8 +10,8 @@ export interface CollectionAccount {
   original_balance: number;
   current_balance: number;
   days_overdue: number;
-  collection_stage: string;
-  collection_status: string;
+  collection_stage: 'early_collection' | 'mid_collection' | 'late_collection' | 'pre_legal';
+  collection_status: 'active' | 'closed' | 'payment_plan' | 'settled' | 'attorney_referral' | 'dispute';
   last_contact_date: string | null;
   next_action_date: string | null;
   notes: string | null;
@@ -21,8 +21,8 @@ export interface CollectionAccount {
 export interface CollectionActivity {
   id: string;
   collection_account_id: string;
-  activity_type: string;
-  contact_method: string | null;
+  activity_type: 'phone_call' | 'email_sent' | 'letter_sent' | 'promise_to_pay' | 'partial_payment' | 'settlement_offer' | 'dispute_received' | 'note_added';
+  contact_method: 'phone' | 'email' | 'mail' | 'sms' | 'in_person' | null;
   notes: string | null;
   outcome: string | null;
   amount_discussed: number | null;

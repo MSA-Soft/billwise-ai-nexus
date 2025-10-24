@@ -8,8 +8,8 @@ export interface BillingStatement {
   amount_due: number;
   statement_date: string;
   due_date: string | null;
-  status: string | null;
-  channel: string | null;
+  status: 'pending' | 'sent' | 'delivered' | 'viewed' | 'paid' | 'failed' | null;
+  channel: 'email' | 'paper' | 'portal' | 'sms' | null;
   sent_at: string | null;
   delivered_at: string | null;
   viewed_at: string | null;

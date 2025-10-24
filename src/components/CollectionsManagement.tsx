@@ -341,7 +341,7 @@ export function CollectionsManagement() {
                       <TableCell>
                         {format(new Date(activity.created_at), "MM/dd/yyyy HH:mm")}
                       </TableCell>
-                      <TableCell>{activity.collections_accounts.patient_name}</TableCell>
+                      <TableCell>Activity</TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {activity.activity_type.replace("_", " ")}
