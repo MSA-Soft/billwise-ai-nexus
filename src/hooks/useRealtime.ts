@@ -29,13 +29,12 @@ export const useRealtime = () => {
     const channel = supabase
       .channel(`${table}_changes`)
       .on(
-        'postgres_changes',
+        'postgres_changes' as any,
         {
           event,
           schema: 'public',
           table,
-          filter: filter ? `resource_id=eq.${filter}` : undefined,
-        },
+        } as any,
         callback
       )
       .subscribe();

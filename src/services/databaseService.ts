@@ -69,11 +69,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('collections_accounts')
-        .insert([{
-          ...accountData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([accountData])
         .select()
         .single();
 
@@ -147,10 +143,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('collection_activities')
-        .insert([{
-          ...activityData,
-          created_at: new Date().toISOString()
-        }])
+        .insert([activityData])
         .select()
         .single();
 
@@ -224,11 +217,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('billing_statements')
-        .insert([{
-          ...statementData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([statementData])
         .select()
         .single();
 
@@ -271,15 +260,14 @@ export class DatabaseService {
     }
   }
 
-  async sendBillingStatement(id: string, channel: string): Promise<BillingStatement> {
+  async sendBillingStatement(id: string, channel: 'email' | 'paper' | 'portal' | 'sms'): Promise<BillingStatement> {
     try {
       const { data, error } = await supabase
         .from('billing_statements')
         .update({
           status: 'sent',
           channel,
-          sent_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          sent_at: new Date().toISOString()
         })
         .eq('id', id)
         .select()
@@ -311,11 +299,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('authorization_requests')
-        .insert([{
-          ...requestData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([requestData])
         .select()
         .single();
 
@@ -364,11 +348,7 @@ export class DatabaseService {
     try {
       const { data, error } = await supabase
         .from('payment_plans')
-        .insert([{
-          ...planData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([planData])
         .select()
         .single();
 

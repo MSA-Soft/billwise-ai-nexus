@@ -1228,10 +1228,10 @@ const EligibilityVerification = () => {
                         <div className="w-20 bg-gray-200 rounded-full h-2">
                           <div 
                             className="bg-blue-600 h-2 rounded-full"
-                            style={{ width: `${verificationHistory.length > 0 ? (count / verificationHistory.length) * 100 : 0}%` }}
+                            style={{ width: `${verificationHistory.length > 0 ? ((count as number) / verificationHistory.length) * 100 : 0}%` }}
                           ></div>
                         </div>
-                        <span className="text-sm text-muted-foreground">{count}</span>
+                        <span className="text-sm text-muted-foreground">{count as number}</span>
                       </div>
                     </div>
                   ))}
