@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +97,7 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   const [isCustomerSetupOpen, setIsCustomerSetupOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isMobile = useMobile();
+  const navigate = useNavigate();
 
   // Auto-collapse on mobile
   useEffect(() => {
@@ -130,12 +132,18 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       icon: FileText,
       badge: null,
     },
-    {
-      id: "claims",
-      label: "Claims",
-      icon: FileText,
-      badge: null,
-    },
+        {
+          id: "claims",
+          label: "Claims",
+          icon: FileText,
+          badge: null,
+        },
+        {
+          id: "enhanced-claims",
+          label: "Enhanced Claims",
+          icon: FileText,
+          badge: "AI",
+        },
     {
       id: "patients",
       label: "Patients",
@@ -143,9 +151,9 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       badge: null,
     },
     {
-      id: "providers",
-      label: "Providers",
-      icon: User,
+      id: "schedule",
+      label: "Schedule",
+      icon: Calendar,
       badge: null,
     },
     {
@@ -280,7 +288,17 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   ];
 
   const handleItemClick = (itemId: string) => {
-    onPageChange?.(itemId);
+    // Check if this is a customer setup item
+    const customerSetupItemIds = customerSetupItems.map(item => item.id);
+    
+    if (customerSetupItemIds.includes(itemId)) {
+      // Navigate to customer-setup route with the specific tab
+      navigate(`/customer-setup?tab=${itemId}`);
+    } else {
+      // Handle regular navigation
+      onPageChange?.(itemId);
+    }
+    
     // Close mobile menu after selection
     if (isMobile) {
       setIsMobileMenuOpen(false);
