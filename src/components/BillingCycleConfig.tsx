@@ -43,43 +43,18 @@ const BillingCycleConfig = () => {
 
   const triggerBillingCycle = async () => {
     try {
-      toast({
-        title: "Processing Billing Cycle",
-        description: "Generating and sending statements...",
-      });
+      const { data, error } = await supabase.functions.invoke("process-billing-cycle");
 
-      // Mock billing cycle processing - simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      // Generate mock processing results
-      const mockResults = {
-        processedCount: Math.floor(Math.random() * 50) + 25, // 25-75 statements
-        successCount: Math.floor(Math.random() * 40) + 20,
-        failedCount: Math.floor(Math.random() * 5) + 1,
-        totalAmount: (Math.random() * 50000 + 10000).toFixed(2)
-      };
+      if (error) throw error;
 
       toast({
-        title: "Billing Cycle Complete",
-        description: `${mockResults.processedCount} statements processed. ${mockResults.successCount} sent successfully.`,
+        title: "Success",
+        description: `Billing cycle processed. ${data?.processedCount || 0} statements sent.`,
       });
-
-      // Show detailed results
-      const cycleDetails = `
-Billing Cycle Results:
-• Total Processed: ${mockResults.processedCount} statements
-• Successfully Sent: ${mockResults.successCount}
-• Failed: ${mockResults.failedCount}
-• Total Amount: $${mockResults.totalAmount}
-
-This is a mock billing cycle for demonstration purposes.
-      `;
-      
-      alert(cycleDetails);
     } catch (error: any) {
       toast({
         title: "Error",
-        description: "Unable to process billing cycle at this time",
+        description: error.message,
         variant: "destructive",
       });
     }
