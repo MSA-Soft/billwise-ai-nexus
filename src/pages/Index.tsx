@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BillingWorkflow from '@/components/BillingWorkflow';
 import QuickActions from '@/components/QuickActions';
 import AuthorizationWorkflow from '@/components/AuthorizationWorkflow';
+import AuthorizationTracking from '@/components/AuthorizationTracking';
 import Practices from '@/components/Practices';
 import { Providers } from '@/components/Providers';
 import { Facilities } from '@/components/Facilities';
@@ -38,7 +39,7 @@ const Index: React.FC = () => {
       case 'quick-actions':
         return <QuickActions />;
       case 'authorization':
-        return <AuthorizationWorkflow />;
+        return <AuthorizationTracking />;
       case 'practices':
         return <Practices />;
       case 'providers':

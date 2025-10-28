@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Shield, Clock, CheckCircle, AlertTriangle, Plus, Eye, Edit, Bell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import AuthorizationWorkflow from "@/components/AuthorizationWorkflow";
+import { supabase } from "@/integrations/supabase/client";
 
 const AuthorizationTracking = () => {
   const { toast } = useToast();
@@ -15,6 +17,7 @@ const AuthorizationTracking = () => {
   const [selectedAuth, setSelectedAuth] = useState<any>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [showNewAuthForm, setShowNewAuthForm] = useState(false);
 
   const handleViewDetails = (authId: string) => {
     const auth = authorizations.find(a => a.id === authId);
@@ -32,18 +35,66 @@ const AuthorizationTracking = () => {
     }
   };
 
-  const handleUseVisit = (authId: string) => {
+  const handleUseVisit = async (authId: string) => {
     const auth = authorizations.find(a => a.id === authId);
-    if (auth) {
-      // Update the authorization status to "Used"
-      const updatedAuths = authorizations.map(a => 
-        a.id === authId ? { ...a, status: 'Used', usedDate: new Date().toISOString().split('T')[0] } : a
-      );
-      
+    if (!auth) return;
+
+    // Prevent usage if expired
+    const today = new Date();
+    const expiry = new Date(auth.expiryDate);
+    if (today > expiry) {
       toast({
-        title: "Visit Authorized",
-        description: `Authorization used for ${auth.patientName} on ${new Date().toLocaleDateString()}`,
+        variant: "destructive",
+        title: "Authorization expired",
+        description: `This authorization expired on ${expiry.toLocaleDateString()}.`,
       });
+      return;
+    }
+
+    // Prevent usage if already exhausted
+    if (auth.visits.used >= auth.visits.authorized) {
+      toast({
+        variant: "destructive",
+        title: "Visits exhausted",
+        description: "No remaining visits on this authorization.",
+      });
+      return;
+    }
+
+    const previousUsed = auth.visits.used;
+    const nextUsed = previousUsed + 1;
+    const exhausted = nextUsed >= auth.visits.authorized;
+
+    // Optimistic UI update
+    const usedDate = new Date().toISOString().split('T')[0];
+    const next = authorizations.map(a => a.id === authId ? {
+      ...a,
+      visits: { ...a.visits, used: nextUsed },
+      status: exhausted ? "Exhausted" : a.status,
+      usedDate,
+    } : a);
+    // update local array (convert to state if needed)
+    (authorizations as any).splice(0, authorizations.length, ...next);
+
+    toast({
+      title: "Visit used",
+      description: `${nextUsed} of ${auth.visits.authorized} visits used.`,
+    });
+
+    // Best-effort audit log
+    try {
+      await supabase.from('authorization_events' as any).insert({
+        authorization_request_id: auth.id,
+        event_type: 'visit_used',
+        payload: {
+          previous_used: previousUsed,
+          new_used: nextUsed,
+          authorized: auth.visits.authorized,
+          used_at: new Date().toISOString(),
+        } as any,
+      });
+    } catch (_err) {
+      // ignore errors in demo mode
     }
   };
 
@@ -91,6 +142,7 @@ const AuthorizationTracking = () => {
       case "Approved": return "bg-green-100 text-green-800";
       case "Pending": return "bg-yellow-100 text-yellow-800";
       case "Under Review": return "bg-blue-100 text-blue-800";
+      case "Exhausted": return "bg-gray-200 text-gray-800";
       case "Denied": return "bg-red-100 text-red-800";
       case "Expired": return "bg-gray-100 text-gray-800";
       default: return "bg-gray-100 text-gray-800";
@@ -107,10 +159,7 @@ const AuthorizationTracking = () => {
   };
 
   const handleNewAuthorization = () => {
-    toast({
-      title: "New Authorization Request",
-      description: "Authorization request form opened.",
-    });
+    setShowNewAuthForm(true);
   };
 
   const expiringAuths = authorizations.filter(auth => {
@@ -441,19 +490,17 @@ const AuthorizationTracking = () => {
       </Tabs>
 
       {/* View Details Dialog */}
-      {selectedAuth && (
+      {selectedAuth && viewOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4">Authorization Details</h3>
             <div className="space-y-3">
-              <div><strong>Patient:</strong> {selectedAuth.patientName}</div>
-              <div><strong>Procedure:</strong> {selectedAuth.procedure}</div>
+              <div><strong>Patient:</strong> {selectedAuth.patient}</div>
+              <div><strong>Procedure:</strong> {selectedAuth.procedure} ({selectedAuth.cptCode})</div>
               <div><strong>Status:</strong> {selectedAuth.status}</div>
-              <div><strong>Requested Date:</strong> {selectedAuth.requestedDate}</div>
-              <div><strong>Expires:</strong> {selectedAuth.expiresDate}</div>
-              <div><strong>Provider:</strong> {selectedAuth.provider}</div>
-              <div><strong>Insurance:</strong> {selectedAuth.insurance}</div>
-              <div><strong>Notes:</strong> {selectedAuth.notes}</div>
+              <div><strong>Requested Date:</strong> {selectedAuth.requestDate}</div>
+              <div><strong>Expires:</strong> {selectedAuth.expiryDate}</div>
+              <div><strong>Payer:</strong> {selectedAuth.payer}</div>
             </div>
             <div className="flex justify-end mt-6">
               <Button onClick={() => {
@@ -466,7 +513,7 @@ const AuthorizationTracking = () => {
       )}
 
       {/* Update Status Dialog */}
-      {selectedAuth && (
+      {selectedAuth && updateOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold mb-4">Update Authorization Status</h3>
@@ -504,6 +551,26 @@ const AuthorizationTracking = () => {
                 setUpdateOpen(false);
                 setSelectedAuth(null);
               }}>Update</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Authorization Form */}
+      {showNewAuthForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">New Authorization Request</h2>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowNewAuthForm(false)}
+                >
+                  Close
+                </Button>
+              </div>
+              <AuthorizationWorkflow />
             </div>
           </div>
         </div>

@@ -4,6 +4,7 @@ import Layout from '@/components/Layout';
 import BillingWorkflow from '@/components/BillingWorkflow';
 import QuickActions from '@/components/QuickActions';
 import AuthorizationWorkflow from '@/components/AuthorizationWorkflow';
+import AuthorizationTracking from '@/components/AuthorizationTracking';
 import EligibilityVerification from '@/components/EligibilityVerification';
 import CodeValidation from '@/components/CodeValidation';
 import Practices from '@/components/Practices';
@@ -49,7 +50,7 @@ const CustomerSetup: React.FC = () => {
       case 'code-validation':
         return <CodeValidation />;
       case 'authorization':
-        return <AuthorizationWorkflow />;
+        return <AuthorizationTracking />;
             case 'claims':
               return <Claims />;
             case 'enhanced-claims':
