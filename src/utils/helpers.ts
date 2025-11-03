@@ -185,9 +185,9 @@ export const deepMerge = <T extends Record<string, any>>(target: T, source: Part
   for (const key in source) {
     if (source.hasOwnProperty(key)) {
       if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
-        result[key] = deepMerge(result[key] || {}, source[key]);
-      } else {
-        result[key] = source[key] as T[Extract<keyof T, string>];
+        result[key as keyof T] = deepMerge(result[key] || {} as any, source[key] as any);
+      } else if (source[key] !== undefined) {
+        result[key as keyof T] = source[key] as T[keyof T];
       }
     }
   }

@@ -118,41 +118,24 @@ export const useNotifications = () => {
 };
 
 // Hook for real-time collaboration
+// Note: Requires collaboration_events table to be created in database
 export const useCollaboration = (resourceId: string) => {
   const { subscribe } = useRealtime();
 
   const subscribeToCollaboration = useCallback((
     callback: (payload: any) => void
   ) => {
-    return subscribe(
-      'collaboration_events',
-      '*',
-      (payload) => {
-        if (payload.new.resource_id === resourceId) {
-          callback(payload.new);
-        }
-      },
-      resourceId
-    );
+    // TODO: Create collaboration_events table before using this feature
+    console.warn('collaboration_events table not yet created');
+    return '';
   }, [resourceId, subscribe]);
 
   const broadcastCollaborationEvent = useCallback(async (
     event: string,
     data: any
   ) => {
-    const { error } = await supabase
-      .from('collaboration_events')
-      .insert({
-        resource_id: resourceId,
-        event,
-        data,
-        user_id: (await supabase.auth.getUser()).data.user?.id,
-        timestamp: new Date().toISOString(),
-      });
-
-    if (error) {
-      console.error('Failed to broadcast collaboration event:', error);
-    }
+    // TODO: Create collaboration_events table before using this feature
+    console.warn('collaboration_events table not yet created');
   }, [resourceId]);
 
   return {

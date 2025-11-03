@@ -40,36 +40,8 @@ class AuditTrail {
     if (!this.isEnabled) return;
 
     try {
-      const auditEvent: AuditEvent = {
-        ...event,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Encrypt sensitive details
-      const encryptedDetails = encryptAuditLog(event.details);
-
-      // Store in audit_logs table
-      const { error } = await supabase
-        .from('audit_logs')
-        .insert({
-          user_id: event.userId,
-          action: event.action,
-          resource: event.resource,
-          resource_id: event.resourceId,
-          details: encryptedDetails,
-          ip_address: event.ipAddress,
-          user_agent: event.userAgent,
-          timestamp: auditEvent.timestamp,
-          success: event.success,
-          error_message: event.errorMessage,
-        });
-
-      if (error) {
-        logger.error('Failed to log audit event', { error: error.message, event });
-        throw error;
-      }
-
-      logger.info('Audit event logged', { 
+      // TODO: Create audit_logs table before using this feature
+      logger.info('Audit event (table not created)', { 
         action: event.action, 
         resource: event.resource,
         userId: event.userId 
@@ -83,47 +55,9 @@ class AuditTrail {
   // Query audit events
   async queryEvents(query: AuditQuery): Promise<AuditEvent[]> {
     try {
-      let supabaseQuery = supabase
-        .from('audit_logs')
-        .select('*')
-        .order('timestamp', { ascending: false });
-
-      if (query.userId) {
-        supabaseQuery = supabaseQuery.eq('user_id', query.userId);
-      }
-
-      if (query.action) {
-        supabaseQuery = supabaseQuery.eq('action', query.action);
-      }
-
-      if (query.resource) {
-        supabaseQuery = supabaseQuery.eq('resource', query.resource);
-      }
-
-      if (query.startDate) {
-        supabaseQuery = supabaseQuery.gte('timestamp', query.startDate);
-      }
-
-      if (query.endDate) {
-        supabaseQuery = supabaseQuery.lte('timestamp', query.endDate);
-      }
-
-      if (query.limit) {
-        supabaseQuery = supabaseQuery.limit(query.limit);
-      }
-
-      if (query.offset) {
-        supabaseQuery = supabaseQuery.range(query.offset, query.offset + (query.limit || 100) - 1);
-      }
-
-      const { data, error } = await supabaseQuery;
-
-      if (error) {
-        logger.error('Failed to query audit events', { error: error.message, query });
-        throw error;
-      }
-
-      return data || [];
+      // TODO: Create audit_logs table before using this feature
+      logger.warn('Audit query attempted (table not created)');
+      return [];
     } catch (error) {
       logger.error('Audit query failed', { error, query });
       throw error;
@@ -132,7 +66,7 @@ class AuditTrail {
 
   // Get audit events for a specific resource
   async getResourceHistory(resource: string, resourceId: string): Promise<AuditEvent[]> {
-    return this.queryEvents({ resource, resourceId });
+    return this.queryEvents({ resource });
   }
 
   // Get user activity
