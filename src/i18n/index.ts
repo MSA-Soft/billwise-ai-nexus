@@ -129,21 +129,17 @@ export const createTranslationFunction = (translations: Record<string, any>) => 
 // Load translations for a specific language
 export const loadTranslations = async (language: SupportedLanguage): Promise<Record<string, any>> => {
   try {
-    const response = await fetch(`/src/i18n/locales/${language}.json`);
-    if (!response.ok) {
-      throw new Error(`Failed to load translations for ${language}`);
-    }
-    return await response.json();
+    // Use dynamic import for Vite bundling - works in both dev and production
+    const translations = await import(`./locales/${language}.json`);
+    return translations.default || translations;
   } catch (error) {
     console.warn(`Failed to load translations for ${language}, falling back to English:`, error);
     
     // Fallback to English
     if (language !== 'en') {
       try {
-        const response = await fetch('/src/i18n/locales/en.json');
-        if (response.ok) {
-          return await response.json();
-        }
+        const translations = await import(`./locales/en.json`);
+        return translations.default || translations;
       } catch (fallbackError) {
         console.error('Failed to load fallback translations:', fallbackError);
       }

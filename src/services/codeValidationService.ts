@@ -90,18 +90,19 @@ export class CodeValidationService {
           result.warnings.push('This code may require additional digits for specificity');
         }
       } else {
-        // Try to find similar codes
+        // Unknown to our local dataset: treat as provisionally valid if format is correct
         const suggestions = this.findSimilarICD10Codes(cleanCode);
         if (suggestions.length > 0) {
           result.suggestions = suggestions.map(s => `${s.code} - ${s.description}`);
-          result.errors.push('Code not found. Did you mean one of these?');
-        } else {
-          result.errors.push('Invalid ICD-10 code');
         }
+        result.warnings.push('Code not found in local set. Proceed if format is correct.');
+        result.isValid = true; // provisional; finalized after format validation below
       }
 
       // Additional validation rules
       this.validateICD10Format(cleanCode, result);
+      // Final validity is based on presence of hard errors (format issues)
+      result.isValid = result.errors.length === 0;
       
     } catch (error) {
       result.errors.push('Error validating ICD-10 code');

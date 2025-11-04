@@ -330,7 +330,9 @@ export class EDIService {
 
   private parseEligibilityResponse(data: any): EligibilityResponse {
     return {
-      isEligible: data.eligibilityStatus === 'active',
+      isEligible: typeof data.eligibilityStatus === 'string'
+        ? data.eligibilityStatus.toString().toUpperCase() === 'ACTIVE'
+        : false,
       coverage: {
         copay: data.copay || 0,
         deductible: data.deductible || 0,

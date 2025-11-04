@@ -288,18 +288,40 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   ];
 
   const handleItemClick = (itemId: string) => {
-    // Check if this is a customer setup item
-    const customerSetupItemIds = customerSetupItems.map(item => item.id);
-    
-    if (customerSetupItemIds.includes(itemId)) {
-      // Navigate to customer-setup route with the specific tab
+    // Items that are rendered on the Index page (controlled by activeTab)
+    const indexPageItemIds = new Set<string>([
+      'billing-workflow',
+      'quick-actions',
+      'recent-activity',
+      'authorization',
+      // Map sidebar "dashboard" to Index's default "billing" tab
+      'dashboard'
+    ]);
+
+    // Items that should open the Customer Setup page with a specific tab
+    const customerSetupItemIds = new Set<string>([
+      ...customerSetupItems.map(item => item.id),
+      // Navigation items that actually belong to Customer Setup
+      'eligibility-verification',
+      'code-validation',
+      'claims',
+      'enhanced-claims',
+      'patients',
+      'schedule',
+      'reports'
+    ]);
+
+    if (customerSetupItemIds.has(itemId)) {
       navigate(`/customer-setup?tab=${itemId}`);
+    } else if (indexPageItemIds.has(itemId)) {
+      // Special-case mapping for dashboard → billing
+      const target = itemId === 'dashboard' ? 'billing' : itemId;
+      onPageChange?.(target);
     } else {
-      // Handle regular navigation
+      // Default to Index page behavior if unknown
       onPageChange?.(itemId);
     }
-    
-    // Close mobile menu after selection
+
     if (isMobile) {
       setIsMobileMenuOpen(false);
     }

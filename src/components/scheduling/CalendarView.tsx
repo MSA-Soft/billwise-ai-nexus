@@ -65,6 +65,7 @@ export function CalendarView({ selectedDate, onDateChange, appointments }: Calen
   };
 
   const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const dayIndexes = [0, 1, 2, 3, 4, 5, 6]; // Use indexes to ensure unique keys
 
   return (
     <div className="space-y-4">
@@ -84,9 +85,9 @@ export function CalendarView({ selectedDate, onDateChange, appointments }: Calen
       {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1">
         {/* Day Headers */}
-        {dayNames.map((day) => (
-          <div key={day} className="font-medium text-gray-600 p-2 text-center text-xs">
-            {day}
+        {dayIndexes.map((index) => (
+          <div key={index} className="font-medium text-gray-600 p-2 text-center text-xs">
+            {dayNames[index]}
           </div>
         ))}
 
