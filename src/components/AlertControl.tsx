@@ -139,11 +139,11 @@ export const AlertControl: React.FC = () => {
 
   const handleAddAlert = () => {
     if (!newAlert.patient || !newAlert.message) {
-      alert('Please fill in required fields');
+      window.alert('Please fill in required fields');
       return;
     }
 
-    const alert: Alert = {
+    const alertItem: Alert = {
       id: Date.now().toString(),
       alertType: newAlert.alertType || 'Patient',
       patient: newAlert.patient!,
@@ -169,7 +169,7 @@ export const AlertControl: React.FC = () => {
       updatedAt: new Date().toISOString().split('T')[0]
     };
 
-    setAlerts([...alerts, alert]);
+    setAlerts([...alerts, alertItem]);
     setNewAlert({
       alertType: 'Patient',
       patient: '',

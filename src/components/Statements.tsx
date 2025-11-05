@@ -521,10 +521,10 @@ export const Statements: React.FC = () => {
                     value={editingTemplate.templateContent}
                     onChange={(e) => setEditingTemplate({ ...editingTemplate, templateContent: e.target.value })}
                     className="w-full h-64 p-3 border rounded-md font-mono text-sm"
-                    placeholder="Enter your statement template here. Use variables like {{patient_name}}, {{balance_amount}}, {{statement_date}}, etc."
+                    placeholder="Enter your statement template here. Use variables like patient_name, balance_amount, statement_date, etc."
                   />
                   <p className="text-sm text-muted-foreground mt-2">
-                    Available variables: {{patient_name}}, {{balance_amount}}, {{statement_date}}, {{practice_name}}, {{contact_info}}
+                    Available variables: patient_name, balance_amount, statement_date, practice_name, contact_info
                   </p>
                 </div>
               </div>

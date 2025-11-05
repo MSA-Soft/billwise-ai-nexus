@@ -106,8 +106,8 @@ const PatientBalanceBilling = () => {
     id: statement.patient_id,
     name: statement.patient_name,
     balance: statement.amount_due,
-    status: statement.status === "current" ? "Current" : 
-            statement.status === "overdue" ? "30+ Days" : "Current",
+    status: statement.status === "pending" ? "Current" : 
+            statement.status === "sent" ? "30+ Days" : "Current",
     lastPayment: statement.paid_at ? new Date(statement.paid_at).toLocaleDateString() : "Never",
     paymentMethod: "Manual", // Default payment method
     email: `${statement.patient_name.toLowerCase().replace(/\s+/g, '.')}@email.com`,
@@ -116,7 +116,7 @@ const PatientBalanceBilling = () => {
 
   // Calculate balances from statements
   const totalBalance = statements.reduce((sum, statement) => sum + statement.amount_due, 0);
-  const currentBalance = statements.filter(s => s.status === "current").reduce((sum, statement) => sum + statement.amount_due, 0);
+  const currentBalance = statements.filter(s => s.status === "pending").reduce((sum, statement) => sum + statement.amount_due, 0);
   const overdueBalance = totalBalance - currentBalance;
 
   return (
@@ -343,7 +343,6 @@ const PatientBalanceBilling = () => {
                         <Badge className={getStatusColor(patient.status)}>{patient.status}</Badge>
                         <div className="text-right">
                           <div className="font-semibold text-lg">${patient.balance.toFixed(2)}</div>
-                          <div className="text-xs text-gray-500">{patient.daysOutstanding} days</div>
                         </div>
                       </div>
                     </div>
@@ -363,8 +362,8 @@ const PatientBalanceBilling = () => {
                         <div className="font-medium">{patient.lastPayment}</div>
                       </div>
                       <div>
-                        <div className="text-sm text-gray-600">Related Claim</div>
-                        <div className="font-medium">{patient.insuranceClaim}</div>
+                        <div className="text-sm text-gray-600">Payment Method</div>
+                        <div className="font-medium">{patient.paymentMethod}</div>
                       </div>
                     </div>
 

@@ -2,6 +2,6 @@
 
 export { databaseService } from './databaseService';
 export { aiService } from './aiService';
-export { codeValidationService } from './codeValidationService';
-export { ediService } from './ediService';
-export { payerRulesService } from './payerRulesService';
+export { CodeValidationService } from './codeValidationService';
+export { EDIService } from './ediService';
+export { PayerRulesService } from './payerRulesService';

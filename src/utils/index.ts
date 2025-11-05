@@ -6,4 +6,4 @@ export * from './performance';
 export * from './env';
 export * from './testConnection';
 export * from './debugEnv';
-export { cn } from './utils';
+export { cn } from '@/lib/utils';
