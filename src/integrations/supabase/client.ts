@@ -2,21 +2,30 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Get environment variables with safe development fallbacks
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://pusaxbvoiplsjflmnnyh.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1c2F4YnZvaXBsc2pmbG1ubnloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjEwMzQxNDEsImV4cCI6MjA3NjYxMDE0MX0.Va-Xss-A4mgl7dECObWLMWlb0VwEuTPdPfwmXbEdFbk';
+// Get environment variables (fail fast if missing)
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  // Surface a clear error early instead of silently using a fallback
+  const problems = [
+    !SUPABASE_URL ? 'VITE_SUPABASE_URL' : undefined,
+    !SUPABASE_ANON_KEY ? 'VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY)' : undefined,
+  ].filter(Boolean).join(', ');
+  throw new Error(`Missing Supabase environment variable(s): ${problems}. Add them to your .env.local and restart the dev server.`);
+}
 
 // Log environment status (only in development)
 if (import.meta.env.DEV) {
   console.log('🔧 Supabase Configuration:');
-  console.log('URL:', import.meta.env.VITE_SUPABASE_URL ? '✅ From .env' : '⚠️ Using fallback');
-  console.log('Key:', import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? '✅ From .env' : '⚠️ Using fallback');
+  console.log('URL:', '✅ From .env');
+  console.log('Key:', '✅ From .env');
 }
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,

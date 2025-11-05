@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -73,6 +73,60 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
   const [medicalConditions, setMedicalConditions] = useState('');
   const [previousSurgeries, setPreviousSurgeries] = useState('');
   const [familyHistory, setFamilyHistory] = useState('');
+
+  // Helpers for immediate field-level validation
+  const setFieldError = (field: string, message?: string) => {
+    setErrors(prev => {
+      const next = { ...prev };
+      if (message) {
+        next[field] = message;
+      } else {
+        delete next[field];
+      }
+      return next;
+    });
+  };
+
+  const validateBasicTab = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    if (!gender) newErrors.gender = 'Gender is required';
+    setErrors(prev => ({ ...prev, ...newErrors }));
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateContactTab = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!phone.trim()) newErrors.phone = 'Phone number is required';
+    if (!email.trim()) newErrors.email = 'Email is required';
+    if (!address.trim()) newErrors.address = 'Address is required';
+    if (!city.trim()) newErrors.city = 'City is required';
+    if (!state.trim()) newErrors.state = 'State is required';
+    if (!zipCode.trim()) newErrors.zipCode = 'Zip code is required';
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (email && !emailRegex.test(email)) newErrors.email = 'Please enter a valid email address';
+    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+    if (phone && !phoneRegex.test(phone)) newErrors.phone = 'Please enter a valid phone number';
+    setErrors(prev => ({ ...prev, ...newErrors }));
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateInsuranceTab = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!insuranceCompany.trim()) newErrors.insuranceCompany = 'Insurance company is required';
+    if (!insuranceId.trim()) newErrors.insuranceId = 'Insurance ID is required';
+    setErrors(prev => ({ ...prev, ...newErrors }));
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validateCurrentTab = (tab: string): boolean => {
+    if (tab === 'basic') return validateBasicTab();
+    if (tab === 'contact') return validateContactTab();
+    if (tab === 'insurance') return validateInsuranceTab();
+    return true; // medical tab has no required fields
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -250,6 +304,9 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
             <User className="h-6 w-6 mr-2 text-blue-600" />
             Patient Registration
           </DialogTitle>
+          <DialogDescription>
+            Register a new patient with complete information including contact details, insurance, and medical history.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -287,7 +344,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="firstName"
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFirstName(v);
+                      setFieldError('firstName', v.trim() ? undefined : 'First name is required');
+                    }}
                       placeholder="Enter first name"
                       className={errors.firstName ? 'border-red-500' : ''}
                     />
@@ -303,7 +364,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="lastName"
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setLastName(v);
+                      setFieldError('lastName', v.trim() ? undefined : 'Last name is required');
+                    }}
                       placeholder="Enter last name"
                       className={errors.lastName ? 'border-red-500' : ''}
                     />
@@ -320,7 +385,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                       id="dateOfBirth"
                       type="date"
                       value={dateOfBirth}
-                      onChange={(e) => setDateOfBirth(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDateOfBirth(v);
+                      setFieldError('dateOfBirth', v ? undefined : 'Date of birth is required');
+                    }}
                       className={errors.dateOfBirth ? 'border-red-500' : ''}
                     />
                     {errors.dateOfBirth && (
@@ -333,7 +402,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                   <div className="space-y-2">
                     <Label htmlFor="gender">Gender *</Label>
                     <Select value={gender} onValueChange={setGender}>
-                      <SelectTrigger className={errors.gender ? 'border-red-500' : ''}>
+                    <SelectTrigger className={errors.gender ? 'border-red-500' : ''} onBlur={() => setFieldError('gender', gender ? undefined : 'Gender is required')}>
                         <SelectValue placeholder="Select gender" />
                       </SelectTrigger>
                       <SelectContent>
@@ -440,7 +509,12 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="phone"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPhone(v);
+                      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+                      setFieldError('phone', v.trim() ? (phoneRegex.test(v) ? undefined : 'Please enter a valid phone number') : 'Phone number is required');
+                    }}
                       placeholder="(555) 123-4567"
                       className={errors.phone ? 'border-red-500' : ''}
                     />
@@ -457,7 +531,12 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                       id="email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setEmail(v);
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      setFieldError('email', v.trim() ? (emailRegex.test(v) ? undefined : 'Please enter a valid email address') : 'Email is required');
+                    }}
                       placeholder="patient@example.com"
                       className={errors.email ? 'border-red-500' : ''}
                     />
@@ -475,7 +554,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                   <Input
                     id="address"
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setAddress(v);
+                      setFieldError('address', v.trim() ? undefined : 'Address is required');
+                    }}
                     placeholder="123 Main Street"
                     className={errors.address ? 'border-red-500' : ''}
                   />
@@ -493,7 +576,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="city"
                       value={city}
-                      onChange={(e) => setCity(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCity(v);
+                      setFieldError('city', v.trim() ? undefined : 'City is required');
+                    }}
                       placeholder="Anytown"
                       className={errors.city ? 'border-red-500' : ''}
                     />
@@ -509,7 +596,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="state"
                       value={state}
-                      onChange={(e) => setState(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setState(v);
+                      setFieldError('state', v.trim() ? undefined : 'State is required');
+                    }}
                       placeholder="CA"
                       className={errors.state ? 'border-red-500' : ''}
                     />
@@ -525,7 +616,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="zipCode"
                       value={zipCode}
-                      onChange={(e) => setZipCode(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setZipCode(v);
+                      setFieldError('zipCode', v.trim() ? undefined : 'Zip code is required');
+                    }}
                       placeholder="12345"
                       className={errors.zipCode ? 'border-red-500' : ''}
                     />
@@ -599,7 +694,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="insuranceCompany"
                       value={insuranceCompany}
-                      onChange={(e) => setInsuranceCompany(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setInsuranceCompany(v);
+                      setFieldError('insuranceCompany', v.trim() ? undefined : 'Insurance company is required');
+                    }}
                       placeholder="Blue Cross Blue Shield"
                       className={errors.insuranceCompany ? 'border-red-500' : ''}
                     />
@@ -615,7 +714,11 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Input
                       id="insuranceId"
                       value={insuranceId}
-                      onChange={(e) => setInsuranceId(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setInsuranceId(v);
+                      setFieldError('insuranceId', v.trim() ? undefined : 'Insurance ID is required');
+                    }}
                       placeholder="ABC123456789"
                       className={errors.insuranceId ? 'border-red-500' : ''}
                     />
@@ -785,7 +888,9 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                   const tabs = ['basic', 'contact', 'insurance', 'medical'];
                   const currentIndex = tabs.indexOf(activeTab);
                   if (currentIndex < tabs.length - 1) {
-                    setActiveTab(tabs[currentIndex + 1]);
+                    if (validateCurrentTab(activeTab)) {
+                      setActiveTab(tabs[currentIndex + 1]);
+                    }
                   }
                 }}
                 disabled={isSubmitting}
