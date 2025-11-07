@@ -120,58 +120,135 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
   // Initialize form with patient data
   useEffect(() => {
     if (patient) {
+      // Parse name
       const nameParts = patient.name.split(' ');
       setFirstName(nameParts[0] || '');
       setLastName(nameParts.slice(1).join(' ') || '');
+      
+      // Basic info
       setDateOfBirth(patient.dateOfBirth || '');
-      setPhone(patient.phone || '');
-      setEmail(patient.email || '');
-      setAddress(patient.address || '');
-      setInsuranceCompany(patient.insurance || '');
+      setGender((patient as any).gender || '');
+      setSsn((patient as any).ssn || '');
+      setMaritalStatus((patient as any).maritalStatus || '');
+      setRace((patient as any).race || '');
+      setEthnicity((patient as any).ethnicity || '');
+      setLanguage((patient as any).language || '');
       setStatus(patient.status || 'active');
       setRiskLevel(patient.riskLevel || 'low');
       
+      // Contact info
+      setPhone(patient.phone || '');
+      setEmail(patient.email || '');
+      
+      // Parse address - handle both string format and separate fields
+      if (patient.address) {
+        if (typeof patient.address === 'string' && patient.address.includes(',')) {
+          // Parse "address, city, state zip" format
+          const addressParts = patient.address.split(',');
+          if (addressParts.length >= 3) {
+            setAddress(addressParts[0].trim());
+            setCity(addressParts[1].trim());
+            const stateZip = addressParts[2].trim().split(' ');
+            setState(stateZip[0] || '');
+            setZipCode(stateZip.slice(1).join(' ') || '');
+          } else {
+            setAddress(patient.address);
+          }
+        } else {
+          setAddress(patient.address);
+        }
+      }
+      
+      // Use separate fields if available
+      if ((patient as any).city) setCity((patient as any).city);
+      if ((patient as any).state) setState((patient as any).state);
+      if ((patient as any).zipCode) setZipCode((patient as any).zipCode);
+      
+      // Insurance
+      setInsuranceCompany(patient.insurance || (patient as any).insuranceCompany || '');
+      setInsuranceId((patient as any).insuranceId || '');
+      setGroupNumber((patient as any).groupNumber || '');
+      setPolicyHolderName((patient as any).policyHolderName || '');
+      setPolicyHolderRelationship((patient as any).policyHolderRelationship || '');
+      setSecondaryInsurance((patient as any).secondaryInsurance || '');
+      setSecondaryInsuranceId((patient as any).secondaryInsuranceId || '');
+      
+      // Emergency contact
       if (patient.emergencyContact) {
         setEmergencyContactName(patient.emergencyContact.name || '');
         setEmergencyContactPhone(patient.emergencyContact.phone || '');
         setEmergencyContactRelation(patient.emergencyContact.relation || '');
       }
       
+      // Medical info
       if (patient.medicalInfo) {
         setAllergies(patient.medicalInfo.allergies?.join(', ') || '');
         setCurrentMedications(patient.medicalInfo.medications?.join(', ') || '');
         setMedicalConditions(patient.medicalInfo.conditions?.join(', ') || '');
       }
+      
+      // Additional medical fields
+      setPreviousSurgeries((patient as any).previousSurgeries || '');
+      setFamilyHistory((patient as any).familyHistory || '');
     }
   }, [patient]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    // Basic Information validation
-    if (!firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    // For EDIT mode, we're more lenient - only validate formats, not required fields
+    // since we're editing existing data
 
-    // Contact Information validation
-    if (!phone.trim()) newErrors.phone = 'Phone number is required';
-    if (!email.trim()) newErrors.email = 'Email is required';
-    if (!address.trim()) newErrors.address = 'Address is required';
+    // Basic Information validation - only validate format if provided
+    if (firstName.trim() && firstName.trim().length < 2) {
+      newErrors.firstName = 'First name must be at least 2 characters';
+    }
+    if (lastName.trim() && lastName.trim().length < 2) {
+      newErrors.lastName = 'Last name must be at least 2 characters';
+    }
+    
+    // Date of birth validation - only if provided
+    if (dateOfBirth) {
+      const dob = new Date(dateOfBirth);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (isNaN(dob.getTime())) {
+        newErrors.dateOfBirth = 'Please enter a valid date';
+      } else if (dob > today) {
+        newErrors.dateOfBirth = 'Date of birth cannot be in the future';
+      } else {
+        // Validate that date is not too far in the past
+        const minDate = new Date();
+        minDate.setFullYear(today.getFullYear() - 150);
+        if (dob < minDate) {
+          newErrors.dateOfBirth = 'Please enter a valid date of birth';
+        }
+      }
+    }
 
-    // Insurance validation
-    if (!insuranceCompany.trim()) newErrors.insuranceCompany = 'Insurance company is required';
-
+    // Contact Information validation - only validate format if provided
     // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (email && !emailRegex.test(email)) {
-      newErrors.email = 'Please enter a valid email address';
+    if (email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        newErrors.email = 'Please enter a valid email address';
+      }
     }
 
     // Phone format validation
-    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
-    if (phone && !phoneRegex.test(phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
+    if (phone.trim()) {
+      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+      if (!phoneRegex.test(phone)) {
+        newErrors.phone = 'Please enter a valid phone number';
+      }
     }
+
+    // Address validation - only if address is provided, city/state/zip are optional
+    // No strict validation for address fields in edit mode
+
+    // Insurance validation - optional in edit mode
+    // No strict validation
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -184,15 +261,40 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
 
     setIsSubmitting(true);
     try {
-      const updatedPatient: PatientData = {
+      // Helper function to calculate accurate age
+      const calculateAge = (dob: string): number | null => {
+        if (!dob) return null;
+        try {
+          const birthDate = new Date(dob);
+          const today = new Date();
+          if (isNaN(birthDate.getTime()) || birthDate > today) return 0;
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          return age >= 0 ? age : 0;
+        } catch {
+          return null;
+        }
+      };
+
+      const updatedPatient: any = {
         ...patient,
+        id: patient.id, // Ensure ID is preserved
         name: `${firstName} ${lastName}`.trim(),
-        age: new Date().getFullYear() - new Date(dateOfBirth).getFullYear(),
+        firstName, // Add for database mapping
+        lastName, // Add for database mapping
+        age: calculateAge(dateOfBirth),
         dateOfBirth,
         phone,
         email,
-        address,
+        address, // Will be parsed in handlePatientUpdate
+        city, // Separate field for database
+        state, // Separate field for database
+        zipCode, // Separate field for database
         insurance: insuranceCompany,
+        insuranceCompany, // For database mapping
         status,
         riskLevel,
         emergencyContact: {
@@ -205,7 +307,7 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
           medications: currentMedications.split(',').map(m => m.trim()).filter(m => m),
           conditions: medicalConditions.split(',').map(c => c.trim()).filter(c => c)
         },
-        // Additional fields
+        // Additional fields for database
         gender,
         ssn,
         maritalStatus,
@@ -222,9 +324,14 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
         familyHistory
       };
 
-      onSave(updatedPatient);
-    } catch (error) {
+      // Call async onSave and handle errors
+      await onSave(updatedPatient);
+    } catch (error: any) {
       console.error('Error updating patient:', error);
+      // Error is already handled in handlePatientUpdate, but we can add additional handling here if needed
+      if (error.message) {
+        setErrors({ submit: error.message });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -742,6 +849,15 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
             </Card>
           </TabsContent>
         </Tabs>
+
+        {errors.submit && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center">
+              <AlertCircle className="h-4 w-4 text-red-600 mr-2" />
+              <p className="text-sm text-red-600">{errors.submit}</p>
+            </div>
+          </div>
+        )}
 
         <DialogFooter className="flex justify-between">
           <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>

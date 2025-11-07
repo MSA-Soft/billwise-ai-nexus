@@ -12,7 +12,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "verify:supabase": "node verify-supabase-setup.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

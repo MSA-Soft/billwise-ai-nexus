@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Facility {
   id: string;
@@ -108,13 +110,120 @@ const placeOfServiceOptions = [
 ];
 
 export const Facilities: React.FC = () => {
-  const [facilities, setFacilities] = useState<Facility[]>(sampleFacilities);
+  const { toast } = useToast();
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
   const [expandedFacility, setExpandedFacility] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+
+  // Fetch facilities from database
+  useEffect(() => {
+    fetchFacilitiesFromDatabase();
+  }, []);
+
+  const fetchFacilitiesFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching facilities from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch facilities.');
+        setFacilities([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('facilities' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching facilities:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Facilities table not found. Please run CREATE_FACILITIES_TABLE_COMPLETE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Facilities table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading facilities',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setFacilities([]);
+        return;
+      }
+
+      // Transform database records to match Facility interface
+      const transformedFacilities: Facility[] = (data || []).map((dbFacility: any) => {
+        // Handle name field - use name or facility_name
+        const facilityName = dbFacility.name || dbFacility.facility_name || '';
+        // Combine address_line1 and address_line2 into single address field for UI
+        const address = [dbFacility.address_line1, dbFacility.address_line2]
+          .filter(Boolean)
+          .join(', ') || '';
+        
+        return {
+          id: dbFacility.id,
+          name: facilityName,
+          npi: dbFacility.npi || '',
+          taxonomySpecialty: dbFacility.taxonomy_specialty || '',
+          sequenceNumber: dbFacility.sequence_number || '',
+          referenceNumber: dbFacility.reference_number || '',
+          address: address,
+          city: dbFacility.city || '',
+          state: dbFacility.state || '',
+          zipCode: dbFacility.zip_code || dbFacility.zip || '',
+          phone: dbFacility.phone || '',
+          fax: dbFacility.fax || '',
+          email: dbFacility.email || '',
+          taxId: dbFacility.tax_id || '',
+          cliaId: dbFacility.clia_id || '',
+          locationProviderId: dbFacility.location_provider_id || '',
+          siteId: dbFacility.site_id || '',
+          blueCrossId: dbFacility.blue_cross_id || '',
+          blueShieldId: dbFacility.blue_shield_id || '',
+          medicareId: dbFacility.medicare_id || '',
+          medicaidId: dbFacility.medicaid_id || '',
+          locatorCode: dbFacility.locator_code || '',
+          placeOfService: dbFacility.place_of_service || '',
+          status: (dbFacility.status || (dbFacility.is_active ? 'active' : 'inactive')) as 'active' | 'inactive',
+          createdAt: dbFacility.created_at || '',
+          updatedAt: dbFacility.updated_at || dbFacility.created_at || ''
+        };
+      });
+
+      console.log(`✅ Successfully loaded ${transformedFacilities.length} facilities from database`);
+      setFacilities(transformedFacilities);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchFacilitiesFromDatabase:', error);
+      toast({
+        title: 'Error loading facilities',
+        description: error.message || 'Failed to load facilities from database',
+        variant: 'destructive',
+      });
+      setFacilities([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
   const [newFacility, setNewFacility] = useState<Partial<Facility>>({
     name: '',
     npi: '',
@@ -152,68 +261,119 @@ export const Facilities: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddFacility = () => {
-    if (!newFacility.name || !newFacility.npi) {
-      alert('Please fill in required fields');
+  const handleAddFacility = async () => {
+    if (!newFacility.name) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Name).",
+        variant: "destructive",
+      });
       return;
     }
 
-    const facility: Facility = {
-      id: Date.now().toString(),
-      name: newFacility.name!,
-      npi: newFacility.npi!,
-      taxonomySpecialty: newFacility.taxonomySpecialty || '',
-      sequenceNumber: newFacility.sequenceNumber || 'NEW',
-      referenceNumber: newFacility.referenceNumber || '',
-      address: newFacility.address || '',
-      city: newFacility.city || '',
-      state: newFacility.state || '',
-      zipCode: newFacility.zipCode || '',
-      phone: newFacility.phone || '',
-      fax: newFacility.fax || '',
-      email: newFacility.email || '',
-      taxId: newFacility.taxId || '',
-      cliaId: newFacility.cliaId || '',
-      locationProviderId: newFacility.locationProviderId || '',
-      siteId: newFacility.siteId || '',
-      blueCrossId: newFacility.blueCrossId || '',
-      blueShieldId: newFacility.blueShieldId || '',
-      medicareId: newFacility.medicareId || '',
-      medicaidId: newFacility.medicaidId || '',
-      locatorCode: newFacility.locatorCode || '',
-      placeOfService: newFacility.placeOfService || '',
-      status: newFacility.status || 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    try {
+      console.log('💾 Creating facility:', newFacility);
 
-    setFacilities([...facilities, facility]);
-    setNewFacility({
-      name: '',
-      npi: '',
-      taxonomySpecialty: '',
-      sequenceNumber: 'NEW',
-      referenceNumber: '',
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      phone: '',
-      fax: '',
-      email: '',
-      taxId: '',
-      cliaId: '',
-      locationProviderId: '',
-      siteId: '',
-      blueCrossId: '',
-      blueShieldId: '',
-      medicareId: '',
-      medicaidId: '',
-      locatorCode: '',
-      placeOfService: '',
-      status: 'active'
-    });
-    setIsAddDialogOpen(false);
+      // Get current user session for user_id (optional - facilities don't need to be tied to users)
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // Split address into address_line1 and address_line2
+      const addressParts = (newFacility.address || '').split(',').map(s => s.trim());
+      const addressLine1 = addressParts[0] || null;
+      const addressLine2 = addressParts.length > 1 ? addressParts.slice(1).join(', ') : null;
+
+      // Prepare data for database (snake_case)
+      const insertData: any = {
+        user_id: session?.user?.id || null, // Set to current user or null
+        name: newFacility.name!.trim(),
+        facility_name: newFacility.name!.trim(), // Also set facility_name for compatibility
+        npi: newFacility.npi || null,
+        taxonomy_specialty: newFacility.taxonomySpecialty || null,
+        sequence_number: newFacility.sequenceNumber || null,
+        reference_number: newFacility.referenceNumber || null,
+        address_line1: addressLine1,
+        address_line2: addressLine2,
+        city: newFacility.city || null,
+        state: newFacility.state || null,
+        zip_code: newFacility.zipCode || null,
+        phone: newFacility.phone || null,
+        fax: newFacility.fax || null,
+        email: newFacility.email || null,
+        tax_id: newFacility.taxId || null,
+        clia_id: newFacility.cliaId || null,
+        location_provider_id: newFacility.locationProviderId || null,
+        site_id: newFacility.siteId || null,
+        blue_cross_id: newFacility.blueCrossId || null,
+        blue_shield_id: newFacility.blueShieldId || null,
+        medicare_id: newFacility.medicareId || null,
+        medicaid_id: newFacility.medicaidId || null,
+        locator_code: newFacility.locatorCode || null,
+        place_of_service: newFacility.placeOfService || null,
+        status: (newFacility.status || 'active') as 'active' | 'inactive',
+        is_active: (newFacility.status || 'active') === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('facilities' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating facility:', error);
+        throw new Error(error.message || 'Failed to create facility');
+      }
+
+      // Refresh the facilities list
+      await fetchFacilitiesFromDatabase();
+
+      // Reset form
+      setNewFacility({
+        name: '',
+        npi: '',
+        taxonomySpecialty: '',
+        sequenceNumber: 'NEW',
+        referenceNumber: '',
+        address: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        phone: '',
+        fax: '',
+        email: '',
+        taxId: '',
+        cliaId: '',
+        locationProviderId: '',
+        siteId: '',
+        blueCrossId: '',
+        blueShieldId: '',
+        medicareId: '',
+        medicaidId: '',
+        locatorCode: '',
+        placeOfService: '',
+        status: 'active'
+      });
+      setIsAddDialogOpen(false);
+
+      toast({
+        title: "Facility Added",
+        description: `${newFacility.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create facility:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create facility. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditFacility = (facility: Facility) => {
@@ -221,23 +381,126 @@ export const Facilities: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateFacility = () => {
-    if (!editingFacility) return;
+  const handleUpdateFacility = async () => {
+    if (!editingFacility || !editingFacility.id) {
+      toast({
+        title: "Error",
+        description: "Facility ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setFacilities(facilities.map(f => 
-      f.id === editingFacility.id 
-        ? { ...editingFacility, updatedAt: new Date().toISOString().split('T')[0] }
-        : f
-    ));
-    setIsEditDialogOpen(false);
-    setEditingFacility(null);
-  };
+    try {
+      console.log('💾 Updating facility:', editingFacility);
 
-  const handleDeleteFacility = (id: string) => {
-    if (confirm('Are you sure you want to delete this facility?')) {
-      setFacilities(facilities.filter(f => f.id !== id));
+      // Split address into address_line1 and address_line2
+      const addressParts = (editingFacility.address || '').split(',').map(s => s.trim());
+      const addressLine1 = addressParts[0] || null;
+      const addressLine2 = addressParts.length > 1 ? addressParts.slice(1).join(', ') : null;
+
+      // Prepare data for database (snake_case)
+      const updateData: any = {
+        name: editingFacility.name.trim(),
+        facility_name: editingFacility.name.trim(), // Also update facility_name for compatibility
+        npi: editingFacility.npi || null,
+        taxonomy_specialty: editingFacility.taxonomySpecialty || null,
+        sequence_number: editingFacility.sequenceNumber || null,
+        reference_number: editingFacility.referenceNumber || null,
+        address_line1: addressLine1,
+        address_line2: addressLine2,
+        city: editingFacility.city || null,
+        state: editingFacility.state || null,
+        zip_code: editingFacility.zipCode || null,
+        phone: editingFacility.phone || null,
+        fax: editingFacility.fax || null,
+        email: editingFacility.email || null,
+        tax_id: editingFacility.taxId || null,
+        clia_id: editingFacility.cliaId || null,
+        location_provider_id: editingFacility.locationProviderId || null,
+        site_id: editingFacility.siteId || null,
+        blue_cross_id: editingFacility.blueCrossId || null,
+        blue_shield_id: editingFacility.blueShieldId || null,
+        medicare_id: editingFacility.medicareId || null,
+        medicaid_id: editingFacility.medicaidId || null,
+        locator_code: editingFacility.locatorCode || null,
+        place_of_service: editingFacility.placeOfService || null,
+        status: editingFacility.status as 'active' | 'inactive',
+        is_active: editingFacility.status === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('facilities' as any)
+        .update(updateData)
+        .eq('id', editingFacility.id);
+
+      if (error) {
+        console.error('❌ Error updating facility:', error);
+        throw new Error(error.message || 'Failed to update facility');
+      }
+
+      // Refresh the facilities list
+      await fetchFacilitiesFromDatabase();
+
+      setIsEditDialogOpen(false);
+      setEditingFacility(null);
+
+      toast({
+        title: "Facility Updated",
+        description: `${editingFacility.name} has been successfully updated.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to update facility:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update facility. Please try again.',
+        variant: "destructive",
+      });
     }
   };
+
+  const handleDeleteFacility = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this facility? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting facility:', id);
+
+      const { error } = await supabase
+        .from('facilities' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting facility:', error);
+        throw new Error(error.message || 'Failed to delete facility');
+      }
+
+      // Refresh the facilities list
+      await fetchFacilitiesFromDatabase();
+
+      toast({
+        title: "Facility Deleted",
+        description: "Facility has been successfully deleted.",
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to delete facility:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete facility. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
 
   const handleExportFacilities = () => {
     const csvContent = [
@@ -337,7 +600,31 @@ export const Facilities: React.FC = () => {
 
       {/* Facilities List */}
       <div className="space-y-4">
-        {filteredFacilities.map((facility) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading facilities...</p>
+            </div>
+          </div>
+        ) : filteredFacilities.length === 0 ? (
+          <div className="text-center py-12">
+            <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No facilities found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterStatus !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by adding your first facility"}
+            </p>
+            {!searchTerm && filterStatus === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Facility
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredFacilities.map((facility) => (
           <Card key={facility.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -410,7 +697,8 @@ export const Facilities: React.FC = () => {
               </CardContent>
             )}
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Facility Dialog */}

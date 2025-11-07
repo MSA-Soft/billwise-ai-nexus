@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import CustomerSetup from "./pages/CustomerSetup";
+import PatientPortal from "./pages/PatientPortal";
 import NotFound from "./pages/NotFound";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -38,6 +39,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <CustomerSetup />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/patient-portal" 
+                element={
+                  <ProtectedRoute>
+                    <PatientPortal />
                   </ProtectedRoute>
                 } 
               />

@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -58,68 +60,187 @@ export function Schedule() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [showAppointmentDetails, setShowAppointmentDetails] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start as loading
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const isFetchingRef = useRef(false);
+  const { toast } = useToast();
 
-  // Mock data for demonstration
+  // Fetch appointments from database
   useEffect(() => {
-    const mockAppointments: Appointment[] = [
-      {
-        id: '1',
-        patient_id: 'P001',
-        provider_id: 'PR001',
-        appointment_type: 'consultation',
-        scheduled_date: new Date().toISOString().split('T')[0],
-        scheduled_time: '09:00',
-        duration_minutes: 30,
-        status: 'scheduled',
-        location: 'Room 101',
-        notes: 'Regular checkup',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        patient: {
-          id: 'P001',
-          first_name: 'John',
-          last_name: 'Doe',
-          phone: '(555) 123-4567',
-          email: 'john.doe@email.com'
-        },
-        provider: {
-          id: 'PR001',
-          name: 'Dr. Smith',
-          specialty: 'General Practice'
-        }
-      },
-      {
-        id: '2',
-        patient_id: 'P002',
-        provider_id: 'PR002',
-        appointment_type: 'follow_up',
-        scheduled_date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-        scheduled_time: '14:30',
-        duration_minutes: 45,
-        status: 'confirmed',
-        location: 'Room 102',
-        notes: 'Follow-up appointment',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        patient: {
-          id: 'P002',
-          first_name: 'Jane',
-          last_name: 'Smith',
-          phone: '(555) 987-6543',
-          email: 'jane.smith@email.com'
-        },
-        provider: {
-          id: 'PR002',
-          name: 'Dr. Johnson',
-          specialty: 'Cardiology'
-        }
-      }
-    ];
-    setAppointments(mockAppointments);
+    fetchAppointmentsFromDatabase();
   }, []);
+
+  const fetchAppointmentsFromDatabase = async () => {
+    // Prevent duplicate concurrent fetches
+    if (isFetchingRef.current) {
+      console.log('⏸️ Appointment fetch already in progress, skipping...');
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching appointments from database...');
+
+      // Check authentication first
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch appointments.');
+        setAppointments([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      // Fetch appointments first
+      const { data: appointmentsData, error: appointmentsError } = await supabase
+        .from('appointments' as any)
+        .select('*')
+        .order('scheduled_date', { ascending: true })
+        .order('scheduled_time', { ascending: true });
+
+      if (appointmentsError) {
+        console.error('❌ Error fetching appointments:', appointmentsError);
+        
+        if (appointmentsError.code === '42P01' || appointmentsError.message.includes('does not exist')) {
+          console.warn('⚠️ Appointments table not found. Showing empty list.');
+          setAppointments([]);
+          setIsLoading(false);
+          isFetchingRef.current = false;
+          return;
+        }
+
+        toast({
+          title: 'Error loading appointments',
+          description: appointmentsError.message,
+          variant: 'destructive',
+        });
+        setAppointments([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      // Fetch patient and provider data separately for each appointment
+      let finalAppointmentsData: any[] = [];
+      
+      if (appointmentsData && appointmentsData.length > 0) {
+        // Get unique patient IDs
+        const patientIds = [...new Set(appointmentsData.map(apt => apt.patient_id).filter(Boolean))];
+        const providerIds = [...new Set(appointmentsData.map(apt => apt.provider_id).filter(Boolean))];
+
+        // Fetch patients
+        let patientsMap: Record<string, any> = {};
+        if (patientIds.length > 0) {
+          const { data: patientsData } = await supabase
+            .from('patients' as any)
+            .select('id, first_name, last_name, phone, email')
+            .in('id', patientIds);
+          
+          if (patientsData) {
+            patientsData.forEach(patient => {
+              patientsMap[patient.id] = patient;
+            });
+          }
+        }
+
+        // Fetch providers
+        let providersMap: Record<string, any> = {};
+        if (providerIds.length > 0) {
+          const { data: providersData } = await supabase
+            .from('providers' as any)
+            .select('id, first_name, last_name, title')
+            .in('id', providerIds);
+          
+          if (providersData) {
+            providersData.forEach(provider => {
+              providersMap[provider.id] = provider;
+            });
+          }
+        }
+
+        // Combine appointments with patient and provider data
+        finalAppointmentsData = appointmentsData.map((apt: any) => ({
+          ...apt,
+          patients: apt.patient_id ? patientsMap[apt.patient_id] : null,
+          providers: apt.provider_id ? providersMap[apt.provider_id] : null,
+        }));
+      }
+
+        console.log('📦 Raw appointments data:', finalAppointmentsData);
+
+        // Transform database records to match component's appointment format
+        if (finalAppointmentsData && Array.isArray(finalAppointmentsData) && finalAppointmentsData.length > 0) {
+          const transformedAppointments: Appointment[] = finalAppointmentsData.map((dbAppointment: any) => {
+          // Handle patient data (could be object from join or null)
+          let patientData = null;
+          if (dbAppointment.patients) {
+            // If it's an array from join, take first element
+            const patient = Array.isArray(dbAppointment.patients) ? dbAppointment.patients[0] : dbAppointment.patients;
+            if (patient) {
+              patientData = {
+                id: patient.id,
+                first_name: patient.first_name || '',
+                last_name: patient.last_name || '',
+                phone: patient.phone || '',
+                email: patient.email || '',
+              };
+            }
+          }
+
+          // Handle provider data (could be object from join or null)
+          let providerData = null;
+          if (dbAppointment.providers) {
+            // If it's an array from join, take first element
+            const provider = Array.isArray(dbAppointment.providers) ? dbAppointment.providers[0] : dbAppointment.providers;
+            if (provider) {
+              providerData = {
+                id: provider.id,
+                name: `${provider.title ? `${provider.title} ` : ''}${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 'Unknown Provider',
+              };
+            }
+          }
+
+          return {
+            id: dbAppointment.id,
+            patient_id: dbAppointment.patient_id || '',
+            provider_id: dbAppointment.provider_id || '',
+            appointment_type: dbAppointment.appointment_type || '',
+            scheduled_date: dbAppointment.scheduled_date || '',
+            scheduled_time: dbAppointment.scheduled_time || '00:00',
+            duration_minutes: dbAppointment.duration_minutes || 30,
+            status: dbAppointment.status || 'scheduled',
+            location: dbAppointment.location || '',
+            notes: dbAppointment.notes || '',
+            created_at: dbAppointment.created_at || new Date().toISOString(),
+            updated_at: dbAppointment.updated_at || new Date().toISOString(),
+            patient: patientData,
+            provider: providerData,
+          };
+        });
+
+          setAppointments(transformedAppointments);
+          console.log(`✅ Successfully loaded ${transformedAppointments.length} appointments from database`);
+        } else {
+          console.log('📋 No appointments found in database');
+          setAppointments([]);
+        }
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchAppointmentsFromDatabase:', error);
+      setAppointments([]);
+      toast({
+        title: 'Error loading appointments',
+        description: error.message || 'Failed to load appointments from database',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+      console.log('🏁 Appointment fetch completed.');
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -148,56 +269,250 @@ export function Schedule() {
   };
 
   const handleAppointmentDelete = async (appointmentId: string) => {
-    if (window.confirm('Are you sure you want to delete this appointment?')) {
-      try {
-        setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
-        alert('Appointment deleted successfully!');
-      } catch (error) {
-        console.error('Failed to delete appointment:', error);
-        alert('Failed to delete appointment. Please try again.');
+    if (!window.confirm('Are you sure you want to delete this appointment?')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting appointment:', appointmentId);
+
+      const { error } = await supabase
+        .from('appointments' as any)
+        .delete()
+        .eq('id', appointmentId);
+
+      if (error) {
+        console.error('❌ Error deleting appointment:', error);
+        throw new Error(error.message || 'Failed to delete appointment');
       }
+
+      // Update local state
+      setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
+      
+      // Close details modal if open
+      if (selectedAppointment?.id === appointmentId) {
+        setShowAppointmentDetails(false);
+        setSelectedAppointment(null);
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Appointment deleted successfully.',
+      });
+
+      // Refresh appointments list
+      await fetchAppointmentsFromDatabase();
+    } catch (error: any) {
+      console.error('💥 Failed to delete appointment:', error);
+      toast({
+        title: 'Error deleting appointment',
+        description: error.message || 'Failed to delete appointment. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
   const handleAppointmentSave = async (appointmentData: any) => {
     try {
-      if (selectedAppointment) {
+      console.log('💾 Saving appointment:', appointmentData);
+
+      // Check if this is an update (either selectedAppointment exists or appointmentData has an id)
+      const appointmentId = selectedAppointment?.id || appointmentData.id;
+      if (appointmentId) {
         // Update existing appointment
+        const updateData: any = {
+          patient_id: appointmentData.patient_id || appointmentData.patientId || null,
+          provider_id: appointmentData.provider_id || appointmentData.providerId || null,
+          appointment_type: appointmentData.appointment_type || appointmentData.appointmentType || null,
+          scheduled_date: appointmentData.scheduled_date || appointmentData.appointmentDate || appointmentData.scheduledDate,
+          scheduled_time: appointmentData.scheduled_time || appointmentData.appointmentTime || appointmentData.scheduledTime,
+          duration_minutes: appointmentData.duration_minutes || appointmentData.duration || 30,
+          status: appointmentData.status || 'scheduled',
+          location: appointmentData.location || null,
+          notes: appointmentData.notes || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        // Remove null/undefined values
+        Object.keys(updateData).forEach(key => {
+          if (updateData[key] === null || updateData[key] === undefined) {
+            delete updateData[key];
+          }
+        });
+
+        const { data: updated, error } = await supabase
+          .from('appointments' as any)
+          .update(updateData)
+          .eq('id', appointmentId)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('❌ Error updating appointment:', error);
+          throw new Error(error.message || 'Failed to update appointment');
+        }
+
+        // Fetch patient and provider data separately
+        let patient = null;
+        let provider = null;
+
+        if (updated.patient_id) {
+          const { data: patientData } = await supabase
+            .from('patients' as any)
+            .select('id, first_name, last_name, phone, email')
+            .eq('id', updated.patient_id)
+            .single();
+          patient = patientData;
+        }
+
+        if (updated.provider_id) {
+          const { data: providerData } = await supabase
+            .from('providers' as any)
+            .select('id, first_name, last_name, title')
+            .eq('id', updated.provider_id)
+            .single();
+          provider = providerData;
+        }
+
+        // Transform updated appointment
+        const transformedAppointment: Appointment = {
+          id: updated.id,
+          patient_id: updated.patient_id || '',
+          provider_id: updated.provider_id || '',
+          appointment_type: updated.appointment_type || '',
+          scheduled_date: updated.scheduled_date || '',
+          scheduled_time: updated.scheduled_time || '00:00',
+          duration_minutes: updated.duration_minutes || 30,
+          status: updated.status || 'scheduled',
+          location: updated.location || '',
+          notes: updated.notes || '',
+          created_at: updated.created_at || new Date().toISOString(),
+          updated_at: updated.updated_at || new Date().toISOString(),
+          patient: patient ? {
+            id: patient.id,
+            first_name: patient.first_name || '',
+            last_name: patient.last_name || '',
+            phone: patient.phone || '',
+            email: patient.email || '',
+          } : undefined,
+          provider: provider ? {
+            id: provider.id,
+            name: `${provider.title ? `${provider.title} ` : ''}${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 'Unknown Provider',
+          } : undefined,
+        };
+
+        // Update local state
         setAppointments(prev => prev.map(apt => 
-          apt.id === selectedAppointment.id 
-            ? { ...apt, ...appointmentData, updated_at: new Date().toISOString() }
-            : apt
+          apt.id === transformedAppointment.id ? transformedAppointment : apt
         ));
-        alert('Appointment updated successfully!');
+
+        toast({
+          title: 'Success',
+          description: 'Appointment updated successfully.',
+        });
       } else {
         // Create new appointment
-        const newAppointment: Appointment = {
-          id: Date.now().toString(),
-          ...appointmentData,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          patient: {
-            id: appointmentData.patient_id,
-            first_name: 'Unknown',
-            last_name: 'Patient',
-            phone: '',
-            email: ''
-          },
-          provider: {
-            id: 'PR001',
-            name: 'Dr. Smith',
-            specialty: 'General Practice'
-          }
+        const insertData: any = {
+          patient_id: appointmentData.patient_id || appointmentData.patientId || null,
+          provider_id: appointmentData.provider_id || appointmentData.providerId || null,
+          appointment_type: appointmentData.appointment_type || appointmentData.appointmentType || null,
+          scheduled_date: appointmentData.scheduled_date || appointmentData.appointmentDate || appointmentData.scheduledDate,
+          scheduled_time: appointmentData.scheduled_time || appointmentData.appointmentTime || appointmentData.scheduledTime,
+          duration_minutes: appointmentData.duration_minutes || appointmentData.duration || 30,
+          status: appointmentData.status || 'scheduled',
+          location: appointmentData.location || null,
+          notes: appointmentData.notes || null,
         };
-        setAppointments(prev => [...prev, newAppointment]);
-        alert('Appointment created successfully!');
+
+        // Remove null values for optional fields
+        Object.keys(insertData).forEach(key => {
+          if (insertData[key] === null || insertData[key] === undefined) {
+            delete insertData[key];
+          }
+        });
+
+        const { data: created, error } = await supabase
+          .from('appointments' as any)
+          .insert(insertData)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('❌ Error creating appointment:', error);
+          throw new Error(error.message || 'Failed to create appointment');
+        }
+
+        // Fetch patient and provider data separately
+        let patient = null;
+        let provider = null;
+
+        if (created.patient_id) {
+          const { data: patientData } = await supabase
+            .from('patients' as any)
+            .select('id, first_name, last_name, phone, email')
+            .eq('id', created.patient_id)
+            .single();
+          patient = patientData;
+        }
+
+        if (created.provider_id) {
+          const { data: providerData } = await supabase
+            .from('providers' as any)
+            .select('id, first_name, last_name, title')
+            .eq('id', created.provider_id)
+            .single();
+          provider = providerData;
+        }
+
+        // Transform created appointment
+
+        const transformedAppointment: Appointment = {
+          id: created.id,
+          patient_id: created.patient_id || '',
+          provider_id: created.provider_id || '',
+          appointment_type: created.appointment_type || '',
+          scheduled_date: created.scheduled_date || '',
+          scheduled_time: created.scheduled_time || '00:00',
+          duration_minutes: created.duration_minutes || 30,
+          status: created.status || 'scheduled',
+          location: created.location || '',
+          notes: created.notes || '',
+          created_at: created.created_at || new Date().toISOString(),
+          updated_at: created.updated_at || new Date().toISOString(),
+          patient: patient ? {
+            id: patient.id,
+            first_name: patient.first_name || '',
+            last_name: patient.last_name || '',
+            phone: patient.phone || '',
+            email: patient.email || '',
+          } : undefined,
+          provider: provider ? {
+            id: provider.id,
+            name: `${provider.title ? `${provider.title} ` : ''}${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 'Unknown Provider',
+          } : undefined,
+        };
+
+        // Update local state
+        setAppointments(prev => [...prev, transformedAppointment]);
+
+        toast({
+          title: 'Success',
+          description: 'Appointment created successfully.',
+        });
       }
       
       setShowAppointmentForm(false);
       setSelectedAppointment(null);
-    } catch (error) {
-      console.error('Failed to save appointment:', error);
-      alert('Failed to save appointment. Please try again.');
+
+      // Refresh appointments list to ensure consistency
+      await fetchAppointmentsFromDatabase();
+    } catch (error: any) {
+      console.error('💥 Failed to save appointment:', error);
+      toast({
+        title: 'Error saving appointment',
+        description: error.message || 'Failed to save appointment. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -309,8 +624,8 @@ export function Schedule() {
             <Calendar className="h-4 w-4 mr-2" />
             Today
           </Button>
-          <Button variant="outline" onClick={() => window.location.reload()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button variant="outline" onClick={fetchAppointmentsFromDatabase} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           <Button onClick={handleNewAppointment}>
@@ -574,6 +889,7 @@ export function Schedule() {
             setSelectedAppointment(null);
           }}
           onSave={handleAppointmentSave}
+          existingAppointment={selectedAppointment}
         />
       )}
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronUp, ChevronRight, FileText, Hash, DollarSign, Syringe, UserPlus, Circle, Building, MessageSquare, Minus, Package, List, DollarSign as DollarIcon, FilePen, Cloud, Eye, Calendar, Info, X, Check } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Code {
   id: string;
@@ -135,9 +137,11 @@ const modifiers = [
 ];
 
 export const Codes: React.FC = () => {
+  const { toast } = useToast();
   const [selectedMenuItem, setSelectedMenuItem] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
+<<<<<<< HEAD
   const [procedureCodes, setProcedureCodes] = useState<Code[]>([]);
   const [diagnosisCodes, setDiagnosisCodes] = useState<Code[]>([]);
   const [icdProcedureCodes, setIcdProcedureCodes] = useState<Code[]>([]);
@@ -148,6 +152,26 @@ export const Codes: React.FC = () => {
   const [chargePanels, setChargePanels] = useState<Code[]>([]);
   const [feeSchedules, setFeeSchedules] = useState<Code[]>([]);
   const [contracts, setContracts] = useState<Code[]>([]);
+=======
+  const [procedureCodes, setProcedureCodes] = useState<Code[]>(sampleProcedureCodes);
+  const [diagnosisCodes, setDiagnosisCodes] = useState<Code[]>([]);
+  const [isLoadingDiagnosisCodes, setIsLoadingDiagnosisCodes] = useState(false);
+  const isFetchingDiagnosisRef = useRef(false);
+  const [icdProcedureCodes, setICDProcedureCodes] = useState<Code[]>([]);
+  const [isLoadingICDProcedureCodes, setIsLoadingICDProcedureCodes] = useState(false);
+  const isFetchingICDProcedureRef = useRef(false);
+  const [revenueCodes, setRevenueCodes] = useState<Code[]>([]);
+  const [isLoadingRevenueCodes, setIsLoadingRevenueCodes] = useState(false);
+  const isFetchingRevenueRef = useRef(false);
+  const [remittanceCodes, setRemittanceCodes] = useState<Code[]>([]);
+  const [isLoadingRemittanceCodes, setIsLoadingRemittanceCodes] = useState(false);
+  const isFetchingRemittanceRef = useRef(false);
+  const [adjustmentCodes, setAdjustmentCodes] = useState<Code[]>(sampleAdjustmentCodes);
+  const [inventoryCodes, setInventoryCodes] = useState<Code[]>(sampleInventoryCodes);
+  const [chargePanels, setChargePanels] = useState<Code[]>(sampleChargePanels);
+  const [feeSchedules, setFeeSchedules] = useState<Code[]>(sampleFeeSchedules);
+  const [contracts, setContracts] = useState<Code[]>(sampleContracts);
+>>>>>>> 14dfb14 (Database Added)
   const [isNewCodeDialogOpen, setIsNewCodeDialogOpen] = useState(false);
   const [isNewDiagnosisDialogOpen, setIsNewDiagnosisDialogOpen] = useState(false);
   const [isNewICDProcedureDialogOpen, setIsNewICDProcedureDialogOpen] = useState(false);
@@ -343,6 +367,730 @@ export const Codes: React.FC = () => {
 
   const handleMenuItemClick = (menuItemId: string) => {
     setSelectedMenuItem(menuItemId);
+    // Fetch diagnosis codes when diagnosis menu is selected
+    if (menuItemId === 'diagnosis') {
+      fetchDiagnosisCodesFromDatabase();
+    }
+    // Fetch ICD Procedure codes when icd-procedure menu is selected
+    if (menuItemId === 'icd-procedure') {
+      fetchICDProcedureCodesFromDatabase();
+    }
+    // Fetch Revenue codes when revenue menu is selected
+    if (menuItemId === 'revenue') {
+      fetchRevenueCodesFromDatabase();
+    }
+    // Fetch Remittance codes when remittance menu is selected
+    if (menuItemId === 'remittance') {
+      fetchRemittanceCodesFromDatabase();
+    }
+  };
+
+  // Fetch Remittance codes from database
+  const fetchRemittanceCodesFromDatabase = async () => {
+    if (isFetchingRemittanceRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRemittanceRef.current = true;
+      setIsLoadingRemittanceCodes(true);
+      console.log('🔍 Fetching Remittance codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Remittance codes.');
+        setRemittanceCodes([]);
+        setIsLoadingRemittanceCodes(false);
+        isFetchingRemittanceRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('remittance_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching Remittance codes:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Remittance codes table not found. Please run CREATE_REMITTANCE_CODES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Remittance codes table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Remittance codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setRemittanceCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.report_description || dbCode.long_description || '',
+        price: 0.00, // Remittance codes don't have prices
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'HCPCS' as 'CPT' | 'HCPCS', // Default type for Remittance codes
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} Remittance codes from database`);
+      setRemittanceCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchRemittanceCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading Remittance codes',
+        description: error.message || 'Failed to load Remittance codes from database',
+        variant: 'destructive',
+      });
+      setRemittanceCodes([]);
+    } finally {
+      setIsLoadingRemittanceCodes(false);
+      isFetchingRemittanceRef.current = false;
+    }
+  };
+
+  // Fetch Revenue codes from database
+  const fetchRevenueCodesFromDatabase = async () => {
+    if (isFetchingRevenueRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRevenueRef.current = true;
+      setIsLoadingRevenueCodes(true);
+      console.log('🔍 Fetching Revenue codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Revenue codes.');
+        setRevenueCodes([]);
+        setIsLoadingRevenueCodes(false);
+        isFetchingRevenueRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('revenue_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching Revenue codes:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Revenue codes table not found. Please run CREATE_REVENUE_CODES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Revenue codes table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Revenue codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setRevenueCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.description || '',
+        price: dbCode.price ? parseFloat(dbCode.price) : 0.00,
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'Revenue' as any, // Revenue codes have their own type
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} Revenue codes from database`);
+      setRevenueCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchRevenueCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading Revenue codes',
+        description: error.message || 'Failed to load Revenue codes from database',
+        variant: 'destructive',
+      });
+      setRevenueCodes([]);
+    } finally {
+      setIsLoadingRevenueCodes(false);
+      isFetchingRevenueRef.current = false;
+    }
+  };
+
+  // Fetch ICD Procedure codes from database
+  const fetchICDProcedureCodesFromDatabase = async () => {
+    if (isFetchingICDProcedureRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingICDProcedureRef.current = true;
+      setIsLoadingICDProcedureCodes(true);
+      console.log('🔍 Fetching ICD Procedure codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch ICD Procedure codes.');
+        setICDProcedureCodes([]);
+        setIsLoadingICDProcedureCodes(false);
+        isFetchingICDProcedureRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('icd_procedure_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching ICD Procedure codes:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ ICD Procedure codes table not found. Please run CREATE_ICD_PROCEDURE_CODES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'ICD Procedure codes table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading ICD Procedure codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setICDProcedureCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.description || '',
+        price: 0.00, // ICD Procedure codes don't have prices
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'HCPCS' as 'CPT' | 'HCPCS', // Default type for ICD Procedure codes
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} ICD Procedure codes from database`);
+      setICDProcedureCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchICDProcedureCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading ICD Procedure codes',
+        description: error.message || 'Failed to load ICD Procedure codes from database',
+        variant: 'destructive',
+      });
+      setICDProcedureCodes([]);
+    } finally {
+      setIsLoadingICDProcedureCodes(false);
+      isFetchingICDProcedureRef.current = false;
+    }
+  };
+
+  // Fetch diagnosis codes from database
+  const fetchDiagnosisCodesFromDatabase = async () => {
+    if (isFetchingDiagnosisRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingDiagnosisRef.current = true;
+      setIsLoadingDiagnosisCodes(true);
+      console.log('🔍 Fetching diagnosis codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch diagnosis codes.');
+        setDiagnosisCodes([]);
+        setIsLoadingDiagnosisCodes(false);
+        isFetchingDiagnosisRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('diagnosis_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching diagnosis codes:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Diagnosis codes table not found. Please run CREATE_DIAGNOSIS_CODES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Diagnosis codes table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading diagnosis codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setDiagnosisCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.description || '',
+        price: 0.00, // Diagnosis codes don't have prices
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'HCPCS' as 'CPT' | 'HCPCS', // Default type for diagnosis codes
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} diagnosis codes from database`);
+      setDiagnosisCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchDiagnosisCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading diagnosis codes',
+        description: error.message || 'Failed to load diagnosis codes from database',
+        variant: 'destructive',
+      });
+      setDiagnosisCodes([]);
+    } finally {
+      setIsLoadingDiagnosisCodes(false);
+      isFetchingDiagnosisRef.current = false;
+    }
+  };
+
+  const handleSaveNewRemittance = async () => {
+    if (!newRemittance.code) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Code).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Remittance code:', newRemittance);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        code: newRemittance.code.trim(),
+        type: newRemittance.type || 'Adj Reason',
+        information_level: newRemittance.informationLevel || 'INFO - This code represents general information only.',
+        include_on_denial_reports: newRemittance.includeOnDenialReports || false,
+        include_on_adjustment_reports: newRemittance.includeOnAdjustmentReports || false,
+        report_description: newRemittance.reportDescription || null,
+        long_description: newRemittance.longDescription || null,
+        use_memoline: newRemittance.useMemoline || false,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('remittance_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating Remittance code:', error);
+        throw new Error(error.message || 'Failed to create Remittance code');
+      }
+
+      // Reset form
+      setNewRemittance({
+        code: '',
+        type: 'Adj Reason',
+        informationLevel: 'INFO - This code represents general information only.',
+        includeOnDenialReports: false,
+        includeOnAdjustmentReports: false,
+        reportDescription: '',
+        longDescription: '',
+        useMemoline: false
+      });
+      setIsNewRemittanceDialogOpen(false);
+
+      // Refresh the Remittance codes list
+      await fetchRemittanceCodesFromDatabase();
+
+      toast({
+        title: "Remittance Code Added",
+        description: `Remittance code ${newRemittance.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Remittance code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Remittance code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewRevenue = async () => {
+    if (!newRevenue.code || !newRevenue.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Code and Description).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Revenue code:', newRevenue);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        code: newRevenue.code.trim(),
+        description: newRevenue.description.trim(),
+        price: newRevenue.price || 0.00,
+        exclude_from_duplicate: newRevenue.excludeFromDuplicate || false,
+        statement_description: newRevenue.statementDescription || null,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('revenue_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating Revenue code:', error);
+        throw new Error(error.message || 'Failed to create Revenue code');
+      }
+
+      // Reset form
+      setNewRevenue({
+        code: '',
+        price: 0.00,
+        excludeFromDuplicate: false,
+        description: '',
+        statementDescription: ''
+      });
+      setIsNewRevenueDialogOpen(false);
+
+      // Refresh the Revenue codes list
+      await fetchRevenueCodesFromDatabase();
+
+      toast({
+        title: "Revenue Code Added",
+        description: `Revenue code ${newRevenue.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Revenue code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Revenue code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewICDProcedure = async () => {
+    if (!newICDProcedure.code || !newICDProcedure.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Code and Description).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating ICD Procedure code:', newICDProcedure);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        code: newICDProcedure.code.trim(),
+        code_type: newICDProcedure.codeType || 'ICD-10',
+        description: newICDProcedure.description.trim(),
+        status: 'active',
+        is_active: true
+      };
+
+      const { data, error } = await supabase
+        .from('icd_procedure_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating ICD Procedure code:', error);
+        throw new Error(error.message || 'Failed to create ICD Procedure code');
+      }
+
+      // Reset form
+      setNewICDProcedure({
+        code: '',
+        codeType: 'ICD-10',
+        description: ''
+      });
+      setIsNewICDProcedureDialogOpen(false);
+
+      // Refresh the ICD Procedure codes list
+      await fetchICDProcedureCodesFromDatabase();
+
+      toast({
+        title: "ICD Procedure Code Added",
+        description: `ICD Procedure code ${newICDProcedure.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create ICD Procedure code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create ICD Procedure code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewDiagnosis = async () => {
+    if (!newDiagnosis.code || !newDiagnosis.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Code and Description).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating diagnosis code:', newDiagnosis);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        code: newDiagnosis.code.trim(),
+        code_type: newDiagnosis.codeType || 'ICD-10',
+        description: newDiagnosis.description.trim(),
+        effective_date: newDiagnosis.effectiveDate || null,
+        termination_date: newDiagnosis.terminationDate || null,
+        cpt1: newDiagnosis.cpt1 || null,
+        cpt2: newDiagnosis.cpt2 || null,
+        cpt3: newDiagnosis.cpt3 || null,
+        cpt4: newDiagnosis.cpt4 || null,
+        cpt5: newDiagnosis.cpt5 || null,
+        cpt6: newDiagnosis.cpt6 || null,
+        print_on_superbill: newDiagnosis.printOnSuperbill || false,
+        superbill_description: newDiagnosis.superbillDescription || null,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('diagnosis_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating diagnosis code:', error);
+        throw new Error(error.message || 'Failed to create diagnosis code');
+      }
+
+      // Reset form
+      setNewDiagnosis({
+        code: '',
+        codeType: 'ICD-10',
+        description: '',
+        effectiveDate: '',
+        terminationDate: '',
+        cpt1: '',
+        cpt2: '',
+        cpt3: '',
+        cpt4: '',
+        cpt5: '',
+        cpt6: '',
+        printOnSuperbill: false,
+        superbillDescription: ''
+      });
+      setIsNewDiagnosisDialogOpen(false);
+
+      // Refresh the diagnosis codes list
+      await fetchDiagnosisCodesFromDatabase();
+
+      toast({
+        title: "Diagnosis Code Added",
+        description: `Diagnosis code ${newDiagnosis.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create diagnosis code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create diagnosis code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewCode = async () => {
+    if (!newCode.code || !newCode.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Code and Description).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating CPT/HCPCS code:', newCode);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        code: newCode.code.trim(),
+        type: newCode.type || 'CPT®/HCPCS',
+        dept: newCode.dept || null,
+        description: newCode.description.trim(),
+        exclude_from_duplicate: newCode.excludeFromDuplicate || false,
+        all_inclusive: newCode.allInclusive || false,
+        percentage_of_claim: newCode.percentageOfClaim || false,
+        default_price: newCode.defaultPrice || 0.00,
+        default_units: newCode.defaultUnits || 1.00,
+        default_charge_status: newCode.defaultChargeStatus || null,
+        rev_code: newCode.revCode || null,
+        place_of_service: newCode.placeOfService || null,
+        clia_number: newCode.cliaNumber || null,
+        type_of_service: newCode.typeOfService || null,
+        narrative_notes: newCode.narrativeNotes || null,
+        additional_description: newCode.additionalDescription || null,
+        global_modifier1: newCode.globalModifier1 || null,
+        global_modifier2: newCode.globalModifier2 || null,
+        global_modifier3: newCode.globalModifier3 || null,
+        global_modifier4: newCode.globalModifier4 || null,
+        icd1: newCode.icd1 || null,
+        icd2: newCode.icd2 || null,
+        icd3: newCode.icd3 || null,
+        icd4: newCode.icd4 || null,
+        global_surgery_period: newCode.globalSurgeryPeriod || 'None',
+        prior_auth_requirements: newCode.priorAuthRequirements || 'None',
+        drug_price: newCode.drugPrice || 0.00,
+        drug_units: newCode.drugUnits || 1.00,
+        drug_units_measure: newCode.drugUnitsMeasure || 'Unit (UN)',
+        drug_code: newCode.drugCode || null,
+        drug_code_format: newCode.drugCodeFormat || null,
+        effective_date: newCode.effectiveDate || null,
+        termination_date: newCode.terminationDate || null,
+        print_on_superbills: newCode.printOnSuperbills || false,
+        category: newCode.category || null,
+        superbill_description: newCode.description || null, // Using description for superbill_description
+        statement_description: newCode.statementDescription || null,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('cpt_hcpcs_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating CPT/HCPCS code:', error);
+        throw new Error(error.message || 'Failed to create code');
+      }
+
+      // Reset form
+      setNewCode({
+        code: '',
+        type: 'CPT®/HCPCS',
+        dept: '',
+        description: '',
+        excludeFromDuplicate: false,
+        allInclusive: false,
+        percentageOfClaim: false,
+        defaultPrice: 0.00,
+        defaultUnits: 1.00,
+        defaultChargeStatus: '',
+        revCode: '',
+        placeOfService: '',
+        cliaNumber: '',
+        typeOfService: '',
+        narrativeNotes: '',
+        additionalDescription: '',
+        globalModifier1: '',
+        globalModifier2: '',
+        globalModifier3: '',
+        globalModifier4: '',
+        icd1: '',
+        icd2: '',
+        icd3: '',
+        icd4: '',
+        globalSurgeryPeriod: 'None',
+        priorAuthRequirements: 'None',
+        drugPrice: 0.00,
+        drugUnits: 1.00,
+        drugUnitsMeasure: 'Unit (UN)',
+        drugCode: '',
+        drugCodeFormat: '',
+        effectiveDate: '',
+        terminationDate: '',
+        printOnSuperbills: false,
+        category: '',
+        statementDescription: ''
+      });
+      setIsNewCodeDialogOpen(false);
+
+      toast({
+        title: "CPT/HCPCS Code Added",
+        description: `Code ${newCode.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create CPT/HCPCS code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create code. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const filteredProcedureCodes = procedureCodes.filter(code => {
@@ -637,19 +1385,36 @@ export const Codes: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDiagnosisCodes.map((code) => (
-                      <tr key={code.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono">{code.code}</td>
-                        <td className="py-3 px-4">{code.description}</td>
-                        <td className="py-3 px-4">
-                          {code.inactive ? (
-                            <Badge variant="secondary">Inactive</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                    {isLoadingDiagnosisCodes ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                            <span className="text-muted-foreground">Loading diagnosis codes...</span>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredDiagnosisCodes.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-muted-foreground">
+                          No diagnosis codes found. {searchTerm || includeInactive ? 'Try adjusting your search criteria.' : 'Get started by creating your first diagnosis code.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredDiagnosisCodes.map((code) => (
+                        <tr key={code.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono">{code.code}</td>
+                          <td className="py-3 px-4">{code.description}</td>
+                          <td className="py-3 px-4">
+                            {code.inactive ? (
+                              <Badge variant="secondary">Inactive</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -728,6 +1493,7 @@ export const Codes: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
+<<<<<<< HEAD
                     {filteredICDProcedureCodes.map((code) => (
                       <tr key={code.id} className="border-b hover:bg-gray-50">
                         <td className="py-3 px-4 font-mono">{code.code}</td>
@@ -740,9 +1506,40 @@ export const Codes: React.FC = () => {
                               <Checkbox checked={!code.inactive} disabled />
                             </div>
                           )}
+=======
+                    {isLoadingICDProcedureCodes ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                            <span className="text-muted-foreground">Loading ICD Procedure codes...</span>
+                          </div>
+>>>>>>> 14dfb14 (Database Added)
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredICDProcedureCodes.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-muted-foreground">
+                          No ICD Procedure codes found. {searchTerm || includeInactive ? 'Try adjusting your search criteria.' : 'Get started by creating your first ICD Procedure code.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredICDProcedureCodes.map((code) => (
+                        <tr key={code.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono">{code.code}</td>
+                          <td className="py-3 px-4">{code.description}</td>
+                          <td className="py-3 px-4">
+                            {code.inactive ? (
+                              <Badge variant="secondary">Inactive</Badge>
+                            ) : (
+                              <div className="flex items-center">
+                                <Checkbox checked={!code.inactive} readOnly />
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -804,22 +1601,33 @@ export const Codes: React.FC = () => {
               <CardTitle>Recently Opened</CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredRevenueCodes.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No recent items</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-semibold">Revenue Code</th>
-                        <th className="text-left py-3 px-4 font-semibold">Description</th>
-                        <th className="text-left py-3 px-4 font-semibold">Inactive</th>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 font-semibold">Revenue Code</th>
+                      <th className="text-left py-3 px-4 font-semibold">Description</th>
+                      <th className="text-left py-3 px-4 font-semibold">Inactive</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoadingRevenueCodes ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                            <span className="text-muted-foreground">Loading Revenue codes...</span>
+                          </div>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRevenueCodes.map((code) => (
+                    ) : filteredRevenueCodes.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-muted-foreground">
+                          No Revenue codes found. {searchTerm || includeInactive ? 'Try adjusting your search criteria.' : 'Get started by creating your first Revenue code.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRevenueCodes.map((code) => (
                         <tr key={code.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4 font-mono">{code.code}</td>
                           <td className="py-3 px-4">{code.description}</td>
@@ -831,11 +1639,11 @@ export const Codes: React.FC = () => {
                             )}
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -910,21 +1718,38 @@ export const Codes: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRemittanceCodes.map((code) => (
-                      <tr key={code.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono">{code.code}</td>
-                        <td className="py-3 px-4">Adj. Reason</td>
-                        <td className="py-3 px-4">INFO</td>
-                        <td className="py-3 px-4">{code.description}</td>
-                        <td className="py-3 px-4">
-                          {code.inactive ? (
-                            <Badge variant="secondary">Inactive</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                    {isLoadingRemittanceCodes ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
+                            <span className="text-muted-foreground">Loading Remittance codes...</span>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    ) : filteredRemittanceCodes.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                          No Remittance codes found. {searchTerm || includeInactive ? 'Try adjusting your search criteria.' : 'Get started by creating your first Remittance code.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRemittanceCodes.map((code) => (
+                        <tr key={code.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono">{code.code}</td>
+                          <td className="py-3 px-4">Adj. Reason</td>
+                          <td className="py-3 px-4">INFO</td>
+                          <td className="py-3 px-4">{code.description}</td>
+                          <td className="py-3 px-4">
+                            {code.inactive ? (
+                              <Badge variant="secondary">Inactive</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2009,11 +2834,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewCodeDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new code:', newCode);
-              setIsNewCodeDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewCode}>
               Save Code
             </Button>
           </div>
@@ -2243,11 +3064,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewDiagnosisDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new diagnosis:', newDiagnosis);
-              setIsNewDiagnosisDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewDiagnosis}>
               Save Diagnosis
             </Button>
           </div>
@@ -2315,11 +3132,7 @@ export const Codes: React.FC = () => {
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new ICD procedure:', newICDProcedure);
-              setIsNewICDProcedureDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewICDProcedure}>
               <Check className="w-4 h-4 mr-2" />
               Save
             </Button>
@@ -2415,11 +3228,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewRevenueDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new revenue code:', newRevenue);
-              setIsNewRevenueDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewRevenue}>
               Save Revenue Code
             </Button>
           </div>
@@ -2546,11 +3355,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewRemittanceDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new remittance code:', newRemittance);
-              setIsNewRemittanceDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewRemittance}>
               Save Remittance Code
             </Button>
           </div>

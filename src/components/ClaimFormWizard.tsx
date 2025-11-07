@@ -24,6 +24,9 @@ import { ServiceDetailsStep } from './ClaimWizard/ServiceDetailsStep';
 import { DiagnosisStep } from './ClaimWizard/DiagnosisStep';
 import { InsuranceStep } from './ClaimWizard/InsuranceStep';
 import { ReviewStep } from './ClaimWizard/ReviewStep';
+import { PreSubmissionReview } from './PreSubmissionReview';
+import { claimSubmissionService } from '@/services/claimSubmissionService';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ClaimFormData {
   patient: any;
@@ -60,10 +63,12 @@ const steps = [
   { id: 2, title: 'Services', icon: FileText, description: 'Add procedures and services' },
   { id: 3, title: 'Diagnosis', icon: Code, description: 'Add diagnosis codes' },
   { id: 4, title: 'Insurance', icon: CreditCard, description: 'Insurance and billing info' },
-  { id: 5, title: 'Review', icon: Eye, description: 'Review and submit' }
+  { id: 5, title: 'Review', icon: Eye, description: 'Review claim details' },
+  { id: 6, title: 'Submit', icon: Send, description: 'Validate and submit claim' }
 ];
 
 export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormWizardProps) {
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [showValidationError, setShowValidationError] = useState(false);
   const [formData, setFormData] = useState<ClaimFormData>({
@@ -110,9 +115,24 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
     }
   };
 
-  const handleSubmit = () => {
-    onSubmit(formData);
-    onClose();
+  const handleSubmit = async (submissionData: any) => {
+    // Convert and submit using the new service
+    try {
+      if (!user?.id) {
+        throw new Error('User must be logged in to submit claims');
+      }
+      
+      // Use claimSubmissionService to submit
+      const result = await claimSubmissionService.submitClaim(submissionData, user.id);
+      
+      // Call original onSubmit with form data
+      onSubmit(formData);
+      onClose();
+    } catch (error: any) {
+      console.error('Submission error:', error);
+      // Show error to user - TODO: Add toast notification
+      throw error; // Re-throw so PreSubmissionReview can handle it
+    }
   };
 
   const isStepComplete = (stepId: number) => {
@@ -121,7 +141,8 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
       case 2: return formData.procedures.length > 0;
       case 3: return formData.diagnoses.length > 0 && formData.diagnoses.some((d: any) => d.primary);
       case 4: return !!formData.insurance.primary;
-      case 5: return true;
+      case 5: return true; // Review step is always accessible
+      case 6: return isStepComplete(5); // Can only access submit if review is complete
       default: return false;
     }
   };
@@ -141,8 +162,58 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
         return <InsuranceStep data={formData} onUpdate={updateFormData} />;
       case 5:
         return <ReviewStep data={formData} onUpdate={updateFormData} />;
+      case 6:
+        return (
+          <PreSubmissionReview
+            claimData={convertFormDataToSubmissionData(formData)}
+            onBack={prevStep}
+            onSubmit={handleSubmit}
+            onSaveDraft={handleSaveDraft}
+          />
+        );
       default:
         return null;
+    }
+  };
+
+  const convertFormDataToSubmissionData = (data: ClaimFormData): any => {
+    return {
+      form_type: 'HCFA',
+      patient_id: data.patient?.id || '',
+      provider_id: data.provider?.id || '',
+      service_date_from: data.serviceDate,
+      place_of_service_code: '11', // Default to Office
+      primary_insurance_id: data.insurance?.primary?.id || '',
+      secondary_insurance_id: data.insurance?.secondary?.id,
+      total_charges: data.procedures.reduce((sum, p) => sum + (p.amount * p.units), 0),
+      procedures: data.procedures.map(p => ({
+        cpt_code: p.cptCode,
+        description: p.description,
+        quantity: p.units,
+        unit_price: p.amount,
+        total_price: p.amount * p.units,
+      })),
+      diagnoses: data.diagnoses.map(d => ({
+        icd_code: d.icdCode,
+        description: d.description,
+        is_primary: d.primary,
+      })),
+      prior_auth_number: data.insurance?.authNumber,
+      notes: data.notes,
+    };
+  };
+
+  const handleSaveDraft = async (submissionData: any) => {
+    try {
+      if (!user?.id) {
+        throw new Error('User must be logged in to save claims');
+      }
+      
+      const result = await claimSubmissionService.saveDraft(submissionData, user.id);
+      onClose();
+    } catch (error: any) {
+      console.error('Save draft error:', error);
+      throw error; // Re-throw so PreSubmissionReview can handle it
     }
   };
 
@@ -263,15 +334,7 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
                 Cancel
               </Button>
               
-              {currentStep === steps.length ? (
-                <Button
-                  onClick={handleSubmit}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Submit Claim
-                </Button>
-              ) : (
+              {currentStep < steps.length && (
                 <Button
                   onClick={nextStep}
                   disabled={!isStepComplete(currentStep)}
@@ -281,6 +344,7 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               )}
+              {/* Step 6 (PreSubmissionReview) has its own submit button */}
             </div>
           </div>
         </div>

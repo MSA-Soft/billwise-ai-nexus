@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface CollectionAgency {
   id: string;
@@ -36,56 +38,8 @@ interface CollectionAgency {
   updatedAt: string;
 }
 
-const sampleCollectionAgencies: CollectionAgency[] = [
-  {
-    id: '1',
-    // Basic Information
-    name: 'ABC Collection Services',
-    
-    // Contact Information
-    address: '123 Collection Street',
-    addressLine2: 'Suite 100',
-    city: 'Los Angeles',
-    state: 'CA',
-    zipCode: '90210',
-    phone: '(555) 123-4567',
-    fax: '(555) 123-4568',
-    email: 'info@abccollections.com',
-    
-    // Additional Information
-    agencyType: 'Medical Collections',
-    status: 'active',
-    commissionRate: 25.0,
-    notes: 'Specializes in medical debt collection',
-    
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    // Basic Information
-    name: 'Premier Recovery Group',
-    
-    // Contact Information
-    address: '456 Recovery Avenue',
-    addressLine2: '',
-    city: 'New York',
-    state: 'NY',
-    zipCode: '10001',
-    phone: '(555) 987-6543',
-    fax: '(555) 987-6544',
-    email: 'contact@premierrecovery.com',
-    
-    // Additional Information
-    agencyType: 'General Collections',
-    status: 'active',
-    commissionRate: 30.0,
-    notes: 'Full-service collection agency',
-    
-    createdAt: '2024-01-20',
-    updatedAt: '2024-01-20'
-  }
-];
+// Sample collection agencies removed - now using database
+const _sampleCollectionAgencies: CollectionAgency[] = [];
 
 const states = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -105,13 +59,101 @@ const agencyTypes = [
 ];
 
 export const CollectionAgencies: React.FC = () => {
-  const [collectionAgencies, setCollectionAgencies] = useState<CollectionAgency[]>(sampleCollectionAgencies);
+  const { toast } = useToast();
+  const [collectionAgencies, setCollectionAgencies] = useState<CollectionAgency[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingAgency, setEditingAgency] = useState<CollectionAgency | null>(null);
   const [expandedAgency, setExpandedAgency] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+
+  // Fetch collection agencies from database
+  useEffect(() => {
+    fetchCollectionAgenciesFromDatabase();
+  }, []);
+
+  const fetchCollectionAgenciesFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching collection agencies from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch collection agencies.');
+        setCollectionAgencies([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('collection_agencies' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching collection agencies:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Collection agencies table not found. Please run CREATE_COLLECTION_AGENCIES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Collection agencies table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading collection agencies',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setCollectionAgencies([]);
+        return;
+      }
+
+      // Transform database records to match CollectionAgency interface
+      const transformedAgencies: CollectionAgency[] = (data || []).map((dbAgency: any) => ({
+        id: dbAgency.id,
+        name: dbAgency.name || '',
+        address: dbAgency.address || '',
+        addressLine2: dbAgency.address_line2 || '',
+        city: dbAgency.city || '',
+        state: dbAgency.state || '',
+        zipCode: dbAgency.zip_code || dbAgency.zip || '',
+        phone: dbAgency.phone || '',
+        fax: dbAgency.fax || '',
+        email: dbAgency.email || '',
+        agencyType: dbAgency.agency_type || '',
+        status: (dbAgency.status || (dbAgency.is_active ? 'active' : 'inactive')) as 'active' | 'inactive',
+        commissionRate: dbAgency.commission_rate ? parseFloat(dbAgency.commission_rate) : 0,
+        notes: dbAgency.notes || '',
+        createdAt: dbAgency.created_at || '',
+        updatedAt: dbAgency.updated_at || dbAgency.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedAgencies.length} collection agencies from database`);
+      setCollectionAgencies(transformedAgencies);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchCollectionAgenciesFromDatabase:', error);
+      toast({
+        title: 'Error loading collection agencies',
+        description: error.message || 'Failed to load collection agencies from database',
+        variant: 'destructive',
+      });
+      setCollectionAgencies([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
   const [newAgency, setNewAgency] = useState<Partial<CollectionAgency>>({
     name: '',
     address: '',
@@ -139,48 +181,88 @@ export const CollectionAgencies: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddAgency = () => {
+  const handleAddAgency = async () => {
     if (!newAgency.name) {
-      alert('Please fill in required fields');
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Name).",
+        variant: "destructive",
+      });
       return;
     }
 
-    const agency: CollectionAgency = {
-      id: Date.now().toString(),
-      name: newAgency.name!,
-      address: newAgency.address || '',
-      addressLine2: newAgency.addressLine2 || '',
-      city: newAgency.city || '',
-      state: newAgency.state || '',
-      zipCode: newAgency.zipCode || '',
-      phone: newAgency.phone || '',
-      fax: newAgency.fax || '',
-      email: newAgency.email || '',
-      agencyType: newAgency.agencyType || 'Medical Collections',
-      status: newAgency.status || 'active',
-      commissionRate: newAgency.commissionRate || 0,
-      notes: newAgency.notes || '',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    try {
+      console.log('💾 Creating collection agency:', newAgency);
 
-    setCollectionAgencies([...collectionAgencies, agency]);
-    setNewAgency({
-      name: '',
-      address: '',
-      addressLine2: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      phone: '',
-      fax: '',
-      email: '',
-      agencyType: 'Medical Collections',
-      status: 'active',
-      commissionRate: 0,
-      notes: ''
-    });
-    setIsAddDialogOpen(false);
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        name: newAgency.name!.trim(),
+        address: newAgency.address || null,
+        address_line2: newAgency.addressLine2 || null,
+        city: newAgency.city || null,
+        state: newAgency.state || null,
+        zip_code: newAgency.zipCode || null,
+        phone: newAgency.phone || null,
+        fax: newAgency.fax || null,
+        email: newAgency.email || null,
+        agency_type: newAgency.agencyType || null,
+        status: (newAgency.status || 'active') as 'active' | 'inactive',
+        is_active: (newAgency.status || 'active') === 'active',
+        commission_rate: newAgency.commissionRate || 0,
+        notes: newAgency.notes || null
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('collection_agencies' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating collection agency:', error);
+        throw new Error(error.message || 'Failed to create collection agency');
+      }
+
+      // Refresh the collection agencies list
+      await fetchCollectionAgenciesFromDatabase();
+
+      // Reset form
+      setNewAgency({
+        name: '',
+        address: '',
+        addressLine2: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        phone: '',
+        fax: '',
+        email: '',
+        agencyType: 'Medical Collections',
+        status: 'active',
+        commissionRate: 0,
+        notes: ''
+      });
+      setIsAddDialogOpen(false);
+
+      toast({
+        title: "Collection Agency Added",
+        description: `${newAgency.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create collection agency:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create collection agency. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditAgency = (agency: CollectionAgency) => {
@@ -188,21 +270,106 @@ export const CollectionAgencies: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateAgency = () => {
-    if (!editingAgency) return;
+  const handleUpdateAgency = async () => {
+    if (!editingAgency || !editingAgency.id) {
+      toast({
+        title: "Error",
+        description: "Agency ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setCollectionAgencies(collectionAgencies.map(a => 
-      a.id === editingAgency.id 
-        ? { ...editingAgency, updatedAt: new Date().toISOString().split('T')[0] }
-        : a
-    ));
-    setIsEditDialogOpen(false);
-    setEditingAgency(null);
+    try {
+      console.log('💾 Updating collection agency:', editingAgency);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const updateData: any = {
+        name: editingAgency.name.trim(),
+        address: editingAgency.address || null,
+        address_line2: editingAgency.addressLine2 || null,
+        city: editingAgency.city || null,
+        state: editingAgency.state || null,
+        zip_code: editingAgency.zipCode || null,
+        phone: editingAgency.phone || null,
+        fax: editingAgency.fax || null,
+        email: editingAgency.email || null,
+        agency_type: editingAgency.agencyType || null,
+        status: editingAgency.status as 'active' | 'inactive',
+        is_active: editingAgency.status === 'active',
+        commission_rate: editingAgency.commissionRate || 0,
+        notes: editingAgency.notes || null
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('collection_agencies' as any)
+        .update(updateData)
+        .eq('id', editingAgency.id);
+
+      if (error) {
+        console.error('❌ Error updating collection agency:', error);
+        throw new Error(error.message || 'Failed to update collection agency');
+      }
+
+      // Refresh the collection agencies list
+      await fetchCollectionAgenciesFromDatabase();
+
+      setIsEditDialogOpen(false);
+      setEditingAgency(null);
+
+      toast({
+        title: "Collection Agency Updated",
+        description: `${editingAgency.name} has been successfully updated.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to update collection agency:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update collection agency. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteAgency = (id: string) => {
-    if (confirm('Are you sure you want to delete this collection agency?')) {
-      setCollectionAgencies(collectionAgencies.filter(a => a.id !== id));
+  const handleDeleteAgency = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this collection agency? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting collection agency:', id);
+
+      const { error } = await supabase
+        .from('collection_agencies' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting collection agency:', error);
+        throw new Error(error.message || 'Failed to delete collection agency');
+      }
+
+      // Refresh the collection agencies list
+      await fetchCollectionAgenciesFromDatabase();
+
+      toast({
+        title: "Collection Agency Deleted",
+        description: "Collection agency has been successfully deleted.",
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to delete collection agency:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete collection agency. Please try again.',
+        variant: "destructive",
+      });
     }
   };
 
@@ -304,7 +471,31 @@ export const CollectionAgencies: React.FC = () => {
 
       {/* Collection Agencies List */}
       <div className="space-y-4">
-        {filteredAgencies.map((agency) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading collection agencies...</p>
+            </div>
+          </div>
+        ) : filteredAgencies.length === 0 ? (
+          <div className="text-center py-12">
+            <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No collection agencies found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterStatus !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by adding your first collection agency"}
+            </p>
+            {!searchTerm && filterStatus === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Collection Agency
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredAgencies.map((agency) => (
           <Card key={agency.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -383,7 +574,8 @@ export const CollectionAgencies: React.FC = () => {
               </CardContent>
             )}
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Collection Agency Dialog */}

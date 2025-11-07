@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Provider {
   id: string;
@@ -63,7 +65,8 @@ interface Provider {
   updatedAt: string;
 }
 
-const sampleProviders: Provider[] = [
+// Sample providers removed - now using database
+const _sampleProviders: Provider[] = [
   {
     id: '1',
     // Provider Identification
@@ -131,13 +134,122 @@ const billAsOptions = [
 ];
 
 export const Providers: React.FC = () => {
-  const [providers, setProviders] = useState<Provider[]>(sampleProviders);
+  const { toast } = useToast();
+  const [providers, setProviders] = useState<Provider[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+
+  // Fetch providers from database
+  useEffect(() => {
+    fetchProvidersFromDatabase();
+  }, []);
+
+  const fetchProvidersFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching providers from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch providers.');
+        setProviders([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('providers' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching providers:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Providers table not found. Please run CREATE_PROVIDERS_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Providers table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading providers',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setProviders([]);
+        return;
+      }
+
+      // Transform database records to match Provider interface
+      const transformedProviders: Provider[] = (data || []).map((dbProvider: any) => ({
+        id: dbProvider.id,
+        lastName: dbProvider.last_name || '',
+        firstName: dbProvider.first_name || '',
+        middleInitial: dbProvider.middle_initial || '',
+        credentials: dbProvider.credentials || '',
+        providerType: (dbProvider.provider_type || 'individual') as 'individual' | 'organization',
+        npi: dbProvider.npi || '',
+        taxonomySpecialty: dbProvider.taxonomy_specialty || '',
+        sequenceNumber: dbProvider.sequence_number || '',
+        referenceNumber: dbProvider.reference_number || '',
+        code: dbProvider.code || '',
+        practiceForProvider: dbProvider.practice_for_provider || '',
+        billClaimsUnder: dbProvider.bill_claims_under || 'SELF',
+        checkEligibilityUnder: dbProvider.check_eligibility_under || 'SELF',
+        useIdNumber: dbProvider.use_id_number || 'Employer Identification# (EIN)',
+        employerIdentificationNumber: dbProvider.employer_identification_number || '',
+        billAs: dbProvider.bill_as || 'Individual',
+        billProfessionalClaims: dbProvider.bill_professional_claims || false,
+        billInstitutionalClaims: dbProvider.bill_institutional_claims || false,
+        submitterNumber: dbProvider.submitter_number || '',
+        tcnPrefix: dbProvider.tcn_prefix || '',
+        homePhone: dbProvider.home_phone || '',
+        cellPhone: dbProvider.cell_phone || '',
+        faxNumber: dbProvider.fax_number || '',
+        pagerNumber: dbProvider.pager_number || '',
+        email: dbProvider.email || '',
+        specialtyLicenseNumber: dbProvider.specialty_license_number || '',
+        stateLicenseNumber: dbProvider.state_license_number || '',
+        anesthesiaLicenseNumber: dbProvider.anesthesia_license_number || '',
+        upinNumber: dbProvider.upin_number || '',
+        blueCrossNumber: dbProvider.blue_cross_number || '',
+        tricareChampusNumber: dbProvider.tricare_champus_number || '',
+        revCode: dbProvider.rev_code || '',
+        defaultFacility: dbProvider.default_facility || '',
+        status: (dbProvider.is_active ? 'active' : 'inactive') as 'active' | 'inactive',
+        createdAt: dbProvider.created_at || '',
+        updatedAt: dbProvider.updated_at || dbProvider.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedProviders.length} providers from database`);
+      setProviders(transformedProviders);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchProvidersFromDatabase:', error);
+      toast({
+        title: 'Error loading providers',
+        description: error.message || 'Failed to load providers from database',
+        variant: 'destructive',
+      });
+      setProviders([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
   const [newProvider, setNewProvider] = useState<Partial<Provider>>({
     lastName: '',
     firstName: '',
@@ -187,53 +299,84 @@ export const Providers: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddProvider = () => {
+  const handleAddProvider = async () => {
     if (!newProvider.firstName || !newProvider.lastName || !newProvider.npi) {
-      alert('Please fill in required fields');
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields (First Name, Last Name, NPI).",
+        variant: "destructive",
+      });
       return;
     }
 
-    const provider: Provider = {
-      id: Date.now().toString(),
-      lastName: newProvider.lastName!,
-      firstName: newProvider.firstName!,
-      middleInitial: newProvider.middleInitial || '',
-      credentials: newProvider.credentials || '',
-      providerType: newProvider.providerType || 'individual',
-      npi: newProvider.npi!,
-      taxonomySpecialty: newProvider.taxonomySpecialty || '',
-      sequenceNumber: newProvider.sequenceNumber || 'NEW',
-      referenceNumber: newProvider.referenceNumber || '',
-      code: newProvider.code || '',
-      practiceForProvider: newProvider.practiceForProvider || '',
-      billClaimsUnder: newProvider.billClaimsUnder || 'SELF',
-      checkEligibilityUnder: newProvider.checkEligibilityUnder || 'SELF',
-      useIdNumber: newProvider.useIdNumber || 'Employer Identification# (EIN)',
-      employerIdentificationNumber: newProvider.employerIdentificationNumber || '',
-      billAs: newProvider.billAs || 'Individual',
-      billProfessionalClaims: newProvider.billProfessionalClaims || false,
-      billInstitutionalClaims: newProvider.billInstitutionalClaims || false,
-      submitterNumber: newProvider.submitterNumber || '',
-      tcnPrefix: newProvider.tcnPrefix || '',
-      homePhone: newProvider.homePhone || '',
-      cellPhone: newProvider.cellPhone || '',
-      faxNumber: newProvider.faxNumber || '',
-      pagerNumber: newProvider.pagerNumber || '',
-      email: newProvider.email || '',
-      specialtyLicenseNumber: newProvider.specialtyLicenseNumber || '',
-      stateLicenseNumber: newProvider.stateLicenseNumber || '',
-      anesthesiaLicenseNumber: newProvider.anesthesiaLicenseNumber || '',
-      upinNumber: newProvider.upinNumber || '',
-      blueCrossNumber: newProvider.blueCrossNumber || '',
-      tricareChampusNumber: newProvider.tricareChampusNumber || '',
-      revCode: newProvider.revCode || '',
-      defaultFacility: newProvider.defaultFacility || '',
-      status: newProvider.status || 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    try {
+      console.log('💾 Creating provider:', newProvider);
 
-    setProviders([...providers, provider]);
+      // Get current user session for user_id (optional - providers don't need to be tied to users)
+      const { data: { session } } = await supabase.auth.getSession();
+
+      // Prepare data for database (snake_case)
+      const insertData: any = {
+        user_id: session?.user?.id || null, // Set to current user or null
+        npi: newProvider.npi!.trim(),
+        first_name: newProvider.firstName!.trim(),
+        last_name: newProvider.lastName!.trim(),
+        middle_initial: newProvider.middleInitial || null,
+        credentials: newProvider.credentials || null,
+        provider_type: (newProvider.providerType || 'individual') as 'individual' | 'organization',
+        taxonomy_specialty: newProvider.taxonomySpecialty || null,
+        sequence_number: newProvider.sequenceNumber || null,
+        reference_number: newProvider.referenceNumber || null,
+        code: newProvider.code || null,
+        practice_for_provider: newProvider.practiceForProvider || null,
+        bill_claims_under: newProvider.billClaimsUnder || 'SELF',
+        check_eligibility_under: newProvider.checkEligibilityUnder || 'SELF',
+        use_id_number: newProvider.useIdNumber || null,
+        employer_identification_number: newProvider.employerIdentificationNumber || null,
+        bill_as: newProvider.billAs || 'Individual',
+        bill_professional_claims: newProvider.billProfessionalClaims || false,
+        bill_institutional_claims: newProvider.billInstitutionalClaims || false,
+        submitter_number: newProvider.submitterNumber || null,
+        tcn_prefix: newProvider.tcnPrefix || null,
+        home_phone: newProvider.homePhone || null,
+        cell_phone: newProvider.cellPhone || null,
+        phone: newProvider.cellPhone || newProvider.homePhone || null,
+        fax_number: newProvider.faxNumber || null,
+        pager_number: newProvider.pagerNumber || null,
+        email: newProvider.email || null,
+        specialty_license_number: newProvider.specialtyLicenseNumber || null,
+        state_license_number: newProvider.stateLicenseNumber || null,
+        anesthesia_license_number: newProvider.anesthesiaLicenseNumber || null,
+        upin_number: newProvider.upinNumber || null,
+        blue_cross_number: newProvider.blueCrossNumber || null,
+        tricare_champus_number: newProvider.tricareChampusNumber || null,
+        rev_code: newProvider.revCode || null,
+        default_facility: newProvider.defaultFacility || null,
+        is_active: (newProvider.status || 'active') === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('providers' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating provider:', error);
+        throw new Error(error.message || 'Failed to create provider');
+      }
+
+      // Refresh the providers list
+      await fetchProvidersFromDatabase();
+
+      // Reset form
     setNewProvider({
       lastName: '',
       firstName: '',
@@ -271,6 +414,19 @@ export const Providers: React.FC = () => {
       status: 'active'
     });
     setIsAddDialogOpen(false);
+
+      toast({
+        title: "Provider Added",
+        description: `${newProvider.firstName} ${newProvider.lastName} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create provider:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create provider. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditProvider = (provider: Provider) => {
@@ -278,21 +434,127 @@ export const Providers: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateProvider = () => {
-    if (!editingProvider) return;
+  const handleUpdateProvider = async () => {
+    if (!editingProvider || !editingProvider.id) {
+      toast({
+        title: "Error",
+        description: "Provider ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setProviders(providers.map(p => 
-      p.id === editingProvider.id 
-        ? { ...editingProvider, updatedAt: new Date().toISOString().split('T')[0] }
-        : p
-    ));
+    try {
+      console.log('💾 Updating provider:', editingProvider);
+
+      // Prepare data for database (snake_case)
+      const updateData: any = {
+        npi: editingProvider.npi.trim(),
+        first_name: editingProvider.firstName.trim(),
+        last_name: editingProvider.lastName.trim(),
+        middle_initial: editingProvider.middleInitial || null,
+        credentials: editingProvider.credentials || null,
+        provider_type: editingProvider.providerType as 'individual' | 'organization',
+        taxonomy_specialty: editingProvider.taxonomySpecialty || null,
+        sequence_number: editingProvider.sequenceNumber || null,
+        reference_number: editingProvider.referenceNumber || null,
+        code: editingProvider.code || null,
+        practice_for_provider: editingProvider.practiceForProvider || null,
+        bill_claims_under: editingProvider.billClaimsUnder || 'SELF',
+        check_eligibility_under: editingProvider.checkEligibilityUnder || 'SELF',
+        use_id_number: editingProvider.useIdNumber || null,
+        employer_identification_number: editingProvider.employerIdentificationNumber || null,
+        bill_as: editingProvider.billAs || 'Individual',
+        bill_professional_claims: editingProvider.billProfessionalClaims || false,
+        bill_institutional_claims: editingProvider.billInstitutionalClaims || false,
+        submitter_number: editingProvider.submitterNumber || null,
+        tcn_prefix: editingProvider.tcnPrefix || null,
+        home_phone: editingProvider.homePhone || null,
+        cell_phone: editingProvider.cellPhone || null,
+        phone: editingProvider.cellPhone || editingProvider.homePhone || null,
+        fax_number: editingProvider.faxNumber || null,
+        pager_number: editingProvider.pagerNumber || null,
+        email: editingProvider.email || null,
+        specialty_license_number: editingProvider.specialtyLicenseNumber || null,
+        state_license_number: editingProvider.stateLicenseNumber || null,
+        anesthesia_license_number: editingProvider.anesthesiaLicenseNumber || null,
+        upin_number: editingProvider.upinNumber || null,
+        blue_cross_number: editingProvider.blueCrossNumber || null,
+        tricare_champus_number: editingProvider.tricareChampusNumber || null,
+        rev_code: editingProvider.revCode || null,
+        default_facility: editingProvider.defaultFacility || null,
+        is_active: editingProvider.status === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('providers' as any)
+        .update(updateData)
+        .eq('id', editingProvider.id);
+
+      if (error) {
+        console.error('❌ Error updating provider:', error);
+        throw new Error(error.message || 'Failed to update provider');
+      }
+
+      // Refresh the providers list
+      await fetchProvidersFromDatabase();
+
     setIsEditDialogOpen(false);
     setEditingProvider(null);
+
+      toast({
+        title: "Provider Updated",
+        description: `${editingProvider.firstName} ${editingProvider.lastName} has been successfully updated.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to update provider:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update provider. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteProvider = (id: string) => {
-    if (confirm('Are you sure you want to delete this provider?')) {
-      setProviders(providers.filter(p => p.id !== id));
+  const handleDeleteProvider = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this provider? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting provider:', id);
+
+      const { error } = await supabase
+        .from('providers' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting provider:', error);
+        throw new Error(error.message || 'Failed to delete provider');
+      }
+
+      // Refresh the providers list
+      await fetchProvidersFromDatabase();
+
+      toast({
+        title: "Provider Deleted",
+        description: "Provider has been successfully deleted.",
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to delete provider:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete provider. Please try again.',
+        variant: "destructive",
+      });
     }
   };
 
@@ -395,7 +657,31 @@ export const Providers: React.FC = () => {
 
       {/* Providers List */}
       <div className="space-y-4">
-        {filteredProviders.map((provider) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading providers...</p>
+            </div>
+          </div>
+        ) : filteredProviders.length === 0 ? (
+          <div className="text-center py-12">
+            <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No providers found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterStatus !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by adding your first provider"}
+            </p>
+            {!searchTerm && filterStatus === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Provider
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredProviders.map((provider) => (
           <Card key={provider.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -470,7 +756,8 @@ export const Providers: React.FC = () => {
               </CardContent>
             )}
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Provider Dialog */}

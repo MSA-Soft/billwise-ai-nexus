@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { PatientDashboard } from './PatientDashboard';
@@ -31,112 +31,287 @@ import {
   Shield
 } from 'lucide-react';
 
-// Mock data for demonstration - in real app this would come from your database
-const mockPatients = [
-  {
-    id: '1',
-    name: 'John Doe',
-    age: 45,
-    dateOfBirth: '1978-05-15',
-    phone: '(555) 123-4567',
-    email: 'john.doe@email.com',
-    address: '123 Main St, Anytown, ST 12345',
-    insurance: 'Blue Cross Blue Shield',
-    status: 'active' as const,
-    emergencyContact: {
-      name: 'Jane Doe',
-      phone: '(555) 987-6543',
-      relation: 'Spouse'
-    },
-    medicalInfo: {
-      allergies: ['Penicillin', 'Shellfish'],
-      medications: ['Lisinopril 10mg', 'Metformin 500mg'],
-      conditions: ['Hypertension', 'Type 2 Diabetes']
-    },
-    appointments: [
-      {
-        date: '2024-01-15',
-        time: '10:00 AM',
-        type: 'Follow-up',
-        status: 'confirmed',
-        provider: 'Dr. Smith'
-      },
-      {
-        date: '2024-02-01',
-        time: '2:00 PM',
-        type: 'Annual Physical',
-        status: 'scheduled',
-        provider: 'Dr. Johnson'
-      }
-    ],
-    documents: [
-      {
-        name: 'Lab Results - Jan 2024',
-        type: 'Lab Report',
-        date: '2024-01-10'
-      },
-      {
-        name: 'Insurance Card',
-        type: 'Insurance',
-        date: '2023-12-01'
-      }
-    ],
-    nextAppointment: '2024-01-15',
-    totalVisits: 12,
-    outstandingBalance: 150.00,
-    riskLevel: 'medium' as const,
-    preferredProvider: 'Dr. Smith'
-  },
-  {
-    id: '2',
-    name: 'Sarah Wilson',
-    age: 32,
-    dateOfBirth: '1991-08-22',
-    phone: '(555) 234-5678',
-    email: 'sarah.wilson@email.com',
-    address: '456 Oak Ave, Somewhere, ST 67890',
-    insurance: 'Aetna',
-    status: 'active' as const,
-    emergencyContact: {
-      name: 'Mike Wilson',
-      phone: '(555) 876-5432',
-      relation: 'Brother'
-    },
-    medicalInfo: {
-      allergies: [],
-      medications: ['Prenatal Vitamins'],
-      conditions: ['Pregnancy']
-    },
-    appointments: [
-      {
-        date: '2024-01-20',
-        time: '9:00 AM',
-        type: 'Prenatal Checkup',
-        status: 'confirmed',
-        provider: 'Dr. Brown'
-      }
-    ],
-    documents: [
-      {
-        name: 'Ultrasound Report',
-        type: 'Imaging',
-        date: '2024-01-05'
-      }
-    ],
-    nextAppointment: '2024-01-20',
-    totalVisits: 8,
-    outstandingBalance: 0,
-    riskLevel: 'low' as const,
-    preferredProvider: 'Dr. Brown'
-  }
-];
+// NOTE: Mock data removed - all patient data now comes from database
+// This ensures no fallback to mock data on reload
 
 export function Patients() {
+  // CRITICAL: Log component mount to verify it's remounting on reload
+  console.log('🔄 Patients component MOUNTED/REMOUNTED at:', new Date().toISOString());
+  
   const [activeTab, setActiveTab] = useState('search');
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
-  const [patients, setPatients] = useState(mockPatients);
-  const [isLoading, setIsLoading] = useState(false);
+  const [patients, setPatients] = useState<any[]>([]); // Start with empty array, not mock data
+  const [isLoading, setIsLoading] = useState(true); // Start as loading
+  const isFetchingRef = useRef(false); // Use ref to prevent duplicate fetches (avoids race conditions)
   const { toast } = useToast();
+  
+  // CRITICAL: Log initial state
+  console.log('📊 Initial patients state length:', patients.length);
+
+  // Fetch patients from database on component mount
+  // Use auth state listener to ensure session is ready before fetching
+  useEffect(() => {
+    let mounted = true;
+    let authListener: { data: { subscription: any } } | null = null;
+    let hasFetched = false; // Prevent multiple fetches on initial load
+    
+    // Function to fetch if not already fetched
+    const fetchIfNeeded = () => {
+      if (mounted && !hasFetched) {
+        hasFetched = true;
+      fetchPatientsFromDatabase();
+      }
+    };
+
+    // First, try to get session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted && session && !hasFetched) {
+        fetchIfNeeded();
+      } else if (mounted && !session) {
+        // No session, clear and stop loading
+        setPatients([]);
+        setIsLoading(false);
+      }
+    });
+
+    // Also listen for auth state changes (handles reload scenarios)
+    authListener = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('🔐 Auth state changed:', event, session ? 'Has session' : 'No session');
+      if (!mounted) return;
+      
+      if (event === 'SIGNED_OUT') {
+        // Only clear on actual sign out, not token refresh
+        setPatients([]);
+        setIsLoading(false);
+        hasFetched = false; // Reset so we can fetch again if user signs back in
+      } else if (session && !hasFetched) {
+        // Session is available and we haven't fetched yet
+        fetchIfNeeded();
+      } else if (session && event === 'SIGNED_IN') {
+        // User just signed in (not initial load), fetch fresh data
+        hasFetched = false;
+        fetchIfNeeded();
+      }
+      // Note: We ignore TOKEN_REFRESHED - don't clear data on token refresh!
+    });
+    
+    return () => {
+      mounted = false;
+      if (authListener?.data?.subscription) {
+        authListener.data.subscription.unsubscribe();
+      }
+    };
+  }, []);
+
+  const fetchPatientsFromDatabase = async () => {
+    // Prevent duplicate concurrent fetches using ref (avoids race conditions with state)
+    if (isFetchingRef.current) {
+      console.log('⏸️ Fetch already in progress, skipping...');
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching patients from database...');
+      
+      // Check authentication first
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      console.log('🔐 Auth session:', session ? 'Authenticated' : 'Not authenticated');
+      console.log('👤 User ID:', session?.user?.id || 'No user');
+      
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch patients. Showing empty list.');
+        setPatients([]); // Set to empty array instead of keeping mock data
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+      
+      // CRITICAL: Log user_id to check RLS filtering
+      console.log('👤 Current user ID for RLS check:', session.user.id);
+      
+      const { data, error } = await supabase
+        .from('patients' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      // CRITICAL: Log the actual query result immediately
+      console.log('🔍 QUERY RESULT - Data:', data);
+      console.log('🔍 QUERY RESULT - Error:', error);
+      console.log('🔍 QUERY RESULT - Data length:', data?.length);
+      console.log('🔍 QUERY RESULT - Is array:', Array.isArray(data));
+
+      if (error) {
+        console.error('❌ Error fetching patients:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        // If table doesn't exist or RLS issue, show empty
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Patients table not found. Showing empty list. Run COMPLETE_DATABASE_SCHEMA.sql in Supabase.');
+          setPatients([]); // Set to empty array
+          setIsLoading(false);
+          isFetchingRef.current = false;
+          return;
+        }
+        // RLS or permission error
+        if (error.code === '42501' || error.message.includes('permission denied') || error.message.includes('policy')) {
+          console.error('🚫 RLS Policy Error - Check your Row Level Security policies!');
+          console.error('Current user:', session?.user?.id);
+          console.error('Error:', error.message);
+          toast({
+            title: 'Permission Denied',
+            description: 'Row Level Security policy is blocking access. Check RLS policies in Supabase.',
+            variant: 'destructive',
+          });
+          setPatients([]);
+          setIsLoading(false);
+          isFetchingRef.current = false;
+          return;
+        }
+        toast({
+          title: 'Error loading patients',
+          description: error.message,
+          variant: 'destructive',
+        });
+        setPatients([]); // Ensure state is set even on error
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      console.log('📦 Raw data from Supabase:', data);
+      console.log('📊 Data type:', typeof data);
+      console.log('📊 Is array:', Array.isArray(data));
+      console.log('📊 Data length:', data?.length || 0);
+      console.log('📊 First patient (if any):', data?.[0]);
+
+      // CRITICAL: Always update patients state, even if empty
+      // This ensures we never show stale/mock data
+      if (data && Array.isArray(data) && data.length > 0) {
+        console.log(`📊 Fetched ${data.length} patients from database:`, data);
+        
+        // Helper function to calculate accurate age from date of birth
+        const calculateAge = (dateOfBirth: string): number | null => {
+          if (!dateOfBirth) return null;
+          
+          try {
+            const birthDate = new Date(dateOfBirth);
+            const today = new Date();
+            
+            // Check if date is valid
+            if (isNaN(birthDate.getTime())) return null;
+            
+            // Check if date is in the future
+            if (birthDate > today) {
+              console.warn(`⚠️ Future date of birth detected: ${dateOfBirth}`);
+              return 0; // Return 0 for future dates
+            }
+            
+            // Calculate age accurately
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+            
+            // If birthday hasn't occurred this year, subtract 1
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+              age--;
+            }
+            
+            return age >= 0 ? age : 0; // Ensure age is never negative
+          } catch (error) {
+            console.error('Error calculating age:', error);
+            return null;
+          }
+        };
+        
+        // Transform database records to match component's patient format
+        const transformedPatients = data.map((dbPatient: any) => ({
+          id: dbPatient.id,
+          name: `${dbPatient.first_name || ''} ${dbPatient.last_name || ''}`.trim(),
+          age: calculateAge(dbPatient.date_of_birth),
+          dateOfBirth: dbPatient.date_of_birth,
+          phone: dbPatient.phone_primary || dbPatient.phone || '', // Use phone_primary first, fallback to phone
+          email: dbPatient.email,
+          address: [
+            dbPatient.address_line1,
+            dbPatient.city,
+            dbPatient.state,
+            dbPatient.zip_code,
+          ].filter(Boolean).join(', '),
+          insurance: '', // Will be populated from patient_insurance table if needed
+          status: dbPatient.status || 'active',
+          emergencyContact: {
+            name: dbPatient.emergency_contact_name,
+            phone: dbPatient.emergency_contact_phone,
+            relation: dbPatient.emergency_contact_relationship || dbPatient.emergency_contact_relation || '', // Use relationship first, fallback to relation
+          },
+          medicalInfo: {
+            allergies: [],
+            medications: [],
+            conditions: [],
+          },
+          appointments: [],
+          documents: [],
+          nextAppointment: null,
+          totalVisits: 0,
+          outstandingBalance: 0,
+          riskLevel: 'low' as const,
+          preferredProvider: '',
+          lastVisit: '',
+          // Additional fields from database
+          patient_id: dbPatient.patient_id,
+          gender: dbPatient.gender,
+          ssn: dbPatient.ssn,
+          maritalStatus: dbPatient.marital_status,
+          race: dbPatient.race,
+          ethnicity: dbPatient.ethnicity,
+          language: dbPatient.language,
+        }));
+
+        console.log(`✅ Successfully loaded ${transformedPatients.length} patients from database`);
+        console.log('📋 Transformed patients count:', transformedPatients.length);
+        console.log('📋 First 3 patient names:', transformedPatients.slice(0, 3).map(p => p.name));
+        
+        // CRITICAL: Force state update and verify
+        setPatients(transformedPatients);
+        
+        // Verify state was set correctly after a brief delay
+        setTimeout(() => {
+          console.log('🔍 STATE VERIFICATION - Patients state should now have', transformedPatients.length, 'patients');
+        }, 50);
+      } else {
+        // No patients in database - set empty array (not mock data)
+        console.warn('⚠️ No patients found in database.');
+        console.warn('⚠️ Data received:', data);
+        console.warn('⚠️ Data is null?', data === null);
+        console.warn('⚠️ Data is undefined?', data === undefined);
+        console.warn('⚠️ Data is array?', Array.isArray(data));
+        console.warn('⚠️ Data length:', data?.length);
+        setPatients([]); // Explicitly set to empty array - NEVER use mock data
+        console.log('✅ Patients state set to empty array []');
+      }
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchPatientsFromDatabase:', error);
+      console.error('Error stack:', error.stack);
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      setPatients([]); // Always set to empty on error
+      toast({
+        title: 'Error loading patients',
+        description: error.message || 'Failed to load patients from database',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+      console.log('🏁 Fetch completed. Loading state set to false.');
+      console.log('📊 Final patients state length:', patients.length);
+    }
+  };
 
   // Form states
   const [showRegistrationForm, setShowRegistrationForm] = useState(false);
@@ -156,10 +331,228 @@ export function Patients() {
     setActiveTab('dashboard');
   };
 
-  const handlePatientUpdate = (updatedPatient: any) => {
-    setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
-    setSelectedPatient(updatedPatient);
+  const handlePatientUpdate = async (updatedPatient: any) => {
+    try {
+      if (!updatedPatient.id) {
+        throw new Error('Patient ID is required for update');
+      }
+
+      console.log('💾 Updating patient in database:', updatedPatient.id);
+      
+      // Extract first and last name from full name
+      const nameParts = updatedPatient.name.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      // Parse address if it's a string (format: "address, city, state zip")
+      let addressLine1 = updatedPatient.address || '';
+      let city = updatedPatient.city || '';
+      let state = updatedPatient.state || '';
+      let zipCode = updatedPatient.zipCode || '';
+
+      // If address is a string, try to parse it
+      if (typeof addressLine1 === 'string' && addressLine1.includes(',')) {
+        const addressParts = addressLine1.split(',');
+        if (addressParts.length >= 3) {
+          addressLine1 = addressParts[0].trim();
+          city = addressParts[1].trim();
+          const stateZip = addressParts[2].trim().split(' ');
+          state = stateZip[0] || '';
+          zipCode = stateZip.slice(1).join(' ') || '';
+        }
+      }
+
+      // Prepare update data for patients table
+      const updateData: any = {
+        first_name: firstName,
+        last_name: lastName,
+        date_of_birth: updatedPatient.dateOfBirth,
+        phone: updatedPatient.phone || null,
+        email: updatedPatient.email || null,
+        address_line1: addressLine1 || null,
+        city: city || null,
+        state: state || null,
+        zip_code: zipCode || null,
+        status: updatedPatient.status || 'active',
+        emergency_contact_name: updatedPatient.emergencyContact?.name || null,
+        emergency_contact_phone: updatedPatient.emergencyContact?.phone || null,
+        emergency_contact_relation: updatedPatient.emergencyContact?.relation || null,
+      };
+
+      // Add optional fields if they exist
+      if (updatedPatient.gender) {
+        const genderMap: Record<string, string> = {
+          'male': 'M', 'female': 'F', 'other': 'O', 'prefer-not-to-say': 'U',
+          'M': 'M', 'F': 'F', 'O': 'O', 'U': 'U'
+        };
+        updateData.gender = genderMap[updatedPatient.gender.toLowerCase()] || updatedPatient.gender;
+      }
+      if (updatedPatient.ssn) updateData.ssn = updatedPatient.ssn;
+      if (updatedPatient.maritalStatus) updateData.marital_status = updatedPatient.maritalStatus;
+      if (updatedPatient.race) updateData.race = updatedPatient.race;
+      if (updatedPatient.ethnicity) updateData.ethnicity = updatedPatient.ethnicity;
+      if (updatedPatient.language) updateData.language = updatedPatient.language;
+
+      console.log('📝 Update data:', updateData);
+
+      // Update patients table
+      const { data: updated, error: patientError } = await supabase
+        .from('patients' as any)
+        .update(updateData)
+        .eq('id', updatedPatient.id)
+        .select()
+        .single();
+
+      if (patientError) {
+        console.error('❌ Error updating patient:', patientError);
+        throw new Error(patientError.message || 'Failed to update patient in database');
+      }
+
+      console.log('✅ Patient updated successfully:', updated);
+
+      // Update insurance if provided
+      if (updatedPatient.insuranceCompany || updatedPatient.insuranceId) {
+        // Check if insurance record exists
+        const { data: existingInsurance } = await supabase
+          .from('patient_insurance' as any)
+          .select('id')
+          .eq('patient_id', updatedPatient.id)
+          .single();
+
+        const insuranceData: any = {
+          patient_id: updatedPatient.id,
+          primary_insurance_company: updatedPatient.insuranceCompany || updatedPatient.insurance || null,
+          primary_insurance_id: updatedPatient.insuranceId || null,
+          primary_group_number: updatedPatient.groupNumber || null,
+          primary_policy_holder_name: updatedPatient.policyHolderName || null,
+          primary_policy_holder_relationship: updatedPatient.policyHolderRelationship || null,
+          secondary_insurance_company: updatedPatient.secondaryInsurance || null,
+          secondary_insurance_id: updatedPatient.secondaryInsuranceId || null,
+        };
+
+        if (existingInsurance) {
+          // Update existing insurance
+          await supabase
+            .from('patient_insurance' as any)
+            .update(insuranceData)
+            .eq('patient_id', updatedPatient.id);
+        } else {
+          // Insert new insurance record
+          await supabase
+            .from('patient_insurance' as any)
+            .insert(insuranceData);
+        }
+      }
+
+      // Update medical history if provided
+      if (updatedPatient.medicalInfo) {
+        const allergies = updatedPatient.medicalInfo.allergies || [];
+        const medications = updatedPatient.medicalInfo.medications || [];
+        const conditions = updatedPatient.medicalInfo.conditions || [];
+        const surgeries = (updatedPatient.previousSurgeries || '')
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter((s: string) => s);
+        const familyHistory = (updatedPatient.familyHistory || '')
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter((s: string) => s);
+
+        // Check if medical history exists
+        const { data: existingHistory } = await supabase
+          .from('patient_medical_history' as any)
+          .select('id')
+          .eq('patient_id', updatedPatient.id)
+          .single();
+
+        const medicalHistoryData: any = {
+          patient_id: updatedPatient.id,
+          allergies,
+          medications,
+          conditions,
+          surgeries,
+          family_history: familyHistory,
+        };
+
+        if (existingHistory) {
+          // Update existing medical history
+          await supabase
+            .from('patient_medical_history' as any)
+            .update(medicalHistoryData)
+            .eq('patient_id', updatedPatient.id);
+        } else {
+          // Insert new medical history
+          await supabase
+            .from('patient_medical_history' as any)
+            .insert(medicalHistoryData);
+        }
+      }
+
+      // Transform updated database record to match component format
+      const transformedPatient = {
+        id: updated.id,
+        name: `${updated.first_name || ''} ${updated.last_name || ''}`.trim(),
+        age: updatedPatient.age, // Keep calculated age
+        dateOfBirth: updated.date_of_birth,
+        phone: updated.phone_primary || updated.phone || '',
+        email: updated.email,
+        address: [
+          updated.address_line1,
+          updated.city,
+          updated.state,
+          updated.zip_code,
+        ].filter(Boolean).join(', '),
+        city: updated.city,
+        state: updated.state,
+        zipCode: updated.zip_code,
+        insurance: updatedPatient.insurance || updatedPatient.insuranceCompany || '',
+        status: updated.status || 'active',
+        emergencyContact: {
+          name: updated.emergency_contact_name,
+          phone: updated.emergency_contact_phone,
+          relation: updated.emergency_contact_relationship || updated.emergency_contact_relation || '',
+        },
+        medicalInfo: updatedPatient.medicalInfo || { allergies: [], medications: [], conditions: [] },
+        appointments: updatedPatient.appointments || [],
+        documents: updatedPatient.documents || [],
+        nextAppointment: updatedPatient.nextAppointment || null,
+        totalVisits: updatedPatient.totalVisits || 0,
+        outstandingBalance: updatedPatient.outstandingBalance || 0,
+        riskLevel: updatedPatient.riskLevel || 'low',
+        preferredProvider: updatedPatient.preferredProvider || '',
+        lastVisit: updatedPatient.lastVisit || '',
+        // Additional fields
+        patient_id: updated.patient_id,
+        gender: updated.gender,
+        ssn: updated.ssn,
+        maritalStatus: updated.marital_status,
+        race: updated.race,
+        ethnicity: updated.ethnicity,
+        language: updated.language,
+      };
+
+      // Update local state
+      setPatients(prev => prev.map(p => p.id === transformedPatient.id ? transformedPatient : p));
+      setSelectedPatient(transformedPatient);
     setShowEditForm(false);
+      
+      toast({ 
+        title: 'Success', 
+        description: 'Patient information updated successfully in database.' 
+      });
+
+      // Refresh patients list to ensure consistency
+      await fetchPatientsFromDatabase();
+    } catch (error: any) {
+      console.error('💥 Error updating patient:', error);
+      toast({ 
+        title: 'Error updating patient', 
+        description: error.message || 'Failed to update patient. Please try again.',
+        variant: 'destructive',
+        duration: 5000
+      });
+      throw error; // Re-throw so EditPatientForm can handle it
+    }
   };
 
   const handleNewPatient = async (newPatient: any) => {
@@ -308,11 +701,29 @@ export function Patients() {
         });
       }
 
+      // Helper function to calculate accurate age
+      const calculateAge = (dateOfBirth: string): number | null => {
+        if (!dateOfBirth) return null;
+        try {
+          const birthDate = new Date(dateOfBirth);
+          const today = new Date();
+          if (isNaN(birthDate.getTime()) || birthDate > today) return 0;
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          return age >= 0 ? age : 0;
+        } catch {
+          return null;
+        }
+      };
+
       // Update local state with a simplified patient card
       const patientCard = {
         id: (created as any).id,
         name: `${(created as any).first_name} ${(created as any).last_name}`.trim(),
-        age: new Date().getFullYear() - new Date((created as any).date_of_birth).getFullYear(),
+        age: calculateAge((created as any).date_of_birth),
         dateOfBirth: (created as any).date_of_birth,
         phone: (created as any).phone,
         email: (created as any).email,
@@ -340,11 +751,16 @@ export function Patients() {
         lastVisit: '',
       };
 
-      setPatients(prev => [...prev, patientCard]);
+      // Refresh patients list from database to include the new patient
+      await fetchPatientsFromDatabase();
+      
       setShowRegistrationForm(false);
       setSelectedPatient(patientCard);
       setActiveTab('dashboard');
-      toast({ title: 'Success', description: 'Patient saved to database.' });
+      toast({ 
+        title: 'Success', 
+        description: 'Patient saved to database and will persist after refresh.' 
+      });
     } catch (e: any) {
       console.error('Error saving patient:', e);
       const errorMessage = e.message || 'Unknown error occurred while saving patient';

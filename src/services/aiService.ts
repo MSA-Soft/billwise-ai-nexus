@@ -116,54 +116,254 @@ Sincerely,
 Billing Department`;
   }
 
-  // Analyze authorization request for completeness
+  // Enhanced AI-powered completeness checker
   async analyzeAuthorizationRequest(requestData: any): Promise<AIAnalysis> {
-    const missingElements = [];
-    const recommendations = [];
+    const missingElements: string[] = [];
+    const recommendations: string[] = [];
+    const warnings: string[] = [];
     let score = 100;
 
-    // Check for missing required fields
-    if (!requestData.clinical_indication) {
-      missingElements.push('Clinical indication');
-      score -= 20;
-    }
-
-    if (!requestData.procedure_codes || requestData.procedure_codes.length === 0) {
-      missingElements.push('Procedure codes');
+    // ============================================
+    // CRITICAL FIELDS CHECK (High Impact)
+    // ============================================
+    
+    // Patient Information
+    if (!requestData.patient_name) {
+      missingElements.push('Patient name');
       score -= 15;
     }
-
-    if (!requestData.diagnosis_codes || requestData.diagnosis_codes.length === 0) {
-      missingElements.push('Diagnosis codes');
-      score -= 15;
+    if (!requestData.patient_dob) {
+      missingElements.push('Patient date of birth');
+      score -= 10;
     }
-
-    if (!requestData.service_start_date) {
-      missingElements.push('Service start date');
+    if (!requestData.patient_member_id) {
+      missingElements.push('Patient member ID');
       score -= 10;
     }
 
-    // Generate recommendations
-    if (score < 80) {
-      recommendations.push('Add detailed clinical justification');
-      recommendations.push('Include supporting medical records');
-      recommendations.push('Specify urgency level');
+    // Payer Information
+    if (!requestData.payer_id && !requestData.payer_name_custom) {
+      missingElements.push('Insurance payer');
+      score -= 15;
     }
 
+    // Provider Information
+    if (!requestData.provider_name_custom && !requestData.provider_npi_custom) {
+      missingElements.push('Provider name and NPI');
+      score -= 10;
+    }
+
+    // Service Information
+    if (!requestData.service_start_date) {
+      missingElements.push('Service start date');
+      score -= 15;
+    }
+    if (!requestData.service_type) {
+      missingElements.push('Service type/description');
+      score -= 10;
+    }
+
+    // Procedure Codes
+    if (!requestData.procedure_codes || requestData.procedure_codes.length === 0) {
+      missingElements.push('Procedure codes (CPT)');
+      score -= 20;
+    } else {
+      // Validate CPT code format
+      const invalidCodes = requestData.procedure_codes.filter((code: string) => 
+        !/^\d{5}$/.test(code)
+      );
+      if (invalidCodes.length > 0) {
+        warnings.push(`Invalid CPT code format: ${invalidCodes.join(', ')}`);
+        score -= 5;
+      }
+    }
+
+    // Diagnosis Codes
+    if (!requestData.diagnosis_codes || requestData.diagnosis_codes.length === 0) {
+      missingElements.push('Diagnosis codes (ICD-10)');
+      score -= 20;
+    } else {
+      // Validate ICD-10 code format
+      const invalidCodes = requestData.diagnosis_codes.filter((code: string) => 
+        !/^[A-Z]\d{2,3}(\.\d{1,4})?$/.test(code)
+      );
+      if (invalidCodes.length > 0) {
+        warnings.push(`Invalid ICD-10 code format: ${invalidCodes.join(', ')}`);
+        score -= 5;
+      }
+      
+      // Check for primary diagnosis
+      if (requestData.diagnosis_codes.length > 0 && !requestData.primary_diagnosis) {
+        warnings.push('Primary diagnosis not specified');
+        score -= 5;
+      }
+    }
+
+    // Clinical Information
+    if (!requestData.clinical_indication || requestData.clinical_indication.trim().length < 50) {
+      missingElements.push('Detailed clinical indication (minimum 50 characters)');
+      score -= 15;
+    }
+
+    // ============================================
+    // PAYER-SPECIFIC REQUIREMENTS
+    // ============================================
+    
+    // Check payer-specific requirements (would query database in production)
+    const payerName = requestData.payer_name_custom || 'Unknown';
+    
+    // Medicare requirements
+    if (payerName.toLowerCase().includes('medicare')) {
+      if (!requestData.medicare_beneficiary_id) {
+        warnings.push('Medicare beneficiary ID recommended');
+      }
+    }
+    
+    // Commercial payer requirements
+    if (!payerName.toLowerCase().includes('medicare') && !payerName.toLowerCase().includes('medicaid')) {
+      if (!requestData.group_number) {
+        warnings.push('Group number may be required');
+      }
+    }
+
+    // ============================================
+    // MEDICAL NECESSITY VALIDATION
+    // ============================================
+    
+    if (!requestData.medical_necessity || requestData.medical_necessity.trim().length < 100) {
+      missingElements.push('Medical necessity justification (minimum 100 characters)');
+      score -= 10;
+    }
+
+    // ============================================
+    // URGENCY AND TIMING VALIDATION
+    // ============================================
+    
+    if (!requestData.urgency_level) {
+      warnings.push('Urgency level not specified');
+    } else if (requestData.urgency_level === 'stat') {
+      // STAT requests need immediate attention
+      if (!requestData.stat_justification) {
+        warnings.push('STAT requests require justification');
+      }
+    }
+
+    // Check service date is not in the past (for prior auth)
+    if (requestData.service_start_date) {
+      const serviceDate = new Date(requestData.service_start_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (serviceDate < today && requestData.auth_type === 'prior') {
+        warnings.push('Service date is in the past for prior authorization');
+        score -= 5;
+      }
+    }
+
+    // ============================================
+    // DOCUMENTATION CHECK
+    // ============================================
+    
+    if (!requestData.supporting_documents || requestData.supporting_documents.length === 0) {
+      warnings.push('No supporting documents attached');
+      recommendations.push('Attach clinical notes, lab results, or imaging reports');
+    }
+
+    // ============================================
+    // CODE COMPATIBILITY CHECK
+    // ============================================
+    
+    // Check if diagnosis codes support procedure codes
+    if (requestData.procedure_codes && requestData.diagnosis_codes) {
+      // In production, would check against payer-specific code compatibility rules
+      recommendations.push('Verify diagnosis codes support the requested procedures');
+    }
+
+    // ============================================
+    // GENERATE INTELLIGENT RECOMMENDATIONS
+    // ============================================
+    
+    if (score < 70) {
+      recommendations.push('⚠️ CRITICAL: Complete all required fields before submission');
+      recommendations.push('Add detailed clinical justification');
+      recommendations.push('Include supporting medical records');
+    } else if (score < 85) {
+      recommendations.push('Review and enhance clinical documentation');
+      recommendations.push('Verify all codes are correct and current');
+    } else {
+      recommendations.push('✅ Request is well-documented');
+      recommendations.push('Consider adding any optional supporting documentation');
+    }
+
+    // Payer-specific recommendations
+    if (payerName.toLowerCase().includes('aetna')) {
+      recommendations.push('Aetna typically requires detailed medical necessity documentation');
+    }
+    if (payerName.toLowerCase().includes('bcbs') || payerName.toLowerCase().includes('blue cross')) {
+      recommendations.push('BCBS may require prior authorization for certain procedures');
+    }
+
+    // Urgency-based recommendations
     if (requestData.urgency_level === 'routine' && score > 70) {
-      recommendations.push('Consider upgrading to urgent if clinically appropriate');
+      recommendations.push('Consider upgrading to urgent if clinically appropriate for faster processing');
+    }
+
+    // ============================================
+    // APPROVAL PROBABILITY ESTIMATION
+    // ============================================
+    
+    let approvalProbability = 0;
+    if (score >= 90) {
+      approvalProbability = 85; // High probability
+    } else if (score >= 75) {
+      approvalProbability = 65; // Medium-high probability
+    } else if (score >= 60) {
+      approvalProbability = 45; // Medium probability
+    } else {
+      approvalProbability = 25; // Low probability
+    }
+
+    // Adjust based on payer history (would use ML model in production)
+    if (payerName.toLowerCase().includes('medicare')) {
+      approvalProbability += 10; // Medicare typically has higher approval rates
+    }
+
+    // ============================================
+    // SUGGESTED ACTIONS
+    // ============================================
+    
+    const suggestedActions: string[] = [];
+    
+    if (missingElements.length > 0) {
+      suggestedActions.push(`Complete ${missingElements.length} missing required field(s)`);
+    }
+    
+    if (warnings.length > 0) {
+      suggestedActions.push(`Address ${warnings.length} warning(s)`);
+    }
+    
+    if (score < 80) {
+      suggestedActions.push('Review payer-specific requirements');
+      suggestedActions.push('Enhance clinical documentation');
+    }
+    
+    if (approvalProbability < 50) {
+      suggestedActions.push('Consider adding more supporting documentation');
+      suggestedActions.push('Review denial patterns for this payer');
     }
 
     return {
-      score: Math.max(0, score),
-      recommendations,
+      score: Math.max(0, Math.min(100, score)),
+      recommendations: [...recommendations, ...warnings],
       missingElements,
-      suggestedActions: [
-        'Review and complete all required fields',
-        'Attach supporting documentation',
-        'Verify payer-specific requirements'
-      ]
-    };
+      suggestedActions,
+      // Additional fields for enhanced analysis
+      approvalProbability: Math.min(100, approvalProbability),
+      completenessLevel: score >= 90 ? 'excellent' : score >= 75 ? 'good' : score >= 60 ? 'fair' : 'poor',
+      criticalIssues: missingElements.filter(e => 
+        e.includes('Patient') || e.includes('Payer') || e.includes('Procedure') || e.includes('Diagnosis')
+      ),
+    } as any;
   }
 
   // Real AI analysis using OpenAI API
@@ -328,6 +528,193 @@ Collections Department`
     };
 
     return suggestions[context as keyof typeof suggestions] || suggestions['payment_reminder'];
+  }
+
+  // AI Smart Suggestions - Intelligent recommendations for improving authorization requests
+  async generateSmartSuggestions(requestData: any, analysis?: AIAnalysis): Promise<{
+    documentationSuggestions: string[];
+    improvementSuggestions: string[];
+    payerSpecificSuggestions: string[];
+    codeSuggestions: string[];
+    urgencySuggestions: string[];
+    priorityActions: string[];
+  }> {
+    const documentationSuggestions: string[] = [];
+    const improvementSuggestions: string[] = [];
+    const payerSpecificSuggestions: string[] = [];
+    const codeSuggestions: string[] = [];
+    const urgencySuggestions: string[] = [];
+    const priorityActions: string[] = [];
+
+    // Get analysis if not provided
+    if (!analysis) {
+      analysis = await this.analyzeAuthorizationRequest(requestData);
+    }
+
+    // Documentation Suggestions
+    if (!requestData.supporting_documents || requestData.supporting_documents.length === 0) {
+      documentationSuggestions.push('Attach clinical notes from the treating provider');
+      documentationSuggestions.push('Include relevant lab results or imaging reports');
+      documentationSuggestions.push('Add progress notes showing treatment history');
+      priorityActions.push('Add supporting documentation - this significantly improves approval chances');
+    } else if (requestData.supporting_documents.length < 3) {
+      documentationSuggestions.push('Consider adding additional clinical documentation');
+      documentationSuggestions.push('Include provider notes explaining medical necessity');
+    }
+
+    // Improvement Suggestions based on completeness score
+    if (analysis.score < 70) {
+      improvementSuggestions.push('⚠️ CRITICAL: Complete all required fields immediately');
+      improvementSuggestions.push('Add detailed clinical indication (minimum 100 characters)');
+      improvementSuggestions.push('Provide comprehensive medical necessity justification');
+      priorityActions.push('Complete missing required fields - submission will be rejected without them');
+    } else if (analysis.score < 85) {
+      improvementSuggestions.push('Enhance clinical documentation for better approval chances');
+      improvementSuggestions.push('Add more detail to medical necessity section');
+      improvementSuggestions.push('Consider peer review or clinical consultation');
+    }
+
+    // Payer-Specific Suggestions
+    const payerName = (requestData.payer_name_custom || '').toLowerCase();
+    
+    if (payerName.includes('aetna')) {
+      payerSpecificSuggestions.push('Aetna requires detailed medical necessity documentation');
+      payerSpecificSuggestions.push('Include specific clinical criteria met for the procedure');
+      payerSpecificSuggestions.push('Aetna typically reviews within 3-5 business days');
+    }
+    
+    if (payerName.includes('bcbs') || payerName.includes('blue cross')) {
+      payerSpecificSuggestions.push('BCBS may require prior authorization for certain procedures');
+      payerSpecificSuggestions.push('Verify procedure is covered under patient\'s plan');
+      payerSpecificSuggestions.push('BCBS typically processes within 2-4 business days');
+    }
+    
+    if (payerName.includes('medicare')) {
+      payerSpecificSuggestions.push('Medicare requires specific documentation for medical necessity');
+      payerSpecificSuggestions.push('Ensure all Medicare-specific fields are completed');
+      payerSpecificSuggestions.push('Medicare typically has higher approval rates (95%+)');
+    }
+    
+    if (payerName.includes('cigna')) {
+      payerSpecificSuggestions.push('Cigna may require additional clinical information');
+      payerSpecificSuggestions.push('Include detailed treatment plan and expected outcomes');
+    }
+
+    // Code Suggestions
+    if (requestData.procedure_codes && requestData.procedure_codes.length > 0) {
+      const invalidCodes = requestData.procedure_codes.filter((code: string) => 
+        !/^\d{5}$/.test(code)
+      );
+      
+      if (invalidCodes.length > 0) {
+        codeSuggestions.push(`Fix invalid CPT codes: ${invalidCodes.join(', ')}`);
+        codeSuggestions.push('CPT codes must be exactly 5 digits');
+        priorityActions.push('Correct invalid procedure codes');
+      } else {
+        codeSuggestions.push('✅ All CPT codes are properly formatted');
+      }
+    }
+
+    if (requestData.diagnosis_codes && requestData.diagnosis_codes.length > 0) {
+      const invalidCodes = requestData.diagnosis_codes.filter((code: string) => 
+        !/^[A-Z]\d{2,3}(\.\d{1,4})?$/.test(code)
+      );
+      
+      if (invalidCodes.length > 0) {
+        codeSuggestions.push(`Fix invalid ICD-10 codes: ${invalidCodes.join(', ')}`);
+        codeSuggestions.push('ICD-10 codes must start with a letter followed by numbers');
+        priorityActions.push('Correct invalid diagnosis codes');
+      }
+
+      if (requestData.diagnosis_codes.length > 1 && !requestData.primary_diagnosis) {
+        codeSuggestions.push('Specify which diagnosis is primary');
+        codeSuggestions.push('Primary diagnosis should be the main reason for the procedure');
+      }
+    }
+
+    // Urgency Suggestions
+    if (requestData.urgency_level === 'routine' && analysis.score >= 75) {
+      urgencySuggestions.push('Consider upgrading to "urgent" if clinically appropriate');
+      urgencySuggestions.push('Urgent requests typically process 2-3 days faster');
+    } else if (requestData.urgency_level === 'stat') {
+      if (!requestData.stat_justification) {
+        urgencySuggestions.push('⚠️ STAT requests require justification');
+        urgencySuggestions.push('Add explanation for why this is a STAT request');
+        priorityActions.push('Provide STAT justification - required for STAT processing');
+      }
+    }
+
+    // Additional Smart Suggestions based on analysis
+    if (analysis.missingElements.length > 0) {
+      priorityActions.push(`Complete ${analysis.missingElements.length} missing required field(s)`);
+    }
+
+    if ((analysis as any).approvalProbability && (analysis as any).approvalProbability < 60) {
+      improvementSuggestions.push('⚠️ Low approval probability - significant improvements needed');
+      improvementSuggestions.push('Review and address all risk factors');
+      improvementSuggestions.push('Consider clinical peer review before submission');
+    }
+
+    // Generate AI-powered suggestions using OpenAI if available
+    if (this.apiKey && this.apiKey !== 'demo-key') {
+      try {
+        const aiSuggestions = await this.generateAISuggestions(requestData, analysis);
+        improvementSuggestions.push(...aiSuggestions);
+      } catch (error) {
+        console.log('AI suggestion generation failed, using rule-based suggestions');
+      }
+    }
+
+    return {
+      documentationSuggestions,
+      improvementSuggestions,
+      payerSpecificSuggestions,
+      codeSuggestions,
+      urgencySuggestions,
+      priorityActions: [...new Set(priorityActions)], // Remove duplicates
+    };
+  }
+
+  // Generate AI-powered suggestions using OpenAI
+  private async generateAISuggestions(requestData: any, analysis: AIAnalysis): Promise<string[]> {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: `You are a medical billing expert. Provide specific, actionable suggestions to improve authorization request approval chances. Be concise and practical.`
+            },
+            {
+              role: 'user',
+              content: `Authorization request has completeness score of ${analysis.score}/100. Missing elements: ${analysis.missingElements.join(', ')}. Provide 3-5 specific suggestions to improve this request.`
+            }
+          ],
+          max_tokens: 300,
+          temperature: 0.7
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const suggestions = data.choices[0].message.content
+          .split('\n')
+          .filter((line: string) => line.trim().length > 0)
+          .map((line: string) => line.replace(/^[-•*]\s*/, '').trim())
+          .slice(0, 5);
+        return suggestions;
+      }
+    } catch (error) {
+      console.log('AI suggestion generation not available');
+    }
+
+    return [];
   }
 }
 

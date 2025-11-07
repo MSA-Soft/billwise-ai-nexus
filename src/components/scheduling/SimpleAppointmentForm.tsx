@@ -8,15 +8,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Search, UserPlus, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/use-toast';
 
 interface SimpleAppointmentFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (data: any) => void;
+  existingAppointment?: any; // Appointment to edit (optional)
 }
 
-export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppointmentFormProps) {
+export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppointment }: SimpleAppointmentFormProps) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredPatients, setFilteredPatients] = useState<any[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
@@ -25,6 +28,7 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
   
   const [formData, setFormData] = useState({
     patient_id: '',
+    provider_id: '',
     appointment_type: 'consultation',
     scheduled_date: new Date().toISOString().split('T')[0],
     scheduled_time: '09:00',
@@ -33,6 +37,9 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
     location: '',
     notes: ''
   });
+
+  const [providers, setProviders] = useState<any[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
 
   const [quickAddData, setQuickAddData] = useState({
     firstName: '',
@@ -50,6 +57,11 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
   // Search for patients
   useEffect(() => {
     const searchPatients = async () => {
+      // Don't search if a patient is already selected (to avoid re-searching when displaying selected patient)
+      if (selectedPatient) {
+        return;
+      }
+
       if (!searchTerm || searchTerm.length < 1) {
         setFilteredPatients([]);
         setShowQuickAdd(false);
@@ -58,133 +70,78 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
 
       setIsSearching(true);
       try {
-        // Search in collections_accounts table (which has patient information)
         const searchTermLower = searchTerm.toLowerCase().trim();
         
-        // Fetch all records and filter client-side for more reliable search
-        // This avoids PostgREST query syntax issues
-        const { data: allData, error } = await supabase
-          .from('collections_accounts')
-          .select('patient_id, patient_name, patient_email, patient_phone')
-          .limit(100); // Get more records to search through
+        // Search in patients table by first_name, last_name, and patient_id
+        // Use ilike for case-insensitive search
+        const { data: patientsData, error } = await supabase
+          .from('patients' as any)
+          .select('id, patient_id, first_name, last_name, phone, email, date_of_birth')
+          .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%`)
+          .limit(20);
 
         if (error) {
           console.error('Search error:', error);
           throw error;
         }
 
-        // Normalize patient ID to a common format for comparison
-        // Handles formats: "PAT-002", "P002", "p002", "P-002", "p-002", "002" -> all normalize to "pat-002"
-        const normalizePatientId = (id: string): string => {
-          if (!id) return '';
-          const idLower = id.toLowerCase().trim();
-          
-          // Remove "PAT-" prefix if present first
-          let normalized = idLower.replace(/^pat-/, '');
-          
-          // If it's just numbers, add "pat-" prefix
-          if (/^\d+$/.test(normalized)) {
-            return `pat-${normalized}`;
-          }
-          
-          // Handle "P-002" or "p-002" format (with hyphen)
-          const hyphenMatch = normalized.match(/^p-(\d+)$/);
-          if (hyphenMatch) {
-            return `pat-${hyphenMatch[1]}`;
-          }
-          
-          // Handle "P002" or "p002" format (no hyphen)
-          const noHyphenMatch = normalized.match(/^p(\d+)$/);
-          if (noHyphenMatch) {
-            return `pat-${noHyphenMatch[1]}`;
-          }
-          
-          // If it already has "pat-" prefix, return as is (this handles cases where replace didn't match)
-          if (idLower.startsWith('pat-')) {
-            return idLower;
-          }
-          
-          // Otherwise return original
-          return idLower;
-        };
-        
-        // Normalize search term
-        const normalizedSearchTerm = normalizePatientId(searchTermLower);
-        
-        // Filter client-side for case-insensitive search with ID format normalization
-        const filteredData = (allData || []).filter((item: any) => {
-          // If patient_id exists, check both ID and name
-          if (item.patient_id) {
-            const itemIdNormalized = normalizePatientId(item.patient_id);
-            
-            // Check normalized ID match or contains match
-            const idMatch = itemIdNormalized === normalizedSearchTerm || 
-                           itemIdNormalized.includes(normalizedSearchTerm) ||
-                           normalizedSearchTerm.includes(itemIdNormalized) ||
-                           item.patient_id.toLowerCase().includes(searchTermLower);
-            
-            const nameMatch = item.patient_name?.toLowerCase().includes(searchTermLower);
-            return idMatch || nameMatch;
-          }
-          
-          // If patient_id is null, only search by name
-          const nameMatch = item.patient_name?.toLowerCase().includes(searchTermLower);
-          return nameMatch;
-        });
-
-        const data = filteredData.slice(0, 20); // Limit to 20 results
-
-        // Map to patient objects, handling null patient_ids
-        let patients = (data || []).map((item: any) => {
-          // If patient_id is null, use the collection account id or generate a temporary ID
-          const patientId = item.patient_id || `TEMP-${item.id}` || `TEMP-${Date.now()}`;
-          
+        // Map to patient objects
+        let patients = (patientsData || []).map((patient: any) => {
           return {
-            id: patientId,
-            originalId: item.patient_id, // Store original for reference
-            name: item.patient_name || 'Unknown',
-            email: item.patient_email || '',
-            phone: item.patient_phone || '',
-            collectionAccountId: item.id // Store the collection account ID
+            id: patient.id, // UUID from patients table
+            patient_id: patient.patient_id, // Patient ID like PAT-123456
+            name: `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
+            firstName: patient.first_name,
+            lastName: patient.last_name,
+            email: patient.email || '',
+            phone: patient.phone || '',
+            dateOfBirth: patient.date_of_birth
           };
         });
 
-        // Prioritize exact ID matches (case-insensitive)
+        // Prioritize exact matches
         patients = patients.sort((a, b) => {
-          const aIdLower = a.id.toLowerCase();
-          const bIdLower = b.id.toLowerCase();
-          const aExactMatch = aIdLower === searchTermLower || aIdLower.includes(searchTermLower);
-          const bExactMatch = bIdLower === searchTermLower || bIdLower.includes(searchTermLower);
+          const searchLower = searchTermLower;
+          const aIdLower = (a.patient_id || '').toLowerCase();
+          const bIdLower = (b.patient_id || '').toLowerCase();
+          const aNameLower = a.name.toLowerCase();
+          const bNameLower = b.name.toLowerCase();
           
-          // Exact match first
-          if (aIdLower === searchTermLower && bIdLower !== searchTermLower) return -1;
-          if (bIdLower === searchTermLower && aIdLower !== searchTermLower) return 1;
+          // Exact ID match first
+          if (aIdLower === searchLower && bIdLower !== searchLower) return -1;
+          if (bIdLower === searchLower && aIdLower !== searchLower) return 1;
           
           // Then starts with match
-          if (aIdLower.startsWith(searchTermLower) && !bIdLower.startsWith(searchTermLower)) return -1;
-          if (bIdLower.startsWith(searchTermLower) && !aIdLower.startsWith(searchTermLower)) return 1;
+          if (aIdLower.startsWith(searchLower) && !bIdLower.startsWith(searchLower)) return -1;
+          if (bIdLower.startsWith(searchLower) && !aIdLower.startsWith(searchLower)) return 1;
+          
+          // Then name starts with
+          if (aNameLower.startsWith(searchLower) && !bNameLower.startsWith(searchLower)) return -1;
+          if (bNameLower.startsWith(searchLower) && !aNameLower.startsWith(searchLower)) return 1;
           
           return 0;
         });
 
-        console.log('Search term:', searchTermLower);
-        console.log('Normalized search term:', normalizedSearchTerm);
-        console.log('Total records fetched:', allData?.length || 0);
-        console.log('Sample records from DB:', allData?.slice(0, 5).map((item: any) => ({
-          patient_id: item.patient_id,
-          patient_name: item.patient_name,
-          id: item.id
-        })) || []);
-        console.log('Filtered records:', filteredData.length);
         console.log('Search results for "' + searchTerm + '":', patients);
         setFilteredPatients(patients);
-        // Only show quick add if no patients found AND search term is at least 2 characters
-        setShowQuickAdd(patients.length === 0 && searchTerm.length >= 2);
+        
+        // Don't show quick add if:
+        // 1. A patient is already selected, OR
+        // 2. Search term looks like a selected patient display format (contains "(" and "PAT-"), OR
+        // 3. Patients were found
+        const looksLikeSelectedPatient = searchTerm.includes('(') && searchTerm.includes('PAT-');
+        setShowQuickAdd(
+          !selectedPatient && 
+          !looksLikeSelectedPatient && 
+          patients.length === 0 && 
+          searchTerm.length >= 2
+        );
       } catch (error) {
         console.error('Error searching patients:', error);
         setFilteredPatients([]);
-        // Only show quick add on error if search term is substantial
-        setShowQuickAdd(searchTerm.length >= 2);
+        // Only show quick add on error if search term is substantial and doesn't look like selected patient
+        const looksLikeSelectedPatient = searchTerm.includes('(') && searchTerm.includes('PAT-');
+        setShowQuickAdd(!selectedPatient && !looksLikeSelectedPatient && searchTerm.length >= 2);
       } finally {
         setIsSearching(false);
       }
@@ -195,73 +152,241 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchTerm]);
+  }, [searchTerm, selectedPatient]);
+
+  // Fetch providers on component mount
+  useEffect(() => {
+    const fetchProviders = async () => {
+      setIsLoadingProviders(true);
+      try {
+        const { data, error } = await supabase
+          .from('providers' as any)
+          .select('id, npi, first_name, last_name, title')
+          .eq('is_active', true)
+          .order('last_name', { ascending: true })
+          .limit(100);
+
+        if (error) {
+          console.error('Error fetching providers:', error);
+          // If providers table doesn't exist or error, set empty array
+          setProviders([]);
+        } else {
+          setProviders(data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching providers:', error);
+        setProviders([]);
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    };
+
+    if (isOpen) {
+      fetchProviders();
+    }
+  }, [isOpen]);
+
+  // Pre-fill form when editing an existing appointment
+  useEffect(() => {
+    if (existingAppointment && isOpen) {
+      console.log('📝 Pre-filling form with existing appointment:', existingAppointment);
+      
+      // Set form data from existing appointment
+      setFormData({
+        patient_id: existingAppointment.patient_id || '',
+        provider_id: existingAppointment.provider_id || '',
+        appointment_type: existingAppointment.appointment_type || 'consultation',
+        scheduled_date: existingAppointment.scheduled_date || new Date().toISOString().split('T')[0],
+        scheduled_time: existingAppointment.scheduled_time || '09:00',
+        duration_minutes: existingAppointment.duration_minutes || 30,
+        status: existingAppointment.status || 'scheduled',
+        location: existingAppointment.location || '',
+        notes: existingAppointment.notes || ''
+      });
+
+      // Set selected patient if patient data exists
+      if (existingAppointment.patient) {
+        const patientObj = {
+          id: existingAppointment.patient.id || existingAppointment.patient_id,
+          patient_id: existingAppointment.patient.patient_id || existingAppointment.patient.id,
+          name: `${existingAppointment.patient.first_name || ''} ${existingAppointment.patient.last_name || ''}`.trim(),
+          firstName: existingAppointment.patient.first_name,
+          lastName: existingAppointment.patient.last_name,
+          email: existingAppointment.patient.email || '',
+          phone: existingAppointment.patient.phone || '',
+          dateOfBirth: existingAppointment.patient.date_of_birth
+        };
+        setSelectedPatient(patientObj);
+        setSearchTerm(`${patientObj.name} (${patientObj.patient_id || patientObj.id})`);
+      } else if (existingAppointment.patient_id) {
+        // If patient data not loaded, fetch it
+        const fetchPatient = async () => {
+          try {
+            const { data: patientData, error } = await supabase
+              .from('patients' as any)
+              .select('id, patient_id, first_name, last_name, phone, email, date_of_birth')
+              .eq('id', existingAppointment.patient_id)
+              .single();
+
+            if (patientData && !error) {
+              const patient = patientData as any;
+              const patientObj = {
+                id: patient.id,
+                patient_id: patient.patient_id,
+                name: `${patient.first_name || ''} ${patient.last_name || ''}`.trim(),
+                firstName: patient.first_name,
+                lastName: patient.last_name,
+                email: patient.email || '',
+                phone: patient.phone || '',
+                dateOfBirth: patient.date_of_birth
+              };
+              setSelectedPatient(patientObj);
+              setSearchTerm(`${patientObj.name} (${patientObj.patient_id || patientObj.id})`);
+            }
+          } catch (error) {
+            console.error('Error fetching patient for edit:', error);
+          }
+        };
+        fetchPatient();
+      }
+    } else if (isOpen && !existingAppointment) {
+      // Reset form when opening for new appointment
+      setFormData({
+        patient_id: '',
+        provider_id: '',
+        appointment_type: 'consultation',
+        scheduled_date: new Date().toISOString().split('T')[0],
+        scheduled_time: '09:00',
+        duration_minutes: 30,
+        status: 'scheduled',
+        location: '',
+        notes: ''
+      });
+      setSelectedPatient(null);
+      setSearchTerm('');
+    }
+  }, [existingAppointment, isOpen]);
 
   const handlePatientSelect = (patient: any) => {
-    setSelectedPatient(patient);
-    setFormData({ ...formData, patient_id: patient.id });
-    setSearchTerm(`${patient.name} (${patient.id})`);
+    // Clear search results and quick add first
     setFilteredPatients([]);
     setShowQuickAdd(false);
+    
+    // Set selected patient
+    setSelectedPatient(patient);
+    
+    // Use the UUID (id) for patient_id in appointments table
+    setFormData({ ...formData, patient_id: patient.id });
+    
+    // Display patient_id (PAT-123456) in search term, not UUID
+    // This is just for display - the search useEffect will skip because selectedPatient is now set
+    setSearchTerm(`${patient.name} (${patient.patient_id || patient.id})`);
   };
 
   const handleQuickAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!user?.id) {
-      alert('You must be logged in to add a patient');
+      toast({
+        title: 'Authentication Required',
+        description: 'You must be logged in to add a patient',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate required fields
+    if (!quickAddData.firstName.trim() || !quickAddData.lastName.trim() || !quickAddData.dob) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please fill in all required fields: First Name, Last Name, and Date of Birth',
+        variant: 'destructive',
+      });
       return;
     }
     
     try {
-      // Generate a patient ID
-      const patientId = `PAT-${Date.now()}`;
+      // Generate a patient ID (same format as Patients component)
+      const patientId = `PAT-${Date.now().toString().slice(-6)}`;
       
-      // Create patient record in collections_accounts (or you might want to create a patients table)
-      const { data: collectionAccount, error } = await supabase
-        .from('collections_accounts')
+      // Create patient record in patients table
+      const { data: newPatient, error: patientError } = await supabase
+        .from('patients' as any)
         .insert({
           patient_id: patientId,
-          patient_name: `${quickAddData.firstName} ${quickAddData.lastName}`,
-          current_balance: 0,
-          original_balance: 0,
-          days_overdue: 0,
-          collection_stage: 'early_collection',
-          collection_status: 'active',
-          user_id: user.id
+          user_id: user.id,
+          first_name: quickAddData.firstName.trim(),
+          last_name: quickAddData.lastName.trim(),
+          date_of_birth: quickAddData.dob,
+          status: 'active'
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (patientError) {
+        console.error('Error creating patient:', patientError);
+        throw patientError;
+      }
+
+      if (!newPatient || !(newPatient as any).id) {
+        throw new Error('Failed to create patient - no ID returned');
+      }
+
+      const patientIdUuid = (newPatient as any).id;
+
+      // Save insurance information if provided
+      if (quickAddData.primaryInsurance || quickAddData.primaryInsuranceId || 
+          quickAddData.secondaryInsurance || quickAddData.secondaryInsuranceId) {
+        const { error: insuranceError } = await supabase
+          .from('patient_insurance' as any)
+          .insert({
+            patient_id: patientIdUuid, // Use UUID from patients table
+            primary_insurance_company: quickAddData.primaryInsurance || null,
+            primary_insurance_id: quickAddData.primaryInsuranceId || null,
+            secondary_insurance_company: quickAddData.secondaryInsurance || null,
+            secondary_insurance_id: quickAddData.secondaryInsuranceId || null
+          });
+
+        if (insuranceError) {
+          console.error('Error saving insurance:', insuranceError);
+          // Don't throw - patient is already created, just log the error
+        }
+      }
 
       // Set the selected patient and update form data
-      const newPatient = {
-        id: patientId,
+      const patientObj = {
+        id: patientIdUuid, // UUID
+        patient_id: patientId, // PAT-123456
         name: `${quickAddData.firstName} ${quickAddData.lastName}`,
         firstName: quickAddData.firstName,
         lastName: quickAddData.lastName,
         dob: quickAddData.dob,
-        primaryInsurance: quickAddData.primaryInsurance,
-        primaryInsuranceId: quickAddData.primaryInsuranceId,
-        secondaryInsurance: quickAddData.secondaryInsurance,
-        secondaryInsuranceId: quickAddData.secondaryInsuranceId,
-        icd: quickAddData.icd,
-        cpt: quickAddData.cpt
+        email: '',
+        phone: '',
+        dateOfBirth: quickAddData.dob
       };
 
-      setSelectedPatient(newPatient);
+      setSelectedPatient(patientObj);
       setFormData({ 
         ...formData, 
-        patient_id: patientId,
+        patient_id: patientIdUuid, // Use UUID for appointments table
         appointment_type: quickAddData.typeOfVisit,
-        notes: `ICD: ${quickAddData.icd || 'N/A'}, CPT: ${quickAddData.cpt || 'N/A'}\n${formData.notes}`
+        notes: `ICD: ${quickAddData.icd || 'N/A'}, CPT: ${quickAddData.cpt || 'N/A'}${formData.notes ? '\n' + formData.notes : ''}`
       });
       setSearchTerm(`${quickAddData.firstName} ${quickAddData.lastName} (${patientId})`);
       setShowQuickAdd(false);
-    } catch (error) {
+      
+      toast({
+        title: 'Success',
+        description: 'Patient added successfully. You can now schedule their appointment.',
+      });
+    } catch (error: any) {
       console.error('Error creating patient:', error);
-      alert('Failed to create patient. Please try again.');
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create patient. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -269,13 +394,28 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
     e.preventDefault();
     
     if (!formData.patient_id) {
-      alert('Please select or add a patient');
+      toast({
+        title: 'Validation Error',
+        description: 'Please select or add a patient',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!formData.provider_id) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select a provider',
+        variant: 'destructive',
+      });
       return;
     }
 
     const submitData = {
       ...formData,
-      patient: selectedPatient
+      patient: selectedPatient,
+      // Include appointment ID if editing
+      id: existingAppointment?.id || null
     };
 
     onSave(submitData);
@@ -301,6 +441,7 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
     });
     setFormData({
       patient_id: '',
+      provider_id: '',
       appointment_type: 'consultation',
       scheduled_date: new Date().toISOString().split('T')[0],
       scheduled_time: '09:00',
@@ -318,9 +459,11 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Appointment</DialogTitle>
+          <DialogTitle>{existingAppointment ? 'Edit Appointment' : 'New Appointment'}</DialogTitle>
           <DialogDescription>
-            Search for an existing patient or add a new patient to schedule an appointment.
+            {existingAppointment 
+              ? 'Update the appointment details below.'
+              : 'Search for an existing patient or add a new patient to schedule an appointment.'}
           </DialogDescription>
         </DialogHeader>
         
@@ -357,7 +500,7 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
                       >
                         <div>
                           <div className="font-medium">{patient.name}</div>
-                          <div className="text-sm text-gray-500">{patient.id}</div>
+                          <div className="text-sm text-gray-500">{patient.patient_id || patient.id}</div>
                         </div>
                         <Button type="button" variant="ghost" size="sm">
                           Select
@@ -546,7 +689,7 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
                       <div className="font-medium text-green-900">
                         {selectedPatient.name || `${selectedPatient.firstName} ${selectedPatient.lastName}`}
                       </div>
-                      <div className="text-sm text-green-700">ID: {formData.patient_id}</div>
+                      <div className="text-sm text-green-700">ID: {selectedPatient.patient_id || selectedPatient.id}</div>
                     </div>
                     <Button
                       type="button"
@@ -588,6 +731,35 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
                     <SelectItem value="specialist">Specialist Visit</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Provider Selection */}
+              <div>
+                <Label htmlFor="provider">Provider *</Label>
+                <Select
+                  value={formData.provider_id}
+                  onValueChange={(value) => setFormData({ ...formData, provider_id: value })}
+                  disabled={isLoadingProviders}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select a provider"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-gray-500">No providers available</div>
+                    ) : (
+                      providers.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
+                          {provider.npi ? ` (NPI: ${provider.npi})` : ''}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {providers.length === 0 && !isLoadingProviders && (
+                  <p className="text-sm text-gray-500 mt-1">No providers found. Please add providers in the Providers section.</p>
+                )}
               </div>
 
               {/* Date and Time */}
@@ -683,7 +855,7 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave }: SimpleAppoint
                   Cancel
                 </Button>
                 <Button type="submit">
-                  Create Appointment
+                  {existingAppointment ? 'Update Appointment' : 'Create Appointment'}
                 </Button>
               </div>
             </>

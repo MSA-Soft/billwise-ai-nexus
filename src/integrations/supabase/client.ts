@@ -18,8 +18,13 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // Log environment status (only in development)
 if (import.meta.env.DEV) {
   console.log('🔧 Supabase Configuration:');
-  console.log('URL:', '✅ From .env');
-  console.log('Key:', '✅ From .env');
+  console.log('URL:', SUPABASE_URL ? '✅ From .env' : '❌ Missing');
+  console.log('Key:', SUPABASE_ANON_KEY ? `✅ From .env (${SUPABASE_ANON_KEY.length} chars)` : '❌ Missing');
+  
+  // Debug: Show first few chars of key to verify it's loaded (remove in production)
+  if (SUPABASE_ANON_KEY) {
+    console.log('Key preview:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
+  }
 }
 
 // Import the supabase client like this:
@@ -30,5 +35,11 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  }
+  },
+  // Ensure API key is sent with all requests
+  global: {
+    headers: {
+      'apikey': SUPABASE_ANON_KEY || '',
+    },
+  },
 });

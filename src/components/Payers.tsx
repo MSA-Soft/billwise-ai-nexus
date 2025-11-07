@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, CreditCard } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Payer {
   id: string;
@@ -47,43 +49,8 @@ interface Payer {
   updatedAt: string;
 }
 
-const samplePayers: Payer[] = [
-  {
-    id: '1',
-    // Basic Information
-    name: 'Blue Cross Blue Shield',
-    planName: 'BCBS Standard Plan',
-    networkStatus: 'In Network',
-    payerType: 'Commercial',
-    defaultChargeStatus: 'Send to Payer via Clearinghouse',
-    clearinghouseProcessingMode: 'The clearinghouse will print and mail the claims',
-    sequenceNumber: 'NEW',
-    referenceNumber: 'REF001',
-    
-    // Contact Information
-    address: '123 Insurance Blvd',
-    city: 'Los Angeles',
-    state: 'CA',
-    zipCode: '90210',
-    phone: '(555) 123-4567',
-    fax: '(555) 123-4568',
-    email: 'info@bcbs.com',
-    website: 'www.bcbs.com',
-    
-    // ID Numbers
-    groupNumber: 'GRP001',
-    claimOfficeNumber: 'CO001',
-    payerIdMedigap: 'PID001',
-    ocna: 'OCNA001',
-    
-    // Settings
-    useAlternatePracticeInfo: false,
-    
-    status: 'active',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  }
-];
+// Sample payers removed - now using database
+const _samplePayers: Payer[] = [];
 
 const states = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -124,13 +91,110 @@ const clearinghouseProcessingModeOptions = [
 ];
 
 export const Payers: React.FC = () => {
-  const [payers, setPayers] = useState<Payer[]>(samplePayers);
+  const { toast } = useToast();
+  const [payers, setPayers] = useState<Payer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingPayer, setEditingPayer] = useState<Payer | null>(null);
   const [expandedPayer, setExpandedPayer] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+
+  // Fetch payers from database
+  useEffect(() => {
+    fetchPayersFromDatabase();
+  }, []);
+
+  const fetchPayersFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching payers from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch payers.');
+        setPayers([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('insurance_payers' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching payers:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Insurance payers table not found. Please run CREATE_INSURANCE_PAYERS_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Insurance payers table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading payers',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setPayers([]);
+        return;
+      }
+
+      // Transform database records to match Payer interface
+      const transformedPayers: Payer[] = (data || []).map((dbPayer: any) => ({
+        id: dbPayer.id,
+        name: dbPayer.name || '',
+        planName: dbPayer.plan_name || '',
+        networkStatus: dbPayer.network_status || '',
+        payerType: dbPayer.payer_type || '',
+        defaultChargeStatus: dbPayer.default_charge_status || '',
+        clearinghouseProcessingMode: dbPayer.clearinghouse_processing_mode || '',
+        sequenceNumber: dbPayer.sequence_number || '',
+        referenceNumber: dbPayer.reference_number || '',
+        address: dbPayer.address || '',
+        city: dbPayer.city || '',
+        state: dbPayer.state || '',
+        zipCode: dbPayer.zip_code || dbPayer.zip || '',
+        phone: dbPayer.phone || '',
+        fax: dbPayer.fax || '',
+        email: dbPayer.email || '',
+        website: dbPayer.website || '',
+        groupNumber: dbPayer.group_number || '',
+        claimOfficeNumber: dbPayer.claim_office_number || '',
+        payerIdMedigap: dbPayer.payer_id_medigap || '',
+        ocna: dbPayer.ocna || '',
+        useAlternatePracticeInfo: dbPayer.use_alternate_practice_info || false,
+        status: (dbPayer.status || (dbPayer.is_active ? 'active' : 'inactive')) as 'active' | 'inactive',
+        createdAt: dbPayer.created_at || '',
+        updatedAt: dbPayer.updated_at || dbPayer.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedPayers.length} payers from database`);
+      setPayers(transformedPayers);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchPayersFromDatabase:', error);
+      toast({
+        title: 'Error loading payers',
+        description: error.message || 'Failed to load payers from database',
+        variant: 'destructive',
+      });
+      setPayers([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
   const [newPayer, setNewPayer] = useState<Partial<Payer>>({
     name: '',
     planName: '',
@@ -167,66 +231,106 @@ export const Payers: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleAddPayer = () => {
-    if (!newPayer.name || !newPayer.planName) {
-      alert('Please fill in required fields');
+  const handleAddPayer = async () => {
+    if (!newPayer.name) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Name).",
+        variant: "destructive",
+      });
       return;
     }
 
-    const payer: Payer = {
-      id: Date.now().toString(),
-      name: newPayer.name!,
-      planName: newPayer.planName!,
-      networkStatus: newPayer.networkStatus || 'In Network',
-      payerType: newPayer.payerType || 'Commercial',
-      defaultChargeStatus: newPayer.defaultChargeStatus || 'Send to Payer via Clearinghouse',
-      clearinghouseProcessingMode: newPayer.clearinghouseProcessingMode || 'The clearinghouse will print and mail the claims',
-      sequenceNumber: newPayer.sequenceNumber || 'NEW',
-      referenceNumber: newPayer.referenceNumber || '',
-      address: newPayer.address || '',
-      city: newPayer.city || '',
-      state: newPayer.state || '',
-      zipCode: newPayer.zipCode || '',
-      phone: newPayer.phone || '',
-      fax: newPayer.fax || '',
-      email: newPayer.email || '',
-      website: newPayer.website || '',
-      groupNumber: newPayer.groupNumber || '',
-      claimOfficeNumber: newPayer.claimOfficeNumber || '',
-      payerIdMedigap: newPayer.payerIdMedigap || '',
-      ocna: newPayer.ocna || '',
-      useAlternatePracticeInfo: newPayer.useAlternatePracticeInfo || false,
-      status: newPayer.status || 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    try {
+      console.log('💾 Creating payer:', newPayer);
 
-    setPayers([...payers, payer]);
-    setNewPayer({
-      name: '',
-      planName: '',
-      networkStatus: 'In Network',
-      payerType: 'Commercial',
-      defaultChargeStatus: 'Send to Payer via Clearinghouse',
-      clearinghouseProcessingMode: 'The clearinghouse will print and mail the claims',
-      sequenceNumber: 'NEW',
-      referenceNumber: '',
-      address: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      phone: '',
-      fax: '',
-      email: '',
-      website: '',
-      groupNumber: '',
-      claimOfficeNumber: '',
-      payerIdMedigap: '',
-      ocna: '',
-      useAlternatePracticeInfo: false,
-      status: 'active'
-    });
-    setIsAddDialogOpen(false);
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        name: newPayer.name!.trim(),
+        plan_name: newPayer.planName || null,
+        network_status: newPayer.networkStatus || null,
+        payer_type: newPayer.payerType || null,
+        default_charge_status: newPayer.defaultChargeStatus || null,
+        clearinghouse_processing_mode: newPayer.clearinghouseProcessingMode || null,
+        sequence_number: newPayer.sequenceNumber || null,
+        reference_number: newPayer.referenceNumber || null,
+        address: newPayer.address || null,
+        city: newPayer.city || null,
+        state: newPayer.state || null,
+        zip_code: newPayer.zipCode || null,
+        phone: newPayer.phone || null,
+        fax: newPayer.fax || null,
+        email: newPayer.email || null,
+        website: newPayer.website || null,
+        group_number: newPayer.groupNumber || null,
+        claim_office_number: newPayer.claimOfficeNumber || null,
+        payer_id_medigap: newPayer.payerIdMedigap || null,
+        ocna: newPayer.ocna || null,
+        use_alternate_practice_info: newPayer.useAlternatePracticeInfo || false,
+        status: (newPayer.status || 'active') as 'active' | 'inactive',
+        is_active: (newPayer.status || 'active') === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('insurance_payers' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating payer:', error);
+        throw new Error(error.message || 'Failed to create payer');
+      }
+
+      // Refresh the payers list
+      await fetchPayersFromDatabase();
+
+      // Reset form
+      setNewPayer({
+        name: '',
+        planName: '',
+        networkStatus: 'In Network',
+        payerType: 'Commercial',
+        defaultChargeStatus: 'Send to Payer via Clearinghouse',
+        clearinghouseProcessingMode: 'The clearinghouse will print and mail the claims',
+        sequenceNumber: 'NEW',
+        referenceNumber: '',
+        address: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        phone: '',
+        fax: '',
+        email: '',
+        website: '',
+        groupNumber: '',
+        claimOfficeNumber: '',
+        payerIdMedigap: '',
+        ocna: '',
+        useAlternatePracticeInfo: false,
+        status: 'active'
+      });
+      setIsAddDialogOpen(false);
+
+      toast({
+        title: "Payer Added",
+        description: `${newPayer.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create payer:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create payer. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditPayer = (payer: Payer) => {
@@ -234,21 +338,115 @@ export const Payers: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdatePayer = () => {
-    if (!editingPayer) return;
+  const handleUpdatePayer = async () => {
+    if (!editingPayer || !editingPayer.id) {
+      toast({
+        title: "Error",
+        description: "Payer ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setPayers(payers.map(p => 
-      p.id === editingPayer.id 
-        ? { ...editingPayer, updatedAt: new Date().toISOString().split('T')[0] }
-        : p
-    ));
-    setIsEditDialogOpen(false);
-    setEditingPayer(null);
+    try {
+      console.log('💾 Updating payer:', editingPayer);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const updateData: any = {
+        name: editingPayer.name.trim(),
+        plan_name: editingPayer.planName || null,
+        network_status: editingPayer.networkStatus || null,
+        payer_type: editingPayer.payerType || null,
+        default_charge_status: editingPayer.defaultChargeStatus || null,
+        clearinghouse_processing_mode: editingPayer.clearinghouseProcessingMode || null,
+        sequence_number: editingPayer.sequenceNumber || null,
+        reference_number: editingPayer.referenceNumber || null,
+        address: editingPayer.address || null,
+        city: editingPayer.city || null,
+        state: editingPayer.state || null,
+        zip_code: editingPayer.zipCode || null,
+        phone: editingPayer.phone || null,
+        fax: editingPayer.fax || null,
+        email: editingPayer.email || null,
+        website: editingPayer.website || null,
+        group_number: editingPayer.groupNumber || null,
+        claim_office_number: editingPayer.claimOfficeNumber || null,
+        payer_id_medigap: editingPayer.payerIdMedigap || null,
+        ocna: editingPayer.ocna || null,
+        use_alternate_practice_info: editingPayer.useAlternatePracticeInfo || false,
+        status: editingPayer.status as 'active' | 'inactive',
+        is_active: editingPayer.status === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('insurance_payers' as any)
+        .update(updateData)
+        .eq('id', editingPayer.id);
+
+      if (error) {
+        console.error('❌ Error updating payer:', error);
+        throw new Error(error.message || 'Failed to update payer');
+      }
+
+      // Refresh the payers list
+      await fetchPayersFromDatabase();
+
+      setIsEditDialogOpen(false);
+      setEditingPayer(null);
+
+      toast({
+        title: "Payer Updated",
+        description: `${editingPayer.name} has been successfully updated.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to update payer:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update payer. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeletePayer = (id: string) => {
-    if (confirm('Are you sure you want to delete this payer?')) {
-      setPayers(payers.filter(p => p.id !== id));
+  const handleDeletePayer = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this payer? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting payer:', id);
+
+      const { error } = await supabase
+        .from('insurance_payers' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting payer:', error);
+        throw new Error(error.message || 'Failed to delete payer');
+      }
+
+      // Refresh the payers list
+      await fetchPayersFromDatabase();
+
+      toast({
+        title: "Payer Deleted",
+        description: "Payer has been successfully deleted.",
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to delete payer:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete payer. Please try again.',
+        variant: "destructive",
+      });
     }
   };
 
@@ -350,7 +548,31 @@ export const Payers: React.FC = () => {
 
       {/* Payers List */}
       <div className="space-y-4">
-        {filteredPayers.map((payer) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading payers...</p>
+            </div>
+          </div>
+        ) : filteredPayers.length === 0 ? (
+          <div className="text-center py-12">
+            <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No payers found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterStatus !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by adding your first payer"}
+            </p>
+            {!searchTerm && filterStatus === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Payer
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredPayers.map((payer) => (
           <Card key={payer.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -423,7 +645,8 @@ export const Payers: React.FC = () => {
               </CardContent>
             )}
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Payer Dialog */}

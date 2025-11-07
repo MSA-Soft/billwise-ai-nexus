@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabase } from "@/integrations/supabase/client";
+import { 
+  searchNPIByNumber, 
+  searchTaxonomyByDescription, 
+  searchTaxonomyCodes,
+  getCommonTaxonomyCodes,
+  type NPISearchResult 
+} from "@/services/npiService";
 import {
   Building,
   Plus,
@@ -96,9 +104,129 @@ const Practices = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedPractice, setSelectedPractice] = useState<Practice | null>(null);
   const [expandedPractice, setExpandedPractice] = useState<string | null>(null);
+  const [practices, setPractices] = useState<Practice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+  const [isSearchingNPI, setIsSearchingNPI] = useState(false);
+  const [isSearchingTaxonomy, setIsSearchingTaxonomy] = useState(false);
+  const [npiSearchResults, setNpiSearchResults] = useState<NPISearchResult | null>(null);
+  const [taxonomySearchResults, setTaxonomySearchResults] = useState<Array<{ code: string; description: string }>>([]);
+  const [showTaxonomyDropdown, setShowTaxonomyDropdown] = useState(false);
+  
+  // Edit form lookup states
+  const [isSearchingNPIEdit, setIsSearchingNPIEdit] = useState(false);
+  const [isSearchingTaxonomyEdit, setIsSearchingTaxonomyEdit] = useState(false);
+  const [npiSearchResultsEdit, setNpiSearchResultsEdit] = useState<NPISearchResult | null>(null);
+  const [taxonomySearchResultsEdit, setTaxonomySearchResultsEdit] = useState<Array<{ code: string; description: string }>>([]);
+  const [showTaxonomyDropdownEdit, setShowTaxonomyDropdownEdit] = useState(false);
 
+<<<<<<< HEAD
   // Initialize with empty array - data should come from database
   const [practices, setPractices] = useState<Practice[]>([]);
+=======
+  // Fetch practices from database
+  useEffect(() => {
+    fetchPracticesFromDatabase();
+  }, []);
+
+  const fetchPracticesFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching practices from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch practices.');
+        setPractices([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('practices' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching practices:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Practices table not found. Please run CREATE_PRACTICES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Practices table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading practices',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setPractices([]);
+        return;
+      }
+
+      // Transform database records to match Practice interface
+      const transformedPractices: Practice[] = (data || []).map((dbPractice: any) => ({
+        id: dbPractice.id,
+        name: dbPractice.name || '',
+        npi: dbPractice.npi || '',
+        organizationType: dbPractice.organization_type || '',
+        taxonomySpecialty: dbPractice.taxonomy_specialty || '',
+        referenceNumber: dbPractice.reference_number || '',
+        tcnPrefix: dbPractice.tcn_prefix || '',
+        statementTcnPrefix: dbPractice.statement_tcn_prefix || '',
+        code: dbPractice.code || '',
+        addressLine1: dbPractice.address_line1 || '',
+        addressLine2: dbPractice.address_line2 || '',
+        city: dbPractice.city || '',
+        state: dbPractice.state || '',
+        zipCode: dbPractice.zip_code || '',
+        timeZone: dbPractice.time_zone || '',
+        phone: dbPractice.phone || '',
+        fax: dbPractice.fax || '',
+        email: dbPractice.email || '',
+        payToAddressLine1: dbPractice.pay_to_address_line1 || '',
+        payToAddressLine2: dbPractice.pay_to_address_line2 || '',
+        payToCity: dbPractice.pay_to_city || '',
+        payToState: dbPractice.pay_to_state || '',
+        payToZipCode: dbPractice.pay_to_zip_code || '',
+        payToPhone: dbPractice.pay_to_phone || '',
+        payToFax: dbPractice.pay_to_fax || '',
+        payToEmail: dbPractice.pay_to_email || '',
+        status: (dbPractice.status || 'active') as "active" | "inactive" | "pending",
+        establishedDate: dbPractice.established_date || '',
+        lastUpdated: dbPractice.updated_at || dbPractice.created_at || '',
+        providerCount: dbPractice.provider_count || 0,
+        patientCount: dbPractice.patient_count || 0,
+        monthlyRevenue: parseFloat(dbPractice.monthly_revenue || '0'),
+        payToSameAsPrimary: dbPractice.pay_to_same_as_primary !== false
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedPractices.length} practices from database`);
+      setPractices(transformedPractices);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchPracticesFromDatabase:', error);
+      toast({
+        title: 'Error loading practices',
+        description: error.message || 'Failed to load practices from database',
+        variant: 'destructive',
+      });
+      setPractices([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
+
+>>>>>>> 14dfb14 (Database Added)
 
   const [newPractice, setNewPractice] = useState<Partial<Practice>>({
     name: "",
@@ -166,7 +294,7 @@ const Practices = () => {
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  const handleAddPractice = () => {
+  const handleAddPractice = async () => {
     if (!newPractice.name || !newPractice.npi || !newPractice.taxonomySpecialty) {
       toast({
         title: "Validation Error",
@@ -176,43 +304,82 @@ const Practices = () => {
       return;
     }
 
-    const practice: Practice = {
-      id: Date.now().toString(),
-      name: newPractice.name!,
-      npi: newPractice.npi!,
-      organizationType: newPractice.organizationType || "",
-      taxonomySpecialty: newPractice.taxonomySpecialty!,
-      referenceNumber: newPractice.referenceNumber || "",
-      tcnPrefix: newPractice.tcnPrefix || "",
-      statementTcnPrefix: newPractice.statementTcnPrefix || "",
-      code: newPractice.code || "",
-      addressLine1: newPractice.addressLine1 || "",
-      addressLine2: newPractice.addressLine2 || "",
-      city: newPractice.city || "",
-      state: newPractice.state || "",
-      zipCode: newPractice.zipCode || "",
-      timeZone: newPractice.timeZone || "",
-      phone: newPractice.phone || "",
-      fax: newPractice.fax || "",
-      email: newPractice.email || "",
-      payToAddressLine1: newPractice.payToSameAsPrimary ? newPractice.addressLine1 || "" : newPractice.payToAddressLine1 || "",
-      payToAddressLine2: newPractice.payToSameAsPrimary ? newPractice.addressLine2 || "" : newPractice.payToAddressLine2 || "",
-      payToCity: newPractice.payToSameAsPrimary ? newPractice.city || "" : newPractice.payToCity || "",
-      payToState: newPractice.payToSameAsPrimary ? newPractice.state || "" : newPractice.payToState || "",
-      payToZipCode: newPractice.payToSameAsPrimary ? newPractice.zipCode || "" : newPractice.payToZipCode || "",
-      payToPhone: newPractice.payToSameAsPrimary ? newPractice.phone || "" : newPractice.payToPhone || "",
-      payToFax: newPractice.payToSameAsPrimary ? newPractice.fax || "" : newPractice.payToFax || "",
-      payToEmail: newPractice.payToSameAsPrimary ? newPractice.email || "" : newPractice.payToEmail || "",
-      status: newPractice.status as "active" | "inactive" | "pending",
-      establishedDate: new Date().toISOString().split('T')[0],
-      lastUpdated: new Date().toISOString().split('T')[0],
-      providerCount: 0,
-      patientCount: 0,
-      monthlyRevenue: 0,
-      payToSameAsPrimary: newPractice.payToSameAsPrimary || true
-    };
+    try {
+      console.log('💾 Creating practice:', newPractice);
 
-    setPractices(prev => [practice, ...prev]);
+      // Prepare data for database (snake_case)
+      const insertData: any = {
+        name: newPractice.name!.trim(),
+        npi: newPractice.npi!.trim(),
+        organization_type: newPractice.organizationType || null,
+        taxonomy_specialty: newPractice.taxonomySpecialty!.trim(),
+        reference_number: newPractice.referenceNumber || null,
+        tcn_prefix: newPractice.tcnPrefix || null,
+        statement_tcn_prefix: newPractice.statementTcnPrefix || null,
+        code: newPractice.code || null,
+        address_line1: newPractice.addressLine1 || null,
+        address_line2: newPractice.addressLine2 || null,
+        city: newPractice.city || null,
+        state: newPractice.state || null,
+        zip_code: newPractice.zipCode || null,
+        time_zone: newPractice.timeZone || null,
+        phone: newPractice.phone || null,
+        fax: newPractice.fax || null,
+        email: newPractice.email || null,
+        pay_to_same_as_primary: newPractice.payToSameAsPrimary !== false,
+        pay_to_address_line1: newPractice.payToSameAsPrimary 
+          ? (newPractice.addressLine1 || null)
+          : (newPractice.payToAddressLine1 || null),
+        pay_to_address_line2: newPractice.payToSameAsPrimary 
+          ? (newPractice.addressLine2 || null)
+          : (newPractice.payToAddressLine2 || null),
+        pay_to_city: newPractice.payToSameAsPrimary 
+          ? (newPractice.city || null)
+          : (newPractice.payToCity || null),
+        pay_to_state: newPractice.payToSameAsPrimary 
+          ? (newPractice.state || null)
+          : (newPractice.payToState || null),
+        pay_to_zip_code: newPractice.payToSameAsPrimary 
+          ? (newPractice.zipCode || null)
+          : (newPractice.payToZipCode || null),
+        pay_to_phone: newPractice.payToSameAsPrimary 
+          ? (newPractice.phone || null)
+          : (newPractice.payToPhone || null),
+        pay_to_fax: newPractice.payToSameAsPrimary 
+          ? (newPractice.fax || null)
+          : (newPractice.payToFax || null),
+        pay_to_email: newPractice.payToSameAsPrimary 
+          ? (newPractice.email || null)
+          : (newPractice.payToEmail || null),
+        status: (newPractice.status || 'active') as 'active' | 'inactive' | 'pending',
+        established_date: newPractice.establishedDate || null,
+        provider_count: 0,
+        patient_count: 0,
+        monthly_revenue: 0
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('practices' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating practice:', error);
+        throw new Error(error.message || 'Failed to create practice');
+      }
+
+      // Refresh the practices list
+      await fetchPracticesFromDatabase();
+
+      // Reset form
     setNewPractice({
       name: "",
       npi: "",
@@ -246,8 +413,16 @@ const Practices = () => {
 
     toast({
       title: "Practice Added",
-      description: `${practice.name} has been successfully added.`,
+        description: `${newPractice.name} has been successfully added.`,
     });
+    } catch (error: any) {
+      console.error('💥 Failed to create practice:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create practice. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditPractice = (practice: Practice) => {
@@ -255,12 +430,278 @@ const Practices = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleDeletePractice = (id: string) => {
-    setPractices(prev => prev.filter(p => p.id !== id));
+  // NPI Lookup Handler
+  const handleNPILookup = async () => {
+    if (!newPractice.npi || newPractice.npi.replace(/\D/g, '').length !== 10) {
+      toast({
+        title: "Invalid NPI",
+        description: "Please enter a valid 10-digit NPI number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSearchingNPI(true);
+    try {
+      const result = await searchNPIByNumber(newPractice.npi);
+      
+      if (!result) {
+        toast({
+          title: "NPI Not Found",
+          description: "No provider found with this NPI number.",
+          variant: "destructive",
+        });
+        setNpiSearchResults(null);
+        return;
+      }
+
+      setNpiSearchResults(result);
+
+      // Auto-populate fields from NPI data
+      if (result.basic.organization_name) {
+        setNewPractice(prev => ({
+          ...prev,
+          name: result.basic.organization_name || prev.name,
+          organizationType: result.basic.organization_name ? 'Group Practice' : prev.organizationType
+        }));
+      } else if (result.basic.first_name && result.basic.last_name) {
+        setNewPractice(prev => ({
+          ...prev,
+          name: `${result.basic.first_name} ${result.basic.last_name}`.trim() || prev.name,
+          organizationType: 'Solo Practice'
+        }));
+      }
+
+      // Get primary address
+      const primaryAddress = result.addresses?.find(addr => addr.address_1) || result.addresses?.[0];
+      if (primaryAddress) {
+        setNewPractice(prev => ({
+          ...prev,
+          addressLine1: primaryAddress.address_1 || prev.addressLine1,
+          addressLine2: primaryAddress.address_2 || prev.addressLine2,
+          city: primaryAddress.city || prev.city,
+          state: primaryAddress.state || prev.state,
+          zipCode: primaryAddress.postal_code || prev.zipCode,
+          phone: primaryAddress.telephone_number || prev.phone,
+          fax: primaryAddress.fax_number || prev.fax
+        }));
+      }
+
+      // Get primary taxonomy
+      const primaryTaxonomy = result.taxonomies?.find(tax => tax.primary) || result.taxonomies?.[0];
+      if (primaryTaxonomy) {
+        setNewPractice(prev => ({
+          ...prev,
+          taxonomySpecialty: primaryTaxonomy.desc || prev.taxonomySpecialty
+        }));
+      }
+
+      toast({
+        title: "NPI Found",
+        description: `Provider information loaded successfully.`,
+      });
+    } catch (error: any) {
+      console.error('Error looking up NPI:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to lookup NPI. Please try again.',
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingNPI(false);
+    }
+  };
+
+  // Taxonomy Lookup Handler
+  const handleTaxonomyLookup = async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setTaxonomySearchResults([]);
+      setShowTaxonomyDropdown(false);
+      return;
+    }
+
+    setIsSearchingTaxonomy(true);
+    try {
+      // First try local search (faster)
+      const localResults = searchTaxonomyCodes(searchTerm);
+      
+      if (localResults.length > 0) {
+        setTaxonomySearchResults(localResults.map(t => ({ code: t.code, description: t.description })));
+        setShowTaxonomyDropdown(true);
+      } else {
+        // If no local results, try API search
+        const apiResults = await searchTaxonomyByDescription(searchTerm, 10);
+        setTaxonomySearchResults(apiResults);
+        setShowTaxonomyDropdown(apiResults.length > 0);
+      }
+    } catch (error: any) {
+      console.error('Error looking up taxonomy:', error);
+      // Fallback to local search on error
+      const localResults = searchTaxonomyCodes(searchTerm);
+      setTaxonomySearchResults(localResults.map(t => ({ code: t.code, description: t.description })));
+      setShowTaxonomyDropdown(localResults.length > 0);
+    } finally {
+      setIsSearchingTaxonomy(false);
+    }
+  };
+
+  const handleTaxonomySelect = (code: string, description: string) => {
+    setNewPractice(prev => ({ ...prev, taxonomySpecialty: description }));
+    setShowTaxonomyDropdown(false);
+    setTaxonomySearchResults([]);
+  };
+
+  // Edit Form NPI Lookup Handler
+  const handleNPILookupEdit = async () => {
+    if (!selectedPractice?.npi || selectedPractice.npi.replace(/\D/g, '').length !== 10) {
+      toast({
+        title: "Invalid NPI",
+        description: "Please enter a valid 10-digit NPI number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSearchingNPIEdit(true);
+    try {
+      const result = await searchNPIByNumber(selectedPractice.npi);
+      
+      if (!result) {
+        toast({
+          title: "NPI Not Found",
+          description: "No provider found with this NPI number.",
+          variant: "destructive",
+        });
+        setNpiSearchResultsEdit(null);
+        return;
+      }
+
+      setNpiSearchResultsEdit(result);
+
+      // Auto-populate fields from NPI data
+      if (result.basic.organization_name) {
+        setSelectedPractice(prev => prev ? {
+          ...prev,
+          name: result.basic.organization_name || prev.name,
+          organizationType: result.basic.organization_name ? 'Group Practice' : prev.organizationType
+        } : null);
+      } else if (result.basic.first_name && result.basic.last_name) {
+        setSelectedPractice(prev => prev ? {
+          ...prev,
+          name: `${result.basic.first_name} ${result.basic.last_name}`.trim() || prev.name,
+          organizationType: 'Solo Practice'
+        } : null);
+      }
+
+      // Get primary address
+      const primaryAddress = result.addresses?.find(addr => addr.address_1) || result.addresses?.[0];
+      if (primaryAddress && selectedPractice) {
+        setSelectedPractice(prev => prev ? {
+          ...prev,
+          addressLine1: primaryAddress.address_1 || prev.addressLine1,
+          addressLine2: primaryAddress.address_2 || prev.addressLine2,
+          city: primaryAddress.city || prev.city,
+          state: primaryAddress.state || prev.state,
+          zipCode: primaryAddress.postal_code || prev.zipCode,
+          phone: primaryAddress.telephone_number || prev.phone,
+          fax: primaryAddress.fax_number || prev.fax
+        } : null);
+      }
+
+      // Get primary taxonomy
+      const primaryTaxonomy = result.taxonomies?.find(tax => tax.primary) || result.taxonomies?.[0];
+      if (primaryTaxonomy && selectedPractice) {
+        setSelectedPractice(prev => prev ? {
+          ...prev,
+          taxonomySpecialty: primaryTaxonomy.desc || prev.taxonomySpecialty
+        } : null);
+      }
+
+      toast({
+        title: "NPI Found",
+        description: `Provider information loaded successfully.`,
+      });
+    } catch (error: any) {
+      console.error('Error looking up NPI:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to lookup NPI. Please try again.',
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingNPIEdit(false);
+    }
+  };
+
+  // Edit Form Taxonomy Lookup Handler
+  const handleTaxonomyLookupEdit = async (searchTerm: string) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setTaxonomySearchResultsEdit([]);
+      setShowTaxonomyDropdownEdit(false);
+      return;
+    }
+
+    setIsSearchingTaxonomyEdit(true);
+    try {
+      const localResults = searchTaxonomyCodes(searchTerm);
+      
+      if (localResults.length > 0) {
+        setTaxonomySearchResultsEdit(localResults.map(t => ({ code: t.code, description: t.description })));
+        setShowTaxonomyDropdownEdit(true);
+      } else {
+        const apiResults = await searchTaxonomyByDescription(searchTerm, 10);
+        setTaxonomySearchResultsEdit(apiResults);
+        setShowTaxonomyDropdownEdit(apiResults.length > 0);
+      }
+    } catch (error: any) {
+      console.error('Error looking up taxonomy:', error);
+      const localResults = searchTaxonomyCodes(searchTerm);
+      setTaxonomySearchResultsEdit(localResults.map(t => ({ code: t.code, description: t.description })));
+      setShowTaxonomyDropdownEdit(localResults.length > 0);
+    } finally {
+      setIsSearchingTaxonomyEdit(false);
+    }
+  };
+
+  const handleTaxonomySelectEdit = (code: string, description: string) => {
+    setSelectedPractice(prev => prev ? { ...prev, taxonomySpecialty: description } : null);
+    setShowTaxonomyDropdownEdit(false);
+    setTaxonomySearchResultsEdit([]);
+  };
+
+  const handleDeletePractice = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this practice? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting practice:', id);
+
+      const { error } = await supabase
+        .from('practices' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting practice:', error);
+        throw new Error(error.message || 'Failed to delete practice');
+      }
+
+      // Refresh the practices list
+      await fetchPracticesFromDatabase();
+
     toast({
       title: "Practice Deleted",
       description: "Practice has been successfully deleted.",
     });
+    } catch (error: any) {
+      console.error('💥 Failed to delete practice:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete practice. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleExportPractices = () => {
@@ -365,14 +806,105 @@ const Practices = () => {
     reader.readAsText(file);
   };
 
-  const handleUpdatePractice = (updatedPractice: Practice) => {
-    setPractices(prev => prev.map(p => p.id === updatedPractice.id ? updatedPractice : p));
+  const handleUpdatePractice = async (updatedPractice: Practice) => {
+    if (!updatedPractice.id) {
+      toast({
+        title: "Error",
+        description: "Practice ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Updating practice:', updatedPractice);
+
+      // Prepare data for database (snake_case)
+      const updateData: any = {
+        name: updatedPractice.name.trim(),
+        npi: updatedPractice.npi.trim(),
+        organization_type: updatedPractice.organizationType || null,
+        taxonomy_specialty: updatedPractice.taxonomySpecialty || null,
+        reference_number: updatedPractice.referenceNumber || null,
+        tcn_prefix: updatedPractice.tcnPrefix || null,
+        statement_tcn_prefix: updatedPractice.statementTcnPrefix || null,
+        code: updatedPractice.code || null,
+        address_line1: updatedPractice.addressLine1 || null,
+        address_line2: updatedPractice.addressLine2 || null,
+        city: updatedPractice.city || null,
+        state: updatedPractice.state || null,
+        zip_code: updatedPractice.zipCode || null,
+        time_zone: updatedPractice.timeZone || null,
+        phone: updatedPractice.phone || null,
+        fax: updatedPractice.fax || null,
+        email: updatedPractice.email || null,
+        pay_to_same_as_primary: updatedPractice.payToSameAsPrimary !== false,
+        pay_to_address_line1: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.addressLine1 || null)
+          : (updatedPractice.payToAddressLine1 || null),
+        pay_to_address_line2: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.addressLine2 || null)
+          : (updatedPractice.payToAddressLine2 || null),
+        pay_to_city: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.city || null)
+          : (updatedPractice.payToCity || null),
+        pay_to_state: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.state || null)
+          : (updatedPractice.payToState || null),
+        pay_to_zip_code: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.zipCode || null)
+          : (updatedPractice.payToZipCode || null),
+        pay_to_phone: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.phone || null)
+          : (updatedPractice.payToPhone || null),
+        pay_to_fax: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.fax || null)
+          : (updatedPractice.payToFax || null),
+        pay_to_email: updatedPractice.payToSameAsPrimary 
+          ? (updatedPractice.email || null)
+          : (updatedPractice.payToEmail || null),
+        status: updatedPractice.status as 'active' | 'inactive' | 'pending',
+        established_date: updatedPractice.establishedDate || null,
+        provider_count: updatedPractice.providerCount || 0,
+        patient_count: updatedPractice.patientCount || 0,
+        monthly_revenue: updatedPractice.monthlyRevenue || 0
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('practices' as any)
+        .update(updateData)
+        .eq('id', updatedPractice.id);
+
+      if (error) {
+        console.error('❌ Error updating practice:', error);
+        throw new Error(error.message || 'Failed to update practice');
+      }
+
+      // Refresh the practices list
+      await fetchPracticesFromDatabase();
+
     setSelectedPractice(null);
     setIsEditDialogOpen(false);
+
     toast({
       title: "Practice Updated",
       description: `${updatedPractice.name} has been successfully updated.`,
     });
+    } catch (error: any) {
+      console.error('💥 Failed to update practice:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update practice. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleExpanded = (id: string) => {
@@ -465,14 +997,40 @@ const Practices = () => {
                           id="npi"
                           name="npi"
                           value={newPractice.npi}
-                          onChange={(e) => setNewPractice(prev => ({ ...prev, npi: e.target.value }))}
+                          onChange={(e) => {
+                            setNewPractice(prev => ({ ...prev, npi: e.target.value }));
+                            setNpiSearchResults(null);
+                          }}
                           placeholder="10-digit NPI"
                           autoComplete="off"
+                          maxLength={10}
                         />
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          size="sm"
+                          onClick={handleNPILookup}
+                          disabled={isSearchingNPI || !newPractice.npi || newPractice.npi.replace(/\D/g, '').length !== 10}
+                          title="Lookup NPI information"
+                        >
+                          {isSearchingNPI ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                          ) : (
                           <Search className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
+                      {npiSearchResults && (
+                        <Alert className="mt-2">
+                          <AlertDescription className="text-sm">
+                            <strong>Found:</strong> {npiSearchResults.basic.organization_name || 
+                              `${npiSearchResults.basic.first_name} ${npiSearchResults.basic.last_name}`.trim()}
+                            {npiSearchResults.taxonomies?.[0] && (
+                              <span className="block mt-1">Specialty: {npiSearchResults.taxonomies[0].desc}</span>
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      )}
                     </div>
                   </div>
 
@@ -490,17 +1048,52 @@ const Practices = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
+                    <div className="relative">
                       <Label htmlFor="taxonomySpecialty" className="text-red-600">Taxonomy Specialty *</Label>
                       <div className="flex gap-2">
+                        <div className="flex-1 relative">
                         <Input
                           id="taxonomySpecialty"
                           value={newPractice.taxonomySpecialty}
-                          onChange={(e) => setNewPractice(prev => ({ ...prev, taxonomySpecialty: e.target.value }))}
+                            onChange={(e) => {
+                              setNewPractice(prev => ({ ...prev, taxonomySpecialty: e.target.value }));
+                              handleTaxonomyLookup(e.target.value);
+                            }}
+                            onFocus={() => {
+                              if (newPractice.taxonomySpecialty) {
+                                handleTaxonomyLookup(newPractice.taxonomySpecialty);
+                              }
+                            }}
                           placeholder="Enter taxonomy specialty"
                         />
-                        <Button variant="outline" size="sm">
+                          {showTaxonomyDropdown && taxonomySearchResults.length > 0 && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                              {taxonomySearchResults.map((taxonomy) => (
+                                <div
+                                  key={taxonomy.code}
+                                  className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                  onClick={() => handleTaxonomySelect(taxonomy.code, taxonomy.description)}
+                                >
+                                  <div className="font-medium text-sm">{taxonomy.description}</div>
+                                  <div className="text-xs text-gray-500">Code: {taxonomy.code}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleTaxonomyLookup(newPractice.taxonomySpecialty || '')}
+                          disabled={isSearchingTaxonomy || !newPractice.taxonomySpecialty}
+                          title="Search taxonomy codes"
+                        >
+                          {isSearchingTaxonomy ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                          ) : (
                           <Search className="h-4 w-4" />
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -793,13 +1386,39 @@ const Practices = () => {
                           <Input
                             id="edit-npi"
                             value={selectedPractice.npi}
-                            onChange={(e) => setSelectedPractice(prev => prev ? { ...prev, npi: e.target.value } : null)}
+                            onChange={(e) => {
+                              setSelectedPractice(prev => prev ? { ...prev, npi: e.target.value } : null);
+                              setNpiSearchResultsEdit(null);
+                            }}
                             placeholder="10-digit NPI"
+                            maxLength={10}
                           />
-                          <Button variant="outline" size="sm">
+                          <Button 
+                            type="button"
+                            variant="outline" 
+                            size="sm"
+                            onClick={handleNPILookupEdit}
+                            disabled={isSearchingNPIEdit || !selectedPractice.npi || selectedPractice.npi.replace(/\D/g, '').length !== 10}
+                            title="Lookup NPI information"
+                          >
+                            {isSearchingNPIEdit ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                            ) : (
                             <Search className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
+                        {npiSearchResultsEdit && (
+                          <Alert className="mt-2">
+                            <AlertDescription className="text-sm">
+                              <strong>Found:</strong> {npiSearchResultsEdit.basic.organization_name || 
+                                `${npiSearchResultsEdit.basic.first_name} ${npiSearchResultsEdit.basic.last_name}`.trim()}
+                              {npiSearchResultsEdit.taxonomies?.[0] && (
+                                <span className="block mt-1">Specialty: {npiSearchResultsEdit.taxonomies[0].desc}</span>
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        )}
                       </div>
                     </div>
 
@@ -820,17 +1439,52 @@ const Practices = () => {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div>
+                      <div className="relative">
                         <Label htmlFor="edit-taxonomySpecialty" className="text-red-600">Taxonomy Specialty *</Label>
                         <div className="flex gap-2">
+                          <div className="flex-1 relative">
                           <Input
                             id="edit-taxonomySpecialty"
                             value={selectedPractice.taxonomySpecialty}
-                            onChange={(e) => setSelectedPractice(prev => prev ? { ...prev, taxonomySpecialty: e.target.value } : null)}
+                              onChange={(e) => {
+                                setSelectedPractice(prev => prev ? { ...prev, taxonomySpecialty: e.target.value } : null);
+                                handleTaxonomyLookupEdit(e.target.value);
+                              }}
+                              onFocus={() => {
+                                if (selectedPractice.taxonomySpecialty) {
+                                  handleTaxonomyLookupEdit(selectedPractice.taxonomySpecialty);
+                                }
+                              }}
                             placeholder="Enter taxonomy specialty"
                           />
-                          <Button variant="outline" size="sm">
+                            {showTaxonomyDropdownEdit && taxonomySearchResultsEdit.length > 0 && (
+                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                {taxonomySearchResultsEdit.map((taxonomy) => (
+                                  <div
+                                    key={taxonomy.code}
+                                    className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                    onClick={() => handleTaxonomySelectEdit(taxonomy.code, taxonomy.description)}
+                                  >
+                                    <div className="font-medium text-sm">{taxonomy.description}</div>
+                                    <div className="text-xs text-gray-500">Code: {taxonomy.code}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button 
+                            type="button"
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleTaxonomyLookupEdit(selectedPractice.taxonomySpecialty || '')}
+                            disabled={isSearchingTaxonomyEdit || !selectedPractice.taxonomySpecialty}
+                            title="Search taxonomy codes"
+                          >
+                            {isSearchingTaxonomyEdit ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                            ) : (
                             <Search className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -1098,7 +1752,31 @@ const Practices = () => {
 
       {/* Practices List */}
       <div className="space-y-4">
-        {filteredPractices.map((practice) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading practices...</p>
+            </div>
+          </div>
+        ) : filteredPractices.length === 0 ? (
+          <div className="text-center py-12">
+            <Building className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No practices found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterStatus !== "all" || filterType !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by adding your first practice"}
+            </p>
+            {!searchTerm && filterStatus === "all" && filterType === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Practice
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredPractices.map((practice) => (
           <Card key={practice.id} className="hover:shadow-md transition-shadow">
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
@@ -1224,26 +1902,9 @@ const Practices = () => {
               )}
             </CardContent>
           </Card>
-        ))}
+          ))
+        )}
       </div>
-
-      {filteredPractices.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Building className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">No practices found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchTerm || filterStatus !== "all" || filterType !== "all"
-                ? "Try adjusting your search criteria"
-                : "Get started by adding your first practice"}
-            </p>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Practice
-            </Button>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

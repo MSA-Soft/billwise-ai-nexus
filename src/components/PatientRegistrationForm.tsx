@@ -91,7 +91,23 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     const newErrors: Record<string, string> = {};
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
     if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    if (!dateOfBirth) {
+      newErrors.dateOfBirth = 'Date of birth is required';
+    } else {
+      // Validate that date of birth is not in the future
+      const dob = new Date(dateOfBirth);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to compare dates only
+      if (dob > today) {
+        newErrors.dateOfBirth = 'Date of birth cannot be in the future';
+      }
+      // Validate that date is not too far in the past (e.g., more than 150 years ago)
+      const minDate = new Date();
+      minDate.setFullYear(today.getFullYear() - 150);
+      if (dob < minDate) {
+        newErrors.dateOfBirth = 'Please enter a valid date of birth';
+      }
+    }
     if (!gender) newErrors.gender = 'Gender is required';
     setErrors(prev => ({ ...prev, ...newErrors }));
     return Object.keys(newErrors).length === 0;
@@ -134,7 +150,23 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     // Basic Information validation
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
     if (!lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
+    if (!dateOfBirth) {
+      newErrors.dateOfBirth = 'Date of birth is required';
+    } else {
+      // Validate that date of birth is not in the future
+      const dob = new Date(dateOfBirth);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to compare dates only
+      if (dob > today) {
+        newErrors.dateOfBirth = 'Date of birth cannot be in the future';
+      }
+      // Validate that date is not too far in the past (e.g., more than 150 years ago)
+      const minDate = new Date();
+      minDate.setFullYear(today.getFullYear() - 150);
+      if (dob < minDate) {
+        newErrors.dateOfBirth = 'Please enter a valid date of birth';
+      }
+    }
     if (!gender) newErrors.gender = 'Gender is required';
 
     // Contact Information validation
@@ -172,15 +204,39 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
 
     setIsSubmitting(true);
     try {
+      // Helper function to calculate accurate age
+      const calculateAge = (dob: string): number | null => {
+        if (!dob) return null;
+        try {
+          const birthDate = new Date(dob);
+          const today = new Date();
+          if (isNaN(birthDate.getTime()) || birthDate > today) return 0;
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          return age >= 0 ? age : 0;
+        } catch {
+          return null;
+        }
+      };
+
       const patientData = {
         id: Math.random().toString(36).slice(2),
         name: `${firstName} ${lastName}`.trim(),
-        age: new Date().getFullYear() - new Date(dateOfBirth).getFullYear(),
+        firstName, // CRITICAL: Add firstName field for handler
+        lastName, // CRITICAL: Add lastName field for handler
+        age: calculateAge(dateOfBirth),
         dateOfBirth,
         phone,
         email,
-        address: `${address}, ${city}, ${state} ${zipCode}`,
+        address, // CRITICAL: Keep as separate field, not concatenated
+        city, // CRITICAL: Add separate city field
+        state, // CRITICAL: Add separate state field
+        zipCode, // CRITICAL: Add separate zipCode field
         insurance: insuranceCompany,
+        insuranceCompany, // CRITICAL: Add insuranceCompany field for handler compatibility
         status: 'active' as const,
         emergencyContact: {
           name: emergencyContactName,

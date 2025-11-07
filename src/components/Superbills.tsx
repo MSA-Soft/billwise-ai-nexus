@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, FileText, Upload as UploadIcon, Info, AlertCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface Superbill {
   id: string;
@@ -23,41 +25,8 @@ interface Superbill {
   updatedAt: string;
 }
 
-const sampleSuperbills: Superbill[] = [
-  {
-    id: '1',
-    name: 'Standard Superbill',
-    type: 'form-based',
-    filePath: '',
-    fileName: 'No File Selected',
-    status: 'active',
-    description: 'Standard superbill template for general use',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: 'Pediatric Superbill',
-    type: 'template-based',
-    filePath: '',
-    fileName: 'No File Selected',
-    status: 'active',
-    description: 'Specialized superbill for pediatric practices',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '3',
-    name: 'Dental Superbill',
-    type: 'custom',
-    filePath: '',
-    fileName: 'No File Selected',
-    status: 'inactive',
-    description: 'Custom superbill for dental practices',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  }
-];
+// Sample superbills removed - now using database
+const _sampleSuperbills: Superbill[] = [];
 
 const superbillTypes = [
   'Form Based',
@@ -66,7 +35,8 @@ const superbillTypes = [
 ];
 
 export const Superbills: React.FC = () => {
-  const [superbills, setSuperbills] = useState<Superbill[]>(sampleSuperbills);
+  const { toast } = useToast();
+  const [superbills, setSuperbills] = useState<Superbill[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -74,6 +44,86 @@ export const Superbills: React.FC = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingSuperbill, setEditingSuperbill] = useState<Superbill | null>(null);
   const [expandedSuperbill, setExpandedSuperbill] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = useRef(false);
+
+  // Fetch superbills from database
+  useEffect(() => {
+    fetchSuperbillsFromDatabase();
+  }, []);
+
+  const fetchSuperbillsFromDatabase = async () => {
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingRef.current = true;
+      setIsLoading(true);
+      console.log('🔍 Fetching superbills from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch superbills.');
+        setSuperbills([]);
+        setIsLoading(false);
+        isFetchingRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('superbills' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching superbills:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ Superbills table not found. Please run CREATE_SUPERBILLS_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'Superbills table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading superbills',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setSuperbills([]);
+        return;
+      }
+
+      // Transform database records to match Superbill interface
+      const transformedSuperbills: Superbill[] = (data || []).map((dbSuperbill: any) => ({
+        id: dbSuperbill.id,
+        name: dbSuperbill.name || '',
+        type: (dbSuperbill.type || 'form-based') as 'form-based' | 'template-based' | 'custom',
+        filePath: dbSuperbill.file_path || '',
+        fileName: dbSuperbill.file_name || 'No File Selected',
+        status: (dbSuperbill.status || (dbSuperbill.is_active ? 'active' : 'inactive')) as 'active' | 'inactive',
+        description: dbSuperbill.description || '',
+        createdAt: dbSuperbill.created_at || '',
+        updatedAt: dbSuperbill.updated_at || dbSuperbill.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedSuperbills.length} superbills from database`);
+      setSuperbills(transformedSuperbills);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchSuperbillsFromDatabase:', error);
+      toast({
+        title: 'Error loading superbills',
+        description: error.message || 'Failed to load superbills from database',
+        variant: 'destructive',
+      });
+      setSuperbills([]);
+    } finally {
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  };
   const [newSuperbill, setNewSuperbill] = useState<Partial<Superbill>>({
     name: '',
     type: 'form-based',
@@ -94,34 +144,74 @@ export const Superbills: React.FC = () => {
     return matchesSearch && matchesType && matchesStatus;
   });
 
-  const handleAddSuperbill = () => {
+  const handleAddSuperbill = async () => {
     if (!newSuperbill.name) {
-      alert('Please fill in required fields');
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Name).",
+        variant: "destructive",
+      });
       return;
     }
 
-    const superbill: Superbill = {
-      id: Date.now().toString(),
-      name: newSuperbill.name!,
-      type: newSuperbill.type || 'form-based',
-      filePath: newSuperbill.filePath || '',
-      fileName: newSuperbill.fileName || 'No File Selected',
-      status: newSuperbill.status || 'active',
-      description: newSuperbill.description || '',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
+    try {
+      console.log('💾 Creating superbill:', newSuperbill);
 
-    setSuperbills([...superbills, superbill]);
-    setNewSuperbill({
-      name: '',
-      type: 'form-based',
-      filePath: '',
-      fileName: 'No File Selected',
-      status: 'active',
-      description: ''
-    });
-    setIsAddDialogOpen(false);
+      // Prepare data for database (snake_case) - consistent naming
+      const insertData: any = {
+        name: newSuperbill.name!.trim(),
+        type: newSuperbill.type || 'form-based',
+        file_path: newSuperbill.filePath || null,
+        file_name: newSuperbill.fileName || 'No File Selected',
+        description: newSuperbill.description || null,
+        status: (newSuperbill.status || 'active') as 'active' | 'inactive',
+        is_active: (newSuperbill.status || 'active') === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('superbills' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating superbill:', error);
+        throw new Error(error.message || 'Failed to create superbill');
+      }
+
+      // Refresh the superbills list
+      await fetchSuperbillsFromDatabase();
+
+      // Reset form
+      setNewSuperbill({
+        name: '',
+        type: 'form-based',
+        filePath: '',
+        fileName: 'No File Selected',
+        status: 'active',
+        description: ''
+      });
+      setIsAddDialogOpen(false);
+
+      toast({
+        title: "Superbill Added",
+        description: `${newSuperbill.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create superbill:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create superbill. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditSuperbill = (superbill: Superbill) => {
@@ -129,21 +219,99 @@ export const Superbills: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateSuperbill = () => {
-    if (!editingSuperbill) return;
+  const handleUpdateSuperbill = async () => {
+    if (!editingSuperbill || !editingSuperbill.id) {
+      toast({
+        title: "Error",
+        description: "Superbill ID is missing. Cannot update.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    setSuperbills(superbills.map(s => 
-      s.id === editingSuperbill.id 
-        ? { ...editingSuperbill, updatedAt: new Date().toISOString().split('T')[0] }
-        : s
-    ));
-    setIsEditDialogOpen(false);
-    setEditingSuperbill(null);
+    try {
+      console.log('💾 Updating superbill:', editingSuperbill);
+
+      // Prepare data for database (snake_case) - consistent naming
+      const updateData: any = {
+        name: editingSuperbill.name.trim(),
+        type: editingSuperbill.type || 'form-based',
+        file_path: editingSuperbill.filePath || null,
+        file_name: editingSuperbill.fileName || 'No File Selected',
+        description: editingSuperbill.description || null,
+        status: editingSuperbill.status as 'active' | 'inactive',
+        is_active: editingSuperbill.status === 'active'
+      };
+
+      // Remove null values for optional fields
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === null || updateData[key] === '') {
+          delete updateData[key];
+        }
+      });
+
+      const { error } = await supabase
+        .from('superbills' as any)
+        .update(updateData)
+        .eq('id', editingSuperbill.id);
+
+      if (error) {
+        console.error('❌ Error updating superbill:', error);
+        throw new Error(error.message || 'Failed to update superbill');
+      }
+
+      // Refresh the superbills list
+      await fetchSuperbillsFromDatabase();
+
+      setIsEditDialogOpen(false);
+      setEditingSuperbill(null);
+
+      toast({
+        title: "Superbill Updated",
+        description: `${editingSuperbill.name} has been successfully updated.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to update superbill:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to update superbill. Please try again.',
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDeleteSuperbill = (id: string) => {
-    if (confirm('Are you sure you want to delete this superbill?')) {
-      setSuperbills(superbills.filter(s => s.id !== id));
+  const handleDeleteSuperbill = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this superbill? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting superbill:', id);
+
+      const { error } = await supabase
+        .from('superbills' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('❌ Error deleting superbill:', error);
+        throw new Error(error.message || 'Failed to delete superbill');
+      }
+
+      // Refresh the superbills list
+      await fetchSuperbillsFromDatabase();
+
+      toast({
+        title: "Superbill Deleted",
+        description: "Superbill has been successfully deleted.",
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to delete superbill:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to delete superbill. Please try again.',
+        variant: "destructive",
+      });
     }
   };
 
@@ -279,7 +447,31 @@ export const Superbills: React.FC = () => {
 
       {/* Superbills List */}
       <div className="space-y-4">
-        {filteredSuperbills.map((superbill) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading superbills...</p>
+            </div>
+          </div>
+        ) : filteredSuperbills.length === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No superbills found</h3>
+            <p className="text-muted-foreground mb-4">
+              {searchTerm || filterType !== "all" || filterStatus !== "all"
+                ? "Try adjusting your search criteria"
+                : "Get started by creating your first superbill"}
+            </p>
+            {!searchTerm && filterType === "all" && filterStatus === "all" && (
+              <Button onClick={() => setIsAddDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Superbill
+              </Button>
+            )}
+          </div>
+        ) : (
+          filteredSuperbills.map((superbill) => (
           <Card key={superbill.id}>
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -350,7 +542,8 @@ export const Superbills: React.FC = () => {
               </CardContent>
             )}
           </Card>
-        ))}
+          ))
+        )}
       </div>
 
       {/* Add Superbill Dialog */}
