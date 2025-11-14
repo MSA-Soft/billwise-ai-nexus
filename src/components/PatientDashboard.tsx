@@ -32,6 +32,7 @@ import {
 
 interface PatientData {
   id: string;
+  patient_id?: string; // Patient ID in format PAT-YYYYMMNNNNN
   name: string;
   age: number;
   dateOfBirth: string;
@@ -166,7 +167,11 @@ export function PatientDashboard({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border border-white/50">
                       <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Patient ID</p>
-                      <p className="text-lg font-semibold text-gray-900">{patient.id}</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {patient.patient_id && patient.patient_id.startsWith('PAT-') 
+                          ? patient.patient_id 
+                          : patient.patient_id || patient.id}
+                      </p>
                     </div>
                     <div className="bg-white/70 backdrop-blur-sm rounded-lg p-3 border border-white/50">
                       <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Age</p>

@@ -120,10 +120,6 @@ const Practices = () => {
   const [taxonomySearchResultsEdit, setTaxonomySearchResultsEdit] = useState<Array<{ code: string; description: string }>>([]);
   const [showTaxonomyDropdownEdit, setShowTaxonomyDropdownEdit] = useState(false);
 
-<<<<<<< HEAD
-  // Initialize with empty array - data should come from database
-  const [practices, setPractices] = useState<Practice[]>([]);
-=======
   // Fetch practices from database
   useEffect(() => {
     fetchPracticesFromDatabase();
@@ -225,8 +221,6 @@ const Practices = () => {
       isFetchingRef.current = false;
     }
   };
-
->>>>>>> 14dfb14 (Database Added)
 
   const [newPractice, setNewPractice] = useState<Partial<Practice>>({
     name: "",

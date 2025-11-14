@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Activity,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 

@@ -88,9 +88,11 @@ const AuthorizationTaskManagement = () => {
   });
 
   useEffect(() => {
-    loadTasks();
-    loadStats();
-  }, [user, filters]);
+    if (user?.id) {
+      loadTasks();
+      loadStats();
+    }
+  }, [user, filters, currentFilter]);
 
   const loadTasks = async () => {
     try {
@@ -101,7 +103,7 @@ const AuthorizationTaskManagement = () => {
         status: currentFilter.statuses.length > 0 ? currentFilter.statuses : undefined,
         priority: currentFilter.priorities.length > 0 ? currentFilter.priorities : undefined,
         task_type: currentFilter.types.length > 0 ? currentFilter.types : undefined,
-        assigned_to: currentFilter.assignedTo || user?.id,
+        assigned_to: currentFilter.assignedTo || undefined, // Don't filter by user by default
         due_date_from: currentFilter.dateFrom,
         due_date_to: currentFilter.dateTo,
       } : {
@@ -109,17 +111,21 @@ const AuthorizationTaskManagement = () => {
         status: statusFilter !== 'all' ? [statusFilter] : undefined,
         priority: priorityFilter !== 'all' ? [priorityFilter] : undefined,
         task_type: typeFilter !== 'all' ? [typeFilter] : undefined,
-        assigned_to: user?.id,
+        // Don't filter by assigned_to - let RLS handle it
+        // This shows all tasks user has access to (assigned, created, or owns auth request)
       };
 
       const data = await authorizationTaskService.getTasks(taskFilters, user?.id);
+      console.log('📋 Tasks loaded:', data.length, data);
       setTasks(data);
     } catch (error: any) {
+      console.error('❌ Error loading tasks:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to load tasks',
         variant: 'destructive',
       });
+      setTasks([]); // Set empty array on error
     } finally {
       setLoading(false);
     }

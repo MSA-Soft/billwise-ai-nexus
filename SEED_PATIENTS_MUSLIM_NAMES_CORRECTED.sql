@@ -365,3 +365,5 @@ SELECT COUNT(*) as total_patients FROM patients;
 -- Show success message
 SELECT '✅ Successfully inserted 15 patients with Muslim names!' AS status;
 
+
+

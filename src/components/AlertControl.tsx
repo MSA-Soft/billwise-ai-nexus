@@ -209,64 +209,6 @@ export const AlertControl: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-<<<<<<< HEAD
-  const handleAddAlert = () => {
-    if (!newAlert.patient || !newAlert.message) {
-      window.alert('Please fill in required fields');
-      return;
-    }
-
-    const alertItem: Alert = {
-      id: Date.now().toString(),
-      alertType: newAlert.alertType || 'Patient',
-      patient: newAlert.patient!,
-      message: newAlert.message!,
-      createUser: newAlert.createUser || 'Me',
-      isGlobal: newAlert.isGlobal || false,
-      patientSection: newAlert.patientSection || false,
-      claimSection: newAlert.claimSection || false,
-      paymentSection: newAlert.paymentSection || false,
-      appointmentSection: newAlert.appointmentSection || false,
-      createDateRange: newAlert.createDateRange || 'All',
-      createDateStart: newAlert.createDateStart || '',
-      createDateEnd: newAlert.createDateEnd || '',
-      effectiveStartDateRange: newAlert.effectiveStartDateRange || 'All',
-      effectiveStartDateStart: newAlert.effectiveStartDateStart || '',
-      effectiveStartDateEnd: newAlert.effectiveStartDateEnd || '',
-      effectiveEndDateRange: newAlert.effectiveEndDateRange || 'All',
-      effectiveEndDateStart: newAlert.effectiveEndDateStart || '',
-      effectiveEndDateEnd: newAlert.effectiveEndDateEnd || '',
-      includeDeleted: newAlert.includeDeleted || false,
-      status: newAlert.status || 'active',
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    };
-
-    setAlerts([...alerts, alertItem]);
-    setNewAlert({
-      alertType: 'Patient',
-      patient: '',
-      message: '',
-      createUser: 'Me',
-      isGlobal: false,
-      patientSection: false,
-      claimSection: false,
-      paymentSection: false,
-      appointmentSection: false,
-      createDateRange: 'All',
-      createDateStart: '',
-      createDateEnd: '',
-      effectiveStartDateRange: 'All',
-      effectiveStartDateStart: '',
-      effectiveStartDateEnd: '',
-      effectiveEndDateRange: 'All',
-      effectiveEndDateStart: '',
-      effectiveEndDateEnd: '',
-      includeDeleted: false,
-      status: 'active'
-    });
-    setIsAddDialogOpen(false);
-=======
   const handleAddAlert = async () => {
     if (!newAlert.patient || !newAlert.message) {
       toast({
@@ -363,7 +305,6 @@ export const AlertControl: React.FC = () => {
         variant: "destructive",
       });
     }
->>>>>>> 14dfb14 (Database Added)
   };
 
   const handleEditAlert = (alert: Alert) => {

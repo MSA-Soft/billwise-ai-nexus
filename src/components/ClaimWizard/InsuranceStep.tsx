@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -14,47 +14,8 @@ import {
   Shield,
   User
 } from 'lucide-react';
-
-const mockInsuranceProviders = [
-  {
-    id: 'INS001',
-    name: 'Blue Cross Blue Shield',
-    type: 'Commercial',
-    eligibility: 'Active'
-  },
-  {
-    id: 'INS002',
-    name: 'Aetna',
-    type: 'Commercial',
-    eligibility: 'Active'
-  },
-  {
-    id: 'INS003',
-    name: 'Medicare',
-    type: 'Government',
-    eligibility: 'Active'
-  },
-  {
-    id: 'INS004',
-    name: 'Cigna',
-    type: 'Commercial',
-    eligibility: 'Active'
-  },
-  {
-    id: 'INS005',
-    name: 'UnitedHealth',
-    type: 'Commercial',
-    eligibility: 'Active'
-  }
-];
-
-const mockProviders = [
-  { id: 'PROV001', name: 'Dr. Smith', specialty: 'Internal Medicine' },
-  { id: 'PROV002', name: 'Dr. Johnson', specialty: 'Endocrinology' },
-  { id: 'PROV003', name: 'Dr. Davis', specialty: 'Cardiology' },
-  { id: 'PROV004', name: 'Dr. Wilson', specialty: 'Family Medicine' },
-  { id: 'PROV005', name: 'Dr. Anderson', specialty: 'Internal Medicine' }
-];
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface InsuranceStepProps {
   data: any;
@@ -62,14 +23,108 @@ interface InsuranceStepProps {
 }
 
 export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
+  const { toast } = useToast();
   const [primaryInsurance, setPrimaryInsurance] = useState(data.insurance?.primary || null);
   const [secondaryInsurance, setSecondaryInsurance] = useState(data.insurance?.secondary || null);
   const [authNumber, setAuthNumber] = useState(data.insurance?.authNumber || '');
   const [eligibilityStatus, setEligibilityStatus] = useState('checking');
   const [selectedProvider, setSelectedProvider] = useState(data.provider || null);
+  
+  // Data from Customer Setup
+  const [payers, setPayers] = useState<any[]>([]);
+  const [providers, setProviders] = useState<any[]>([]);
+  const [isLoadingPayers, setIsLoadingPayers] = useState(false);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+
+  // Fetch payers and providers from Customer Setup
+  useEffect(() => {
+    fetchPayers();
+    fetchProviders();
+  }, []);
+
+  const fetchPayers = async () => {
+    try {
+      setIsLoadingPayers(true);
+      const { data: payersData, error } = await supabase
+        .from('insurance_payers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching payers:', error);
+        toast({
+          title: 'Error loading payers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedPayers = (payersData || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        type: p.payer_type || 'Commercial',
+        planName: p.plan_name || '',
+        eligibility: 'Active'
+      }));
+
+      setPayers(transformedPayers);
+    } catch (error: any) {
+      console.error('Error fetching payers:', error);
+      toast({
+        title: 'Error loading payers',
+        description: error.message || 'Failed to load payers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingPayers(false);
+    }
+  };
+
+  const fetchProviders = async () => {
+    try {
+      setIsLoadingProviders(true);
+      const { data: providersData, error } = await supabase
+        .from('providers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('last_name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching providers:', error);
+        toast({
+          title: 'Error loading providers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedProviders = (providersData || []).map((p: any) => ({
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        firstName: p.first_name || '',
+        lastName: p.last_name || '',
+        specialty: p.taxonomy_specialty || '',
+        credentials: p.credentials || ''
+      }));
+
+      setProviders(transformedProviders);
+    } catch (error: any) {
+      console.error('Error fetching providers:', error);
+      toast({
+        title: 'Error loading providers',
+        description: error.message || 'Failed to load providers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
 
   const handlePrimaryInsuranceChange = (insuranceId: string) => {
-    const insurance = mockInsuranceProviders.find(ins => ins.id === insuranceId);
+    const insurance = payers.find(ins => ins.id === insuranceId);
     setPrimaryInsurance(insurance);
     updateInsurance({ primary: insurance });
     
@@ -85,14 +140,14 @@ export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
       setSecondaryInsurance(null);
       updateInsurance({ secondary: null });
     } else {
-      const insurance = mockInsuranceProviders.find(ins => ins.id === insuranceId);
+      const insurance = payers.find(ins => ins.id === insuranceId);
       setSecondaryInsurance(insurance);
       updateInsurance({ secondary: insurance });
     }
   };
 
   const handleProviderChange = (providerId: string) => {
-    const provider = mockProviders.find(prov => prov.id === providerId);
+    const provider = providers.find(prov => prov.id === providerId);
     setSelectedProvider(provider);
     onUpdate({ provider });
   };
@@ -130,20 +185,29 @@ export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
       {/* Provider Selection */}
       <div className="space-y-2">
         <Label htmlFor="provider">Provider</Label>
-        <Select value={selectedProvider?.id || ''} onValueChange={handleProviderChange}>
+        <Select 
+          value={selectedProvider?.id || ''} 
+          onValueChange={handleProviderChange}
+          disabled={isLoadingProviders}
+        >
           <SelectTrigger>
-            <SelectValue placeholder="Select provider" />
+            <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select provider"} />
           </SelectTrigger>
           <SelectContent>
-            {mockProviders.map(provider => (
-              <SelectItem key={provider.id} value={provider.id}>
-                <div className="flex items-center space-x-2">
-                  <User className="h-4 w-4" />
-                  <span>{provider.name}</span>
-                  <span className="text-gray-500">- {provider.specialty}</span>
-                </div>
-              </SelectItem>
-            ))}
+            {providers.length === 0 && !isLoadingProviders ? (
+              <SelectItem value="none" disabled>No providers found. Please add providers in Customer Setup.</SelectItem>
+            ) : (
+              providers.map(provider => (
+                <SelectItem key={provider.id} value={provider.id}>
+                  <div className="flex items-center space-x-2">
+                    <User className="h-4 w-4" />
+                    <span>{provider.name}</span>
+                    {provider.credentials && <span className="text-gray-500">, {provider.credentials}</span>}
+                    {provider.specialty && <span className="text-gray-500">- {provider.specialty}</span>}
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -151,22 +215,31 @@ export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
       {/* Primary Insurance */}
       <div className="space-y-2">
         <Label htmlFor="primaryInsurance">Primary Insurance *</Label>
-        <Select value={primaryInsurance?.id || ''} onValueChange={handlePrimaryInsuranceChange}>
+        <Select 
+          value={primaryInsurance?.id || ''} 
+          onValueChange={handlePrimaryInsuranceChange}
+          disabled={isLoadingPayers}
+        >
           <SelectTrigger>
-            <SelectValue placeholder="Select primary insurance" />
+            <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select primary insurance"} />
           </SelectTrigger>
           <SelectContent>
-            {mockInsuranceProviders.map(insurance => (
-              <SelectItem key={insurance.id} value={insurance.id}>
-                <div className="flex items-center space-x-2">
-                  <Building className="h-4 w-4" />
-                  <span>{insurance.name}</span>
-                  <Badge variant="outline" className="text-xs">
-                    {insurance.type}
-                  </Badge>
-                </div>
-              </SelectItem>
-            ))}
+            {payers.length === 0 && !isLoadingPayers ? (
+              <SelectItem value="none" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+            ) : (
+              payers.map(insurance => (
+                <SelectItem key={insurance.id} value={insurance.id}>
+                  <div className="flex items-center space-x-2">
+                    <Building className="h-4 w-4" />
+                    <span>{insurance.name}</span>
+                    {insurance.planName && <span className="text-gray-500">- {insurance.planName}</span>}
+                    <Badge variant="outline" className="text-xs">
+                      {insurance.type}
+                    </Badge>
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -213,17 +286,22 @@ export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
       {/* Secondary Insurance */}
       <div className="space-y-2">
         <Label htmlFor="secondaryInsurance">Secondary Insurance (Optional)</Label>
-        <Select value={secondaryInsurance?.id || 'none'} onValueChange={handleSecondaryInsuranceChange}>
+        <Select 
+          value={secondaryInsurance?.id || 'none'} 
+          onValueChange={handleSecondaryInsuranceChange}
+          disabled={isLoadingPayers}
+        >
           <SelectTrigger>
-            <SelectValue placeholder="Select secondary insurance" />
+            <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select secondary insurance"} />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">None</SelectItem>
-            {mockInsuranceProviders.map(insurance => (
+            {payers.map(insurance => (
               <SelectItem key={insurance.id} value={insurance.id}>
                 <div className="flex items-center space-x-2">
                   <Building className="h-4 w-4" />
                   <span>{insurance.name}</span>
+                  {insurance.planName && <span className="text-gray-500">- {insurance.planName}</span>}
                   <Badge variant="outline" className="text-xs">
                     {insurance.type}
                   </Badge>

@@ -128,3 +128,5 @@ console.log('Error:', error);
 
 If this works but the component doesn't, it's a timing/RLS issue.
 
+
+

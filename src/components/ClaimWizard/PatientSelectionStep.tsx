@@ -5,54 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search, User, Phone, Calendar, CreditCard } from 'lucide-react';
-
-const mockPatients = [
-  {
-    id: 'P001',
-    name: 'John Doe',
-    dob: '1985-06-15',
-    phone: '(555) 123-4567',
-    insurance: 'Blue Cross Blue Shield',
-    memberNumber: 'BC123456789',
-    eligibility: 'Active'
-  },
-  {
-    id: 'P002',
-    name: 'Sarah Wilson',
-    dob: '1992-03-22',
-    phone: '(555) 234-5678',
-    insurance: 'Aetna',
-    memberNumber: 'AE987654321',
-    eligibility: 'Active'
-  },
-  {
-    id: 'P003',
-    name: 'Mike Brown',
-    dob: '1978-11-08',
-    phone: '(555) 345-6789',
-    insurance: 'Medicare',
-    memberNumber: 'MC456789123',
-    eligibility: 'Active'
-  },
-  {
-    id: 'P004',
-    name: 'Emily Davis',
-    dob: '1990-07-14',
-    phone: '(555) 456-7890',
-    insurance: 'Cigna',
-    memberNumber: 'CG789123456',
-    eligibility: 'Active'
-  },
-  {
-    id: 'P005',
-    name: 'Robert Taylor',
-    dob: '1982-12-03',
-    phone: '(555) 567-8901',
-    insurance: 'UnitedHealth',
-    memberNumber: 'UH123789456',
-    eligibility: 'Active'
-  }
-];
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PatientSelectionStepProps {
   data: any;
@@ -60,18 +14,72 @@ interface PatientSelectionStepProps {
 }
 
 export function PatientSelectionStep({ data, onUpdate }: PatientSelectionStepProps) {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredPatients, setFilteredPatients] = useState(mockPatients);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [filteredPatients, setFilteredPatients] = useState<any[]>([]);
   const [selectedPatient, setSelectedPatient] = useState(data.patient);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch patients from database
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const fetchPatients = async () => {
+    try {
+      setIsLoading(true);
+      const { data: patientsData, error } = await supabase
+        .from('patients' as any)
+        .select('*')
+        .order('last_name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching patients:', error);
+        toast({
+          title: 'Error loading patients',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedPatients = (patientsData || []).map((p: any) => ({
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        dob: p.date_of_birth || '',
+        phone: p.phone || '',
+        insurance: p.primary_insurance_name || 'Not specified',
+        memberNumber: p.insurance_member_id || '',
+        eligibility: p.eligibility_status || 'Unknown'
+      }));
+
+      setPatients(transformedPatients);
+      setFilteredPatients(transformedPatients);
+    } catch (error: any) {
+      console.error('Error fetching patients:', error);
+      toast({
+        title: 'Error loading patients',
+        description: error.message || 'Failed to load patients',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const filtered = mockPatients.filter(patient =>
-      patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      patient.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      patient.phone.includes(searchTerm)
-    );
-    setFilteredPatients(filtered);
-  }, [searchTerm]);
+    if (searchTerm.trim() === '') {
+      setFilteredPatients(patients);
+    } else {
+      const filtered = patients.filter(patient =>
+        patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        patient.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (patient.phone && patient.phone.includes(searchTerm))
+      );
+      setFilteredPatients(filtered);
+    }
+  }, [searchTerm, patients]);
 
   const handlePatientSelect = (patient: any) => {
     setSelectedPatient(patient);

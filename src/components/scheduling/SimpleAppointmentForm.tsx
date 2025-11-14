@@ -307,7 +307,8 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
     
     try {
       // Generate a patient ID (same format as Patients component)
-      const patientId = `PAT-${Date.now().toString().slice(-6)}`;
+      const { generatePatientId } = await import('@/utils/patientIdGenerator');
+      const patientId = await generatePatientId();
       
       // Create patient record in patients table
       const { data: newPatient, error: patientError } = await supabase

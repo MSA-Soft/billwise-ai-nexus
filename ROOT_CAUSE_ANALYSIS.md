@@ -76,3 +76,5 @@ If we removed mock data initialization, where are "John Doe" and "Sarah Wilson" 
 4. **Check RLS policies** - Do they filter by user_id?
 5. **Hard refresh** - Clear cache completely
 
+
+

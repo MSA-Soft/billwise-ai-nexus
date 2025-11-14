@@ -121,6 +121,79 @@ export class AuthorizationTaskService {
     return AuthorizationTaskService.instance;
   }
 
+  // Create task for next visit when appointment is completed
+  async createNextVisitTask(
+    patientId: string,
+    patientName: string,
+    completedAppointmentDate: string,
+    nextVisitDate?: string,
+    options: {
+      assignedTo?: string;
+      priority?: AuthorizationTask['priority'];
+      userId: string;
+      notes?: string;
+    }
+  ): Promise<AuthorizationTask | null> {
+    try {
+      // Find related authorization request for this patient
+      const { data: authRequest, error: authError } = await supabase
+        .from('authorization_requests')
+        .select('id')
+        .eq('patient_name', patientName)
+        .or('status.eq.approved,status.eq.pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      // If no authorization found, we can still create a visit task without auth request
+      // For now, we'll create a standalone visit task
+      const dueDate = nextVisitDate 
+        ? new Date(nextVisitDate).toISOString()
+        : this.calculateNextVisitDate(completedAppointmentDate);
+
+      const title = `Schedule Next Visit - ${patientName}`;
+      const description = options.notes || 
+        `Patient ${patientName} completed visit on ${new Date(completedAppointmentDate).toLocaleDateString()}. Schedule next visit.`;
+
+      // Create task directly (we'll need to handle this differently if no auth request)
+      // For now, let's create it with a placeholder or make authorization_request_id nullable
+      // Actually, we should check if we can create tasks without auth requests
+      // Let me create a visit-specific task type
+      
+      if (!authRequest) {
+        // Create a visit task without authorization request
+        // We'll need to modify the table to allow null auth_request_id or create a separate table
+        // For now, let's skip if no auth request exists
+        console.warn('No authorization request found for patient, skipping visit task creation');
+        return null;
+      }
+
+      return this.createTaskFromAuthRequest(
+        authRequest.id,
+        'follow_up',
+        {
+          assignedTo: options.assignedTo,
+          priority: options.priority || 'medium',
+          dueDate: dueDate,
+          title,
+          description,
+          userId: options.userId,
+        }
+      );
+    } catch (error: any) {
+      console.error('Error creating next visit task:', error);
+      // Don't throw - visit tasks are optional
+      return null;
+    }
+  }
+
+  private calculateNextVisitDate(completedDate: string): string {
+    const date = new Date(completedDate);
+    // Default: schedule next visit 30 days from completed visit
+    date.setDate(date.getDate() + 30);
+    return date.toISOString();
+  }
+
   // Create task from authorization request
   async createTaskFromAuthRequest(
     authorizationRequestId: string,
@@ -218,12 +291,13 @@ export class AuthorizationTaskService {
         query = query.in('task_type', filters.task_type);
       }
 
+      // Only filter by assigned_to if explicitly provided
+      // Otherwise, RLS will handle showing tasks user has access to
       if (filters?.assigned_to) {
         query = query.eq('assigned_to', filters.assigned_to);
-      } else if (userId) {
-        // Default to user's tasks if no assignment filter
-        query = query.eq('assigned_to', userId);
       }
+      // Removed the else clause that was filtering to only user's tasks
+      // This allows RLS to show all tasks the user has access to
 
       if (filters?.due_date_from) {
         query = query.gte('due_date', filters.due_date_from);
@@ -235,7 +309,10 @@ export class AuthorizationTaskService {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching tasks:', error);
+        throw error;
+      }
 
       // Apply search filter if provided
       let tasks = (data || []) as any[];
@@ -248,6 +325,7 @@ export class AuthorizationTaskService {
         );
       }
 
+      console.log('✅ Loaded tasks:', tasks.length);
       return tasks as AuthorizationTask[];
     } catch (error: any) {
       console.error('Error fetching tasks:', error);

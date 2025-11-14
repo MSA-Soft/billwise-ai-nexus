@@ -1,3 +1,5 @@
+import LandingPage from "./components/LandingPage";
+import "./App.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +9,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import CustomerSetup from "./pages/CustomerSetup";
 import PatientPortal from "./pages/PatientPortal";
+import BoldParallaxDemo from "./pages/BoldParallaxDemo";
 import NotFound from "./pages/NotFound";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -50,6 +53,7 @@ const App = () => (
                   </ProtectedRoute>
                 } 
               />
+              <Route path="/bold-parallax" element={<BoldParallaxDemo />} />
               {/* <Route path="/test-css" element={<TestCSS />} />
               <Route path="/test-functionality" element={<TestFunctionality />} /> */}
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

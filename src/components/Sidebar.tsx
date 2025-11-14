@@ -95,6 +95,7 @@ interface SidebarProps {
 export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isCustomerSetupOpen, setIsCustomerSetupOpen] = useState(false);
+  const [isPatientsOpen, setIsPatientsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const isMobile = useMobile();
   const navigate = useNavigate();
@@ -115,6 +116,44 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       badge: null,
     },
     {
+      id: "scheduling",
+      label: "Scheduling",
+      icon: Calendar,
+      badge: null,
+    },
+    {
+      id: "patients",
+      label: "Patients",
+      icon: Users,
+      badge: null,
+      hasSubmenu: true,
+    },
+    {
+      id: "claims",
+      label: "Claims",
+      icon: FileText,
+      badge: null,
+    },
+    {
+      id: "billings",
+      label: "Billings",
+      icon: FileText,
+      badge: null,
+    },
+    {
+      id: "payments",
+      label: "Payments",
+      icon: DollarSign,
+      badge: null,
+    },
+    // Items after payments
+    {
+      id: "reports",
+      label: "Reports",
+      icon: BarChart3,
+      badge: null,
+    },
+    {
       id: "eligibility-verification",
       label: "Eligibility Verification",
       icon: Shield,
@@ -132,18 +171,15 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       icon: FileText,
       badge: null,
     },
-        {
-          id: "claims",
-          label: "Claims",
-          icon: FileText,
-          badge: null,
-        },
-        {
-          id: "enhanced-claims",
-          label: "Enhanced Claims",
-          icon: FileText,
-          badge: "AI",
-        },
+    {
+      id: "enhanced-claims",
+      label: "Enhanced Claims",
+      icon: FileText,
+      badge: "AI",
+    },
+  ];
+
+  const patientsSubmenuItems = [
     {
       id: "patients",
       label: "Patients",
@@ -151,15 +187,15 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       badge: null,
     },
     {
-      id: "schedule",
-      label: "Schedule",
-      icon: Calendar,
+      id: "eligibility-verification",
+      label: "Eligibility",
+      icon: Shield,
       badge: null,
     },
     {
-      id: "reports",
-      label: "Reports",
-      icon: BarChart3,
+      id: "prior-authorization",
+      label: "Prior Authorization",
+      icon: FileText,
       badge: null,
     },
   ];
@@ -307,11 +343,29 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       'claims',
       'enhanced-claims',
       'patients',
+      'scheduling',
       'schedule',
-      'reports'
+      'reports',
+      'prior-authorization',
+      'billings',
+      'payments'
     ]);
 
-    if (customerSetupItemIds.has(itemId)) {
+    // Special handling for eligibility-verification: always refresh page
+    if (itemId === 'eligibility-verification') {
+      // Check if already on eligibility-verification page
+      const currentPath = window.location.pathname;
+      const currentTab = new URLSearchParams(window.location.search).get('tab');
+      
+      if (currentPath === '/customer-setup' && currentTab === 'eligibility-verification') {
+        // Already on the page, just refresh
+        window.location.reload();
+      } else {
+        // Navigate to it with a refresh parameter to force reload
+        window.location.href = `/customer-setup?tab=${itemId}&refresh=${Date.now()}`;
+      }
+      return;
+    } else if (customerSetupItemIds.has(itemId)) {
       navigate(`/customer-setup?tab=${itemId}`);
     } else if (indexPageItemIds.has(itemId)) {
       // Special-case mapping for dashboard → billing
@@ -383,7 +437,72 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
               {navigationItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentPage === item.id;
+                const hasSubmenu = item.hasSubmenu;
                 
+                // Handle patients submenu
+                if (hasSubmenu && item.id === "patients") {
+                  return (
+                    <div key={item.id}>
+                      <Button
+                        variant={isActive ? "default" : "ghost"}
+                        className={cn(
+                          "w-full justify-start gap-3 h-10 min-w-0",
+                          isActive && "bg-blue-600 text-white hover:bg-blue-700",
+                          isCollapsed && "px-2"
+                        )}
+                        onClick={() => {
+                          if (!isCollapsed) {
+                            setIsPatientsOpen(!isPatientsOpen);
+                          } else {
+                            handleItemClick(item.id);
+                          }
+                        }}
+                      >
+                        <Icon className="h-4 w-4 flex-shrink-0" />
+                        {!isCollapsed && (
+                          <>
+                            <span className="flex-1 text-left truncate">{item.label}</span>
+                            <ChevronDown className={cn(
+                              "h-4 w-4 transition-transform",
+                              isPatientsOpen && "rotate-180"
+                            )} />
+                          </>
+                        )}
+                      </Button>
+                      
+                      {!isCollapsed && isPatientsOpen && (
+                        <div className="mt-1 ml-6 space-y-1">
+                          {patientsSubmenuItems.map((subItem) => {
+                            const SubIcon = subItem.icon;
+                            const isSubActive = currentPage === subItem.id;
+                            
+                            return (
+                              <Button
+                                key={subItem.id}
+                                variant={isSubActive ? "default" : "ghost"}
+                                className={cn(
+                                  "w-full justify-start gap-3 h-8 min-w-0 text-sm",
+                                  isSubActive && "bg-blue-600 text-white hover:bg-blue-700"
+                                )}
+                                onClick={() => handleItemClick(subItem.id)}
+                              >
+                                <SubIcon className="h-3 w-3 flex-shrink-0" />
+                                <span className="flex-1 text-left truncate">{subItem.label}</span>
+                                {subItem.badge && (
+                                  <Badge variant="secondary" className="ml-auto flex-shrink-0 text-xs">
+                                    {subItem.badge}
+                                  </Badge>
+                                )}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                
+                // Regular menu items
                 return (
                   <Button
                     key={item.id}

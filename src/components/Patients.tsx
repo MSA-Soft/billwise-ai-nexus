@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { generatePatientId } from '@/utils/patientIdGenerator';
 import { PatientDashboard } from './PatientDashboard';
 import { PatientSearchSystem } from './PatientSearchSystem';
 import { PatientRegistrationForm } from './PatientRegistrationForm';
@@ -131,10 +132,30 @@ export function Patients() {
       // CRITICAL: Log user_id to check RLS filtering
       console.log('👤 Current user ID for RLS check:', session.user.id);
       
-      const { data, error } = await supabase
+      // Use patient_dashboard_summary view if available, otherwise fallback to patients table
+      let data: any[] | null = null;
+      let error: any = null;
+      
+      // Try to use the enhanced view first
+      const { data: viewData, error: viewError } = await supabase
+        .from('patient_dashboard_summary' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (!viewError && viewData) {
+        // View exists and works - use it
+        data = viewData;
+        console.log('✅ Using patient_dashboard_summary view');
+      } else {
+        // View doesn't exist or has error - fallback to patients table
+        console.log('⚠️ View not available, falling back to patients table');
+        const { data: tableData, error: tableError } = await supabase
         .from('patients' as any)
         .select('*')
         .order('created_at', { ascending: false });
+        data = tableData;
+        error = tableError;
+      }
       
       // CRITICAL: Log the actual query result immediately
       console.log('🔍 QUERY RESULT - Data:', data);
@@ -142,7 +163,8 @@ export function Patients() {
       console.log('🔍 QUERY RESULT - Data length:', data?.length);
       console.log('🔍 QUERY RESULT - Is array:', Array.isArray(data));
 
-      if (error) {
+      // Handle errors (only if we got an error from the fallback table query)
+      if (error && !viewData) {
         console.error('❌ Error fetching patients:', error);
         console.error('Error details:', {
           code: error.code,
@@ -229,39 +251,86 @@ export function Patients() {
         };
         
         // Transform database records to match component's patient format
-        const transformedPatients = data.map((dbPatient: any) => ({
+        // Check if data comes from view (has 'name' field) or table (needs transformation)
+        const transformedPatients = data.map((dbPatient: any) => {
+          // If data comes from view, it already has most fields formatted
+          const isFromView = dbPatient.name !== undefined;
+          
+          // Parse JSON arrays if they exist (from view)
+          let appointments: any[] = [];
+          let documents: any[] = [];
+          let medicalAllergies: string[] = [];
+          let medicalMedications: string[] = [];
+          let medicalConditions: string[] = [];
+          
+          if (isFromView) {
+            // Parse JSON arrays from view
+            try {
+              if (dbPatient.appointments_json) {
+                appointments = typeof dbPatient.appointments_json === 'string' 
+                  ? JSON.parse(dbPatient.appointments_json)
+                  : dbPatient.appointments_json;
+              }
+              if (dbPatient.documents_json) {
+                documents = typeof dbPatient.documents_json === 'string'
+                  ? JSON.parse(dbPatient.documents_json)
+                  : dbPatient.documents_json;
+              }
+              if (dbPatient.medical_allergies) {
+                medicalAllergies = typeof dbPatient.medical_allergies === 'string'
+                  ? JSON.parse(dbPatient.medical_allergies)
+                  : dbPatient.medical_allergies;
+              }
+              if (dbPatient.medical_medications) {
+                medicalMedications = typeof dbPatient.medical_medications === 'string'
+                  ? JSON.parse(dbPatient.medical_medications)
+                  : dbPatient.medical_medications;
+              }
+              if (dbPatient.medical_conditions) {
+                medicalConditions = typeof dbPatient.medical_conditions === 'string'
+                  ? JSON.parse(dbPatient.medical_conditions)
+                  : dbPatient.medical_conditions;
+              }
+            } catch (e) {
+              console.warn('Error parsing JSON arrays from view:', e);
+            }
+          }
+          
+          return {
           id: dbPatient.id,
-          name: `${dbPatient.first_name || ''} ${dbPatient.last_name || ''}`.trim(),
-          age: calculateAge(dbPatient.date_of_birth),
+            name: isFromView ? dbPatient.name : `${dbPatient.first_name || ''} ${dbPatient.last_name || ''}`.trim(),
+            age: isFromView ? dbPatient.age : calculateAge(dbPatient.date_of_birth),
           dateOfBirth: dbPatient.date_of_birth,
-          phone: dbPatient.phone_primary || dbPatient.phone || '', // Use phone_primary first, fallback to phone
-          email: dbPatient.email,
-          address: [
+            phone: isFromView ? dbPatient.phone : (dbPatient.phone_primary || dbPatient.phone || ''),
+            email: isFromView ? dbPatient.email : (dbPatient.email || ''),
+            address: isFromView ? dbPatient.address : [
             dbPatient.address_line1,
             dbPatient.city,
             dbPatient.state,
             dbPatient.zip_code,
           ].filter(Boolean).join(', '),
-          insurance: '', // Will be populated from patient_insurance table if needed
-          status: dbPatient.status || 'active',
+            insurance: isFromView ? (dbPatient.insurance || '') : '',
+            status: (dbPatient.status || 'active') as 'active' | 'inactive',
           emergencyContact: {
-            name: dbPatient.emergency_contact_name,
-            phone: dbPatient.emergency_contact_phone,
-            relation: dbPatient.emergency_contact_relationship || dbPatient.emergency_contact_relation || '', // Use relationship first, fallback to relation
+              name: isFromView ? dbPatient.emergency_contact_name : (dbPatient.emergency_contact_name || ''),
+              phone: isFromView ? dbPatient.emergency_contact_phone : (dbPatient.emergency_contact_phone || ''),
+              relation: isFromView 
+                ? dbPatient.emergency_contact_relation 
+                : (dbPatient.emergency_contact_relationship || dbPatient.emergency_contact_relation || ''),
           },
           medicalInfo: {
-            allergies: [],
-            medications: [],
-            conditions: [],
+              allergies: medicalAllergies,
+              medications: medicalMedications,
+              conditions: medicalConditions,
           },
-          appointments: [],
-          documents: [],
-          nextAppointment: null,
-          totalVisits: 0,
-          outstandingBalance: 0,
-          riskLevel: 'low' as const,
-          preferredProvider: '',
-          lastVisit: '',
+            appointments: appointments,
+            documents: documents,
+            nextAppointment: isFromView ? dbPatient.next_appointment : null,
+            totalVisits: isFromView ? (dbPatient.total_visits || 0) : 0,
+            outstandingBalance: isFromView ? (parseFloat(dbPatient.outstanding_balance) || 0) : 0,
+            riskLevel: (isFromView ? dbPatient.risk_level : 'low') as 'low' | 'medium' | 'high',
+            preferredProvider: isFromView ? (dbPatient.preferred_provider_name || '') : '',
+            lastVisit: isFromView ? (dbPatient.last_visit_date || '') : '',
           // Additional fields from database
           patient_id: dbPatient.patient_id,
           gender: dbPatient.gender,
@@ -270,7 +339,8 @@ export function Patients() {
           race: dbPatient.race,
           ethnicity: dbPatient.ethnicity,
           language: dbPatient.language,
-        }));
+          };
+        });
 
         console.log(`✅ Successfully loaded ${transformedPatients.length} patients from database`);
         console.log('📋 Transformed patients count:', transformedPatients.length);
@@ -557,8 +627,9 @@ export function Patients() {
 
   const handleNewPatient = async (newPatient: any) => {
     try {
-      // Generate external patient_id string
-      const externalId = `PAT-${Date.now().toString().slice(-6)}`;
+      // Generate external patient_id string in format PAT-YYYYMMNNNNN
+      const externalId = await generatePatientId();
+      console.log('🆔 Generated new patient ID:', externalId);
 
       // Extract first and last name properly
       let firstName = newPatient.firstName || '';
@@ -722,6 +793,7 @@ export function Patients() {
       // Update local state with a simplified patient card
       const patientCard = {
         id: (created as any).id,
+        patient_id: (created as any).patient_id, // Include patient_id from database
         name: `${(created as any).first_name} ${(created as any).last_name}`.trim(),
         age: calculateAge((created as any).date_of_birth),
         dateOfBirth: (created as any).date_of_birth,
@@ -747,8 +819,15 @@ export function Patients() {
         totalVisits: 0,
         outstandingBalance: 0,
         riskLevel: 'low' as const,
-        preferredProvider: '',
+        preferredProvider: newPatient.preferredProvider || '',
         lastVisit: '',
+        // Include additional fields from database
+        gender: (created as any).gender,
+        ssn: (created as any).ssn,
+        maritalStatus: (created as any).marital_status,
+        race: (created as any).race,
+        ethnicity: (created as any).ethnicity,
+        language: (created as any).language,
       };
 
       // Refresh patients list from database to include the new patient

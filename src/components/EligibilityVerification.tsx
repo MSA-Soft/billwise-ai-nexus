@@ -102,9 +102,13 @@ import { useToast } from "@/hooks/use-toast";
 import { getEDIService, EligibilityRequest, EligibilityResponse } from "@/services/ediService";
 import { getCodeValidationService } from "@/services/codeValidationService";
 import { supabase } from "@/integrations/supabase/client";
+import { eligibilityAuditService } from "@/services/eligibilityAuditService";
+import { useAuth } from "@/contexts/AuthContext";
+import AuthorizationRequestDialog from "@/components/AuthorizationRequestDialog";
 
 const EligibilityVerification = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [eligibilityResult, setEligibilityResult] = useState<EligibilityResponse | null>(null);
   const [verificationHistory, setVerificationHistory] = useState<any[]>([]);
@@ -120,6 +124,7 @@ const EligibilityVerification = () => {
   const [cptCodeFees, setCptCodeFees] = useState<Map<string, number>>(new Map());
   const [estimateTemplates, setEstimateTemplates] = useState<Array<{ id: string; name: string; data: any }>>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
   
   // Patient ID Search & Quick Add
   const [patientIdSearch, setPatientIdSearch] = useState("");
@@ -387,6 +392,11 @@ const EligibilityVerification = () => {
   const [filterGroup2, setFilterGroup2] = useState("today"); // year, month, biweekly, weekly, today, tomorrow, custom
   const [filterGroup3, setFilterGroup3] = useState({ checked: true, unchecked: true }); // checked/unchecked
   
+  // Hierarchical filter states (Year → Month → Time Period)
+  const [selectedFilterYear, setSelectedFilterYear] = useState<string>(""); // Selected year for filtering
+  const [selectedFilterMonth, setSelectedFilterMonth] = useState<string>(""); // Selected month for filtering
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>(""); // Selected time period (whole month, custom, 15 days, weekly, yesterday, today, tomorrow)
+  
   // Filter value states
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth() + 1).toString());
@@ -397,67 +407,76 @@ const EligibilityVerification = () => {
 
   // Seed dummy verification history on first load (for demo/low-space preview)
   useEffect(() => {
-    if (verificationHistory.length === 0) {
-      const now = Date.now();
-      const sample = [
-        {
-          id: String(now - 1000),
-          timestamp: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
-          patientId: 'PT-1001',
-          patientName: 'John Carter',
-          payerId: 'AETNA',
-          isEligible: true,
-          coverage: { copay: 30, deductible: 500, coinsurance: '20%' },
-          planType: 'PPO',
-          effectiveDate: '2025-01-01',
-          terminationDate: '',
-          inNetworkStatus: 'In-Network'
-        },
-        {
-          id: String(now - 2000),
-          timestamp: new Date(now - 1000 * 60 * 60 * 26).toISOString(),
-          patientId: 'PT-1002',
-          patientName: 'Aisha Khan',
-          payerId: 'UHC',
-          isEligible: false,
-          coverage: { copay: 0, deductible: 0, coinsurance: '0%' },
-          planType: 'HMO',
-          effectiveDate: '2024-07-01',
-          terminationDate: '2025-06-30',
-          inNetworkStatus: 'Out-of-Network'
-        },
-        {
-          id: String(now - 3000),
-          timestamp: new Date(now - 1000 * 60 * 60 * 50).toISOString(),
-          patientId: 'PT-1003',
-          patientName: 'Maria Gomez',
-          payerId: 'MEDICARE',
-          isEligible: true,
-          coverage: { copay: 0, deductible: 240, coinsurance: '0%' },
-          planType: 'Medicare',
-          effectiveDate: '2023-01-01',
-          terminationDate: '',
-          inNetworkStatus: 'N/A'
-        }
-      ];
-      // Enrich samples with visit metadata
-      const enriched = sample.map((e, i) => ({
-        ...e,
-        serialNo: `VER-${18430000 + i}`,
-        appointmentLocation: ['Main Office', 'Downtown Clinic', 'North Branch'][i % 3],
-        appointmentDate: new Date(now - (i + 1) * 60 * 60 * 1000).toISOString().split('T')[0],
-        typeOfVisit: ['New Patient', 'Follow-up', 'Consult'][i % 3],
-        totalCollectible: (e.coverage?.copay ?? 0) + (e.coverage?.deductible ?? 0),
-        referralRequired: i % 2 === 0,
-        preAuthorizationRequired: i % 3 === 0,
-        previousBalanceCredit: i % 2 === 0 ? '0.00' : '35.00',
-        patientResponsibility: i % 2 === 0 ? '30.00' : '65.00',
-        currentVisitAmount: i % 2 === 0 ? '95.00' : '120.00',
-        remarks: i % 2 === 0 ? 'Verified via portal' : 'Phone verification',
-        verificationMethod: i % 2 === 0 ? 'portal' : 'manual',
-      }));
-      setVerificationHistory(enriched);
-    }
+    const loadSampleData = async () => {
+      if (verificationHistory.length === 0) {
+        const now = Date.now();
+        const sample = [
+          {
+            id: String(now - 1000),
+            timestamp: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
+            patientId: 'PT-1001',
+            patientName: 'John Carter',
+            payerId: 'AETNA',
+            isEligible: true,
+            coverage: { copay: 30, deductible: 500, coinsurance: '20%' },
+            planType: 'PPO',
+            effectiveDate: '2025-01-01',
+            terminationDate: '',
+            inNetworkStatus: 'In-Network'
+          },
+          {
+            id: String(now - 2000),
+            timestamp: new Date(now - 1000 * 60 * 60 * 26).toISOString(),
+            patientId: 'PT-1002',
+            patientName: 'Aisha Khan',
+            payerId: 'UHC',
+            isEligible: false,
+            coverage: { copay: 0, deductible: 0, coinsurance: '0%' },
+            planType: 'HMO',
+            effectiveDate: '2024-07-01',
+            terminationDate: '2025-06-30',
+            inNetworkStatus: 'Out-of-Network'
+          },
+          {
+            id: String(now - 3000),
+            timestamp: new Date(now - 1000 * 60 * 60 * 50).toISOString(),
+            patientId: 'PT-1003',
+            patientName: 'Maria Gomez',
+            payerId: 'MEDICARE',
+            isEligible: true,
+            coverage: { copay: 0, deductible: 240, coinsurance: '0%' },
+            planType: 'Medicare',
+            effectiveDate: '2023-01-01',
+            terminationDate: '',
+            inNetworkStatus: 'N/A'
+          }
+        ];
+        // Enrich samples with visit metadata and user info
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        const userName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'System';
+        const userEmail = currentUser?.email || 'system@billwise.ai';
+        
+        const enriched = sample.map((e, i) => ({
+          ...e,
+          serialNo: `VER-${18430000 + i}`,
+          appointmentLocation: ['Main Office', 'Downtown Clinic', 'North Branch'][i % 3],
+          appointmentDate: new Date(now - (i + 1) * 60 * 60 * 1000).toISOString().split('T')[0],
+          typeOfVisit: ['New Patient', 'Follow-up', 'Consult'][i % 3],
+          totalCollectible: (e.coverage?.copay ?? 0) + (e.coverage?.deductible ?? 0),
+          referralRequired: i % 2 === 0,
+          preAuthorizationRequired: i % 3 === 0,
+          previousBalanceCredit: i % 2 === 0 ? '0.00' : '35.00',
+          patientResponsibility: i % 2 === 0 ? '30.00' : '65.00',
+          currentVisitAmount: i % 2 === 0 ? '95.00' : '120.00',
+          remarks: i % 2 === 0 ? 'Verified via portal' : 'Phone verification',
+          verificationMethod: i % 2 === 0 ? 'portal' : 'manual',
+          created_by: userEmail,
+          created_by_name: userName,
+        }));
+        setVerificationHistory(enriched);
+      }
+    };
+    loadSampleData();
   }, []);
 
   // Edit dialog state
@@ -598,6 +617,20 @@ const EligibilityVerification = () => {
   // Generate year options (current year and past 5 years)
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 6 }, (_, i) => (currentYear - i).toString());
+  
+  // Check if selected year is current year
+  const isCurrentYear = selectedFilterYear === currentYear.toString();
+  
+  // Check if selected month is current month
+  const currentMonth = new Date().getMonth() + 1;
+  const isCurrentMonth = selectedFilterYear === currentYear.toString() && selectedFilterMonth === currentMonth.toString();
+  
+  // Get current date info
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
   // Month options
   const monthOptions = [
@@ -819,6 +852,123 @@ const EligibilityVerification = () => {
     }
   }, [showFormDialog]);
 
+  // Handle patient selection from dropdown
+  const handlePatientSelect = async (selectedPatientId: string) => {
+    if (!selectedPatientId || selectedPatientId === "none") {
+      return;
+    }
+
+    setIsSearchingPatient(true);
+    try {
+      // Find the patient in the patients list
+      const selectedPatient = patients.find(p => 
+        p.patient_id === selectedPatientId || p.id === selectedPatientId
+      );
+
+      if (!selectedPatient) {
+        toast({
+          title: "Error",
+          description: "Selected patient not found in list.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Load full patient data from database
+      // Try to find by patient_id first, then by id
+      let queryBuilder = supabase
+        .from('patients' as any)
+        .select(`
+          patient_id, 
+          first_name, 
+          last_name, 
+          email, 
+          phone, 
+          date_of_birth, 
+          gender, 
+          address_line1, 
+          city, 
+          state, 
+          zip_code,
+          demographic,
+          primary_insurance_id,
+          insurance_member_id,
+          insurance_group_number
+        `);
+
+      if (selectedPatient.patient_id) {
+        queryBuilder = queryBuilder.eq('patient_id', selectedPatient.patient_id);
+      } else {
+        queryBuilder = queryBuilder.eq('id', selectedPatient.id);
+      }
+
+      const { data, error } = await queryBuilder.single();
+
+      if (error) {
+        console.error('Error loading patient data:', error);
+        throw error;
+      }
+
+      if (!data) {
+        toast({
+          title: "Error",
+          description: "Patient data not found in database.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Patient found - auto-populate ALL form fields from database
+      const patientData = data as any;
+      const fullName = `${patientData.first_name ?? ''} ${patientData.last_name ?? ''}`.trim();
+      
+      // Format DOB if it exists
+      let formattedDob = '';
+      if (patientData.date_of_birth) {
+        const dobDate = new Date(patientData.date_of_birth);
+        if (!isNaN(dobDate.getTime())) {
+          formattedDob = dobDate.toISOString().split('T')[0];
+        }
+      }
+      
+      setVerificationForm(prev => ({
+        ...prev,
+        // Patient Information - ALL from database
+        patientId: patientData.patient_id || selectedPatient.patient_id || selectedPatientId,
+        patientName: fullName,
+        dob: formattedDob || prev.dob,
+        patientGender: patientData.gender || prev.patientGender,
+        patientPhone: patientData.phone || "",
+        patientAddress: patientData.address_line1 || prev.patientAddress,
+        patientCity: patientData.city || prev.patientCity,
+        patientState: patientData.state || prev.patientState,
+        patientZip: patientData.zip_code || prev.patientZip,
+        // Demographic from database
+        demographic: patientData.demographic || prev.demographic,
+        // Insurance information if available
+        insuranceId: patientData.insurance_member_id || prev.insuranceId,
+        groupNumber: patientData.insurance_group_number || prev.groupNumber,
+      }));
+
+      // Update patient ID search field
+      setPatientIdSearch(patientData.patient_id || selectedPatient.patient_id || selectedPatientId);
+
+      toast({
+        title: "Patient Selected",
+        description: `Patient data loaded: ${fullName || patientData.patient_id}`,
+      });
+    } catch (error) {
+      console.error('Error loading patient:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load patient data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingPatient(false);
+    }
+  };
+
   // Search for patient by ID and auto-populate form
   const searchPatientById = async (patientId: string) => {
     if (!patientId.trim()) {
@@ -846,10 +996,26 @@ const EligibilityVerification = () => {
         `patient_id.eq.${normalizedId}`,
       ];
       
-      // Search in patients table
+      // Search in patients table with insurance information
       const { data, error } = await supabase
         .from('patients' as any)
-        .select('patient_id, first_name, last_name, email, phone, date_of_birth, gender, address_line1, city, state, zip_code')
+        .select(`
+          patient_id, 
+          first_name, 
+          last_name, 
+          email, 
+          phone, 
+          date_of_birth, 
+          gender, 
+          address_line1, 
+          city, 
+          state, 
+          zip_code,
+          demographic,
+          primary_insurance_id,
+          insurance_member_id,
+          insurance_group_number
+        `)
         .or(searchPatterns.join(','))
         .limit(5);
       
@@ -880,29 +1046,50 @@ const EligibilityVerification = () => {
         return;
       }
 
-      // Patient found - auto-populate form
+      // Patient found - auto-populate ALL form fields from database
+      const patientData = patient as any;
+      const fullName = `${patientData.first_name ?? ''} ${patientData.last_name ?? ''}`.trim();
+      
+      // Format DOB if it exists
+      let formattedDob = '';
+      if (patientData.date_of_birth) {
+        const dobDate = new Date(patientData.date_of_birth);
+        if (!isNaN(dobDate.getTime())) {
+          formattedDob = dobDate.toISOString().split('T')[0];
+        }
+      }
+      
       setVerificationForm(prev => ({
         ...prev,
-        patientId: (patient as any).patient_id || patientId,
-        patientName: `${(patient as any).first_name ?? ''} ${(patient as any).last_name ?? ''}`.trim(),
-        patientPhone: (patient as any).phone || "",
-        dob: (patient as any).date_of_birth || prev.dob,
-        patientGender: (patient as any).gender || prev.patientGender,
-        patientAddress: (patient as any).address_line1 || prev.patientAddress,
-        patientCity: (patient as any).city || prev.patientCity,
-        patientState: (patient as any).state || prev.patientState,
-        patientZip: (patient as any).zip_code || prev.patientZip,
+        // Patient Information - ALL from database
+        patientId: patientData.patient_id || patientId,
+        patientName: fullName,
+        dob: formattedDob || prev.dob,
+        patientGender: patientData.gender || prev.patientGender,
+        patientPhone: patientData.phone || "",
+        patientAddress: patientData.address_line1 || prev.patientAddress,
+        patientCity: patientData.city || prev.patientCity,
+        patientState: patientData.state || prev.patientState,
+        patientZip: patientData.zip_code || prev.patientZip,
+        // Demographic from database
+        demographic: patientData.demographic || prev.demographic,
+        // Insurance information if available
+        insuranceId: patientData.insurance_member_id || prev.insuranceId,
+        groupNumber: patientData.insurance_group_number || prev.groupNumber,
       }));
 
       // Update patient list if not already there
       const exists = patients.find(p => p.patient_id === (patient as any).patient_id);
       if (!exists && (patient as any).patient_id) {
         setPatients(prev => [...prev, {
-          id: (patient as any).patient_id,
+          id: (patient as any).id || (patient as any).patient_id,
           patient_id: (patient as any).patient_id,
           patient_name: `${(patient as any).first_name ?? ''} ${(patient as any).last_name ?? ''}`.trim()
         }]);
       }
+
+      // Update patient ID search field
+      setPatientIdSearch(patientData.patient_id || patientId);
 
       toast({
         title: "Patient Found",
@@ -933,7 +1120,8 @@ const EligibilityVerification = () => {
 
     try {
       // Generate patient ID if not provided
-      const patientId = patientIdSearch.trim() || `PAT-${Date.now().toString().slice(-6)}`;
+      const { generatePatientId } = await import('@/utils/patientIdGenerator');
+      const patientId = patientIdSearch.trim() || await generatePatientId();
       const patientName = `${quickAddForm.firstName} ${quickAddForm.lastName}`.trim();
 
       // Create patient record in patients table
@@ -1688,9 +1876,78 @@ const EligibilityVerification = () => {
       
       setEligibilityResult(result);
 
-      // Add to history
-      setVerificationHistory(prev => [{
-        id: Date.now().toString(),
+      // Save to database and get current user info
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      let verificationId: string | null = null;
+      let userName = 'Unknown';
+      let userEmail = 'unknown';
+
+      if (currentUser) {
+        userEmail = currentUser.email || currentUser.id;
+        userName = currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Unknown';
+
+        try {
+          const verificationData: any = {
+            user_id: currentUser.id,
+            serial_no: verificationForm.serialNo || `VER-${Date.now().toString().slice(-8)}`,
+            description: verificationForm.description,
+            provider_id: verificationForm.providerId || null,
+            provider_name: verificationForm.providerName,
+            appointment_location: verificationForm.appointmentLocation,
+            appointment_date: verificationForm.appointmentDate || verificationForm.dateOfService || null,
+            date_of_service: verificationForm.dateOfService || null,
+            demographic: verificationForm.demographic,
+            type_of_visit: verificationForm.typeOfVisit,
+            service_type: verificationForm.serviceType,
+            patient_id: verificationForm.patientId,
+            patient_name: verificationForm.patientName,
+            patient_dob: verificationForm.dob || null,
+            patient_gender: verificationForm.patientGender,
+            primary_insurance_id: verificationForm.primaryInsurance || null,
+            primary_insurance_name: verificationForm.primaryInsurance || null,
+            insurance_id: verificationForm.insuranceId,
+            group_number: verificationForm.groupNumber,
+            copay: Number(verificationForm.coPay) || null,
+            coinsurance: verificationForm.coInsurance ? parseFloat(verificationForm.coInsurance.replace('%', '')) : null,
+            deductible: Number(verificationForm.deductible) || null,
+            is_eligible: result.isEligible,
+            verification_result: result as any,
+            verification_method: verificationForm.verificationMethod || 'manual',
+            verified_by: userEmail,
+          };
+
+          const { data: savedVerification, error: saveError } = await supabase
+            .from('eligibility_verifications' as any)
+            .insert(verificationData)
+            .select()
+            .single();
+
+          if (saveError) {
+            console.error('Error saving verification:', saveError);
+          } else if (savedVerification) {
+            verificationId = savedVerification.id;
+
+            // Log audit action
+            await eligibilityAuditService.logVerify(
+              verificationId,
+              {
+                patient_id: verificationForm.patientId,
+                patient_name: verificationForm.patientName,
+                payer: verificationForm.primaryInsurance,
+                is_eligible: result.isEligible,
+                verification_method: verificationForm.verificationMethod,
+              },
+              'Eligibility verification performed'
+            );
+          }
+        } catch (error) {
+          console.error('Error saving verification to database:', error);
+        }
+      }
+
+      // Add to history with user info
+      const newEntry = {
+        id: verificationId || Date.now().toString(),
         timestamp: new Date().toISOString(),
         patientId: verificationForm.patientId,
         patientName: verificationForm.patientName,
@@ -1712,7 +1969,11 @@ const EligibilityVerification = () => {
         currentVisitAmount: verificationForm.estimatedCost,
         remarks: verificationForm.remarks,
         verificationMethod: verificationForm.verificationMethod,
-      }, ...prev]);
+        created_by: userEmail,
+        created_by_name: userName,
+      };
+
+      setVerificationHistory(prev => [newEntry, ...prev]);
 
       toast({
         title: "Eligibility Verified",
@@ -2081,13 +2342,84 @@ const EligibilityVerification = () => {
     setEligibilityResult(null);
   };
 
+  // Helper function to check if entry date matches time period filter
+  const matchesTimePeriod = (entryDate: string): boolean => {
+    if (!selectedFilterYear || !selectedFilterMonth || !selectedTimePeriod) {
+      return true; // No time period filter applied
+    }
+
+    const entry = new Date(entryDate);
+    const entryYear = entry.getFullYear().toString();
+    const entryMonth = (entry.getMonth() + 1).toString();
+    const entryDateOnly = entry.toISOString().split('T')[0];
+
+    // First check if year and month match
+    if (entryYear !== selectedFilterYear || entryMonth !== selectedFilterMonth) {
+      return false;
+    }
+
+    // Then check time period
+    switch (selectedTimePeriod) {
+      case "wholeMonth":
+        return true; // Already filtered by year/month
+
+      case "custom":
+        if (!customRangeStart || !customRangeEnd) return true;
+        return entryDateOnly >= customRangeStart && entryDateOnly <= customRangeEnd;
+
+      case "15days": {
+        const monthEnd = new Date(parseInt(selectedFilterYear), parseInt(selectedFilterMonth), 0);
+        const last15DaysStart = new Date(monthEnd);
+        last15DaysStart.setDate(last15DaysStart.getDate() - 14);
+        const startDateStr = last15DaysStart.toISOString().split('T')[0];
+        const endDateStr = monthEnd.toISOString().split('T')[0];
+        return entryDateOnly >= startDateStr && entryDateOnly <= endDateStr;
+      }
+
+      case "weekly": {
+        const monthEnd = new Date(parseInt(selectedFilterYear), parseInt(selectedFilterMonth), 0);
+        const lastWeekStart = new Date(monthEnd);
+        lastWeekStart.setDate(lastWeekStart.getDate() - 6);
+        const startDateStr = lastWeekStart.toISOString().split('T')[0];
+        const endDateStr = monthEnd.toISOString().split('T')[0];
+        return entryDateOnly >= startDateStr && entryDateOnly <= endDateStr;
+      }
+
+      case "yesterday": {
+        const yesterdayDate = new Date(today);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        return entryDateOnly === yesterdayDate.toISOString().split('T')[0];
+      }
+
+      case "today":
+        return entryDateOnly === today.toISOString().split('T')[0];
+
+      case "tomorrow": {
+        const tomorrowDate = new Date(today);
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        return entryDateOnly === tomorrowDate.toISOString().split('T')[0];
+      }
+
+      default:
+        return true;
+    }
+  };
+
   const filteredHistory = verificationHistory.filter(entry => {
     const matchesSearch = entry.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         entry.payerId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === "all" || 
                         (filterStatus === "eligible" && entry.isEligible) ||
                         (filterStatus === "ineligible" && !entry.isEligible);
-    return matchesSearch && matchesFilter;
+    
+    // Check date filter (using appointmentDate or timestamp)
+    const entryDate = entry.appointmentDate || entry.timestamp;
+    const matchesDate = matchesTimePeriod(entryDate);
+    
+    // Check patient filter if set
+    const matchesPatient = !selectedPatient || entry.patientId === selectedPatient;
+    
+    return matchesSearch && matchesFilter && matchesDate && matchesPatient;
   });
 
   return (
@@ -2309,19 +2641,13 @@ const EligibilityVerification = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                             <Label htmlFor="demographic">Demographic</Label>
-                            <Select 
-                              value={verificationForm.demographic} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, demographic: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select demographic" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="adult">Adult</SelectItem>
-                                <SelectItem value="child">Child</SelectItem>
-                                <SelectItem value="senior">Senior</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <Input
+                              id="demographic"
+                              value={verificationForm.demographic || ''}
+                              readOnly
+                              className="bg-muted h-9"
+                              placeholder="Auto-filled from patient record"
+                            />
                     </div>
                     <div>
                             <Label htmlFor="typeOfVisit">Type Of Visit *</Label>
@@ -2363,7 +2689,35 @@ const EligibilityVerification = () => {
                     </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-                      <Label htmlFor="patientIdSearch">Patient ID *</Label>
+                      <Label htmlFor="patientSelect">Select Patient *</Label>
+                      <Select 
+                        value={verificationForm.patientId || ""} 
+                        onValueChange={handlePatientSelect}
+                        disabled={isLoadingPatients || isSearchingPatient}
+                      >
+                        <SelectTrigger className="h-9" id="patientSelect">
+                          <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select patient from database"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {isLoadingPatients ? (
+                            <SelectItem value="loading" disabled>Loading patients...</SelectItem>
+                          ) : patients.length > 0 ? (
+                            patients.map((patient) => (
+                              <SelectItem key={patient.id} value={patient.patient_id || patient.id}>
+                                {patient.patient_name} {patient.patient_id && `(${patient.patient_id})`}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="none" disabled>No patients found. Please add patients first.</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Select a patient from the database. All patient information will be auto-filled.
+                      </p>
+                    </div>
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-2">
+                      <Label htmlFor="patientIdSearch">Or Search by Patient ID</Label>
                       <div className="flex gap-2">
                         <div className="flex-1 relative">
                           <Input
@@ -2396,54 +2750,17 @@ const EligibilityVerification = () => {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Or select from dropdown below
+                        Enter Patient ID and press Enter or click Search. All patient information will be auto-filled from the database.
                       </p>
                     </div>
                     <div>
                             <Label htmlFor="patientName">Patient Name *</Label>
-                            <Select 
-                              value={verificationForm.patientId} 
-                              onValueChange={(value) => {
-                                const patient = patients.find(p => 
-                                  (p.patient_id && p.patient_id === value) || 
-                                  (!p.patient_id && p.id === value)
-                                );
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  patientId: value,
-                                  patientName: patient?.patient_name || ""
-                                }));
-                                setPatientIdSearch(value);
-                              }}
-                              disabled={isLoadingPatients}
-                            >
-                        <SelectTrigger className="h-9">
-                                <SelectValue placeholder={isLoadingPatients ? "Loading..." : "Or select patient"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {patients.length === 0 && !isLoadingPatients ? (
-                            <SelectItem value="none" disabled>No patients found</SelectItem>
-                          ) : (
-                            patients.map((patient) => {
-                              const displayId = patient.patient_id || `TEMP-${patient.id}`;
-                              const selectValue = patient.patient_id || patient.id;
-                              return (
-                                <SelectItem key={patient.id} value={selectValue}>
-                                  {patient.patient_name || 'Unknown'} {displayId && `(${displayId})`}
-                                </SelectItem>
-                              );
-                            })
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-1 sm:col-span-2 lg:col-span-1">
-                            <Label htmlFor="patientNameDisplay">Patient Name (Display)</Label>
                       <Input
-                              id="patientNameDisplay"
+                              id="patientName"
                               value={verificationForm.patientName}
                               readOnly
                               className="bg-muted h-9"
+                              placeholder="Auto-filled from patient record"
                       />
                     </div>
                     <div>
@@ -2452,8 +2769,9 @@ const EligibilityVerification = () => {
                               id="dob"
                               type="date"
                               value={verificationForm.dob}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, dob: e.target.value }))}
-                              className="h-9"
+                              readOnly
+                              className="bg-muted h-9"
+                              placeholder="Auto-filled from patient record"
                       />
                     </div>
                   </div>
@@ -3733,9 +4051,32 @@ const EligibilityVerification = () => {
                           <Checkbox
                             id="preAuthorizationRequired"
                             checked={verificationForm.preAuthorizationRequired}
-                            onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: checked as boolean }))}
+                            onCheckedChange={(checked) => {
+                              setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: checked as boolean }));
+                              // Open authorization dialog when checked
+                              if (checked && verificationForm.patientId) {
+                                setShowAuthDialog(true);
+                              } else if (checked && !verificationForm.patientId) {
+                                toast({
+                                  title: "Patient Required",
+                                  description: "Please select a patient first before creating a prior authorization request.",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
                           />
                           <Label htmlFor="preAuthorizationRequired" className="cursor-pointer">Pre-Authorization Required</Label>
+                          {verificationForm.preAuthorizationRequired && verificationForm.patientId && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowAuthDialog(true)}
+                              className="ml-2"
+                            >
+                              Create Authorization Request
+                            </Button>
+                          )}
                         </div>
 
                         {verificationForm.preAuthorizationRequired && (
@@ -4921,236 +5262,265 @@ const EligibilityVerification = () => {
       </div>
 
       {/* Dashboard View - Default view with filters and statistics */}
-      {/* Filter Groups */}
+      {/* Compact Filter Section */}
       <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filters
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Group 1: Date of service, Patient, No appointment */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Filter By</Label>
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant={filterGroup1 === "dateOfService" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup1("dateOfService")}
-                  >
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Date of Service
-                  </Button>
-                  <Button
-                    variant={filterGroup1 === "patient" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup1("patient")}
-                  >
-                    <User className="h-4 w-4 mr-2" />
-                    Patient
-                  </Button>
-                  <Button
-                    variant={filterGroup1 === "noAppointment" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup1("noAppointment")}
-                  >
-                    No Appointment
-                  </Button>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Filter className="h-4 w-4" />
+              Filters
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFilterGroup1("");
+                setFilterGroup2("");
+                setFilterGroup3({ checked: true, unchecked: true });
+                setSelectedDate("");
+                setSelectedPatient("");
+                setSelectedYear("");
+                setSelectedMonth("");
+                setCustomRangeStart("");
+                setCustomRangeEnd("");
+                // Clear hierarchical filters
+                setSelectedFilterYear("");
+                setSelectedFilterMonth("");
+                setSelectedTimePeriod("");
+              }}
+              className="h-7 text-xs"
+            >
+              Clear All
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Filter By - Compact */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Filter By</Label>
+              <Select 
+                value={filterGroup1 || "none"} 
+                onValueChange={(value) => {
+                  // If Custom Range is active and user selects Date of Service, clear it
+                  if (filterGroup2 === "custom" && value === "dateOfService") {
+                    toast({
+                      title: "Filter Conflict",
+                      description: "Date of Service filter is disabled when Custom Range is active. Use Custom Range dates instead.",
+                      variant: "default",
+                    });
+                    return;
+                  }
+                  setFilterGroup1(value === "none" ? "" : value);
+                }}
+                disabled={filterGroup2 === "custom"}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select filter type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="dateOfService" disabled={filterGroup2 === "custom"}>Date of Service</SelectItem>
+                  <SelectItem value="patient">Patient</SelectItem>
+                  <SelectItem value="noAppointment">No Appointment</SelectItem>
+                </SelectContent>
+              </Select>
+              {filterGroup1 === "dateOfService" && filterGroup2 !== "custom" && (
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              )}
+              {filterGroup2 === "custom" && filterGroup1 === "dateOfService" && (
+                <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                  Date of Service filter is disabled. Use Custom Range dates above instead.
                 </div>
-                {/* Conditional dropdowns for Filter By */}
-                {filterGroup1 === "dateOfService" && (
-                  <div className="mt-3">
-                    <Label className="text-xs text-muted-foreground mb-1 block">Select Date</Label>
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full sm:w-48"
-                    />
-                  </div>
-                )}
-                {filterGroup1 === "patient" && (
-                  <div className="mt-3">
-                    <Label className="text-xs text-muted-foreground mb-1 block">Select Patient</Label>
-                    <Select value={selectedPatient} onValueChange={setSelectedPatient} disabled={isLoadingPatients}>
-                      <SelectTrigger className="w-full sm:w-64">
-                        <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select patient"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {isLoadingPatients ? (
-                          <SelectItem value="loading" disabled>Loading patients...</SelectItem>
-                        ) : patients.length > 0 ? (
-                          patients.map((patient) => (
-                            <SelectItem key={patient.id} value={patient.patient_id || patient.id}>
-                              {patient.patient_name} {patient.patient_id && `(${patient.patient_id})`}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="none" disabled>No patients found</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
+              )}
+              {filterGroup1 === "patient" && (
+                <Select value={selectedPatient} onValueChange={setSelectedPatient} disabled={isLoadingPatients}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder={isLoadingPatients ? "Loading..." : "Select patient"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isLoadingPatients ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : patients.length > 0 ? (
+                      patients.map((patient) => (
+                        <SelectItem key={patient.id} value={patient.patient_id || patient.id}>
+                          {patient.patient_name} {patient.patient_id && `(${patient.patient_id})`}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>No patients found</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
-              {/* Group 2: Year, month, biweekly, weekly, today, tomorrow, etc. */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Time Period</Label>
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    variant={filterGroup2 === "year" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("year")}
-                  >
-                    Year
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "month" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("month")}
-                  >
-                    Month
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "biweekly" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("biweekly")}
-                  >
-                    Biweekly
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "weekly" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("weekly")}
-                  >
-                    Weekly
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "today" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("today")}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "tomorrow" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("tomorrow")}
-                  >
-                    Tomorrow
-                  </Button>
-                  <Button
-                    variant={filterGroup2 === "custom" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setFilterGroup2("custom")}
-                  >
-                    Custom Range
-                  </Button>
-                </div>
-                {/* Conditional dropdowns for Time Period */}
-                {filterGroup2 === "year" && (
-                  <div className="mt-3">
-                    <Label className="text-xs text-muted-foreground mb-1 block">Select Year</Label>
-                    <Select value={selectedYear} onValueChange={setSelectedYear}>
-                      <SelectTrigger className="w-full sm:w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {yearOptions.map((year) => (
-                          <SelectItem key={year} value={year}>
-                            {year}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                {filterGroup2 === "month" && (
-                  <div className="mt-3 flex gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[120px]">
-                      <Label className="text-xs text-muted-foreground mb-1 block">Select Year</Label>
-                      <Select value={selectedYear} onValueChange={setSelectedYear}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {yearOptions.map((year) => (
-                            <SelectItem key={year} value={year}>
-                              {year}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex-1 min-w-[120px]">
-                      <Label className="text-xs text-muted-foreground mb-1 block">Select Month</Label>
-                      <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {monthOptions.map((month) => (
-                            <SelectItem key={month.value} value={month.value}>
-                              {month.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
-                {filterGroup2 === "custom" && (
-                  <div className="mt-3 flex gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[150px]">
+            {/* Hierarchical Time Period Filter: Year → Month → Time Period */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Time Period</Label>
+              
+              {/* Step 1: Year Selection */}
+              <Select 
+                value={selectedFilterYear || "none"} 
+                onValueChange={(value) => {
+                  if (value === "none") {
+                    setSelectedFilterYear("");
+                    setSelectedFilterMonth("");
+                    setSelectedTimePeriod("");
+                  } else {
+                    setSelectedFilterYear(value);
+                    // Reset month and time period when year changes
+                    setSelectedFilterMonth("");
+                    setSelectedTimePeriod("");
+                  }
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {yearOptions.map((year) => (
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Step 2: Month Selection (only shown after year is selected) */}
+              {selectedFilterYear && (
+                <Select 
+                  value={selectedFilterMonth || "none"} 
+                  onValueChange={(value) => {
+                    if (value === "none") {
+                      setSelectedFilterMonth("");
+                      setSelectedTimePeriod("");
+                    } else {
+                      setSelectedFilterMonth(value);
+                      // Reset time period when month changes
+                      setSelectedTimePeriod("");
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {monthOptions.map((month) => (
+                      <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Step 3: Time Period Options (only shown after month is selected) */}
+              {selectedFilterYear && selectedFilterMonth && (
+                <Select 
+                  value={selectedTimePeriod || "none"} 
+                  onValueChange={(value) => {
+                    setSelectedTimePeriod(value === "none" ? "" : value);
+                    // When Custom Range is selected, clear Date of Service filter to avoid confusion
+                    if (value === "custom" && filterGroup1 === "dateOfService") {
+                      setFilterGroup1("");
+                      setSelectedDate("");
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select Time Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="wholeMonth">Whole Month</SelectItem>
+                    <SelectItem value="custom">Custom Date Range</SelectItem>
+                    <SelectItem value="15days">Last 15 Days</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    {/* Show Yesterday only if it's current year and current month */}
+                    {isCurrentYear && isCurrentMonth && (
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                    )}
+                    {/* Show Today only if it's current year and current month */}
+                    {isCurrentYear && isCurrentMonth && (
+                      <SelectItem value="today">Today</SelectItem>
+                    )}
+                    {/* Show Tomorrow only if it's current year and current month */}
+                    {isCurrentYear && isCurrentMonth && (
+                      <SelectItem value="tomorrow">Tomorrow</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Custom Date Range Input (shown when "Custom Date Range" is selected) */}
+              {selectedTimePeriod === "custom" && selectedFilterYear && selectedFilterMonth && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
                       <Input
                         type="date"
                         value={customRangeStart}
                         onChange={(e) => setCustomRangeStart(e.target.value)}
+                        className="h-9 text-sm"
+                        placeholder="Start"
+                        min={`${selectedFilterYear}-${selectedFilterMonth.padStart(2, '0')}-01`}
+                        max={`${selectedFilterYear}-${selectedFilterMonth.padStart(2, '0')}-${new Date(parseInt(selectedFilterYear), parseInt(selectedFilterMonth), 0).getDate()}`}
                       />
                     </div>
-                    <div className="flex-1 min-w-[150px]">
+                    <div>
                       <Label className="text-xs text-muted-foreground mb-1 block">End Date</Label>
                       <Input
                         type="date"
                         value={customRangeEnd}
                         onChange={(e) => setCustomRangeEnd(e.target.value)}
+                        className="h-9 text-sm"
+                        placeholder="End"
+                        min={customRangeStart || `${selectedFilterYear}-${selectedFilterMonth.padStart(2, '0')}-01`}
+                        max={`${selectedFilterYear}-${selectedFilterMonth.padStart(2, '0')}-${new Date(parseInt(selectedFilterYear), parseInt(selectedFilterMonth), 0).getDate()}`}
                       />
                     </div>
                   </div>
-                )}
-              </div>
+                  {customRangeStart && customRangeEnd && new Date(customRangeStart) > new Date(customRangeEnd) && (
+                    <p className="text-xs text-red-600">End date must be after start date</p>
+                  )}
+                </div>
+              )}
+            </div>
 
-              {/* Group 3: Checked and Unchecked */}
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Status</Label>
-                <div className="flex gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="checked"
-                      checked={filterGroup3.checked}
-                      onCheckedChange={(checked) => 
-                        setFilterGroup3(prev => ({ ...prev, checked: checked as boolean }))
-                      }
-                    />
-                    <Label htmlFor="checked" className="cursor-pointer">Checked</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="unchecked"
-                      checked={filterGroup3.unchecked}
-                      onCheckedChange={(checked) => 
-                        setFilterGroup3(prev => ({ ...prev, unchecked: checked as boolean }))
-                      }
-                    />
-                    <Label htmlFor="unchecked" className="cursor-pointer">Unchecked</Label>
-                  </div>
+            {/* Status - Compact */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Status</Label>
+              <div className="flex gap-4 pt-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="checked"
+                    checked={filterGroup3.checked}
+                    onCheckedChange={(checked) => 
+                      setFilterGroup3(prev => ({ ...prev, checked: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="checked" className="text-sm cursor-pointer font-normal">Checked</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="unchecked"
+                    checked={filterGroup3.unchecked}
+                    onCheckedChange={(checked) => 
+                      setFilterGroup3(prev => ({ ...prev, unchecked: checked as boolean }))
+                    }
+                  />
+                  <Label htmlFor="unchecked" className="text-sm cursor-pointer font-normal">Unchecked</Label>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -5272,6 +5642,11 @@ const EligibilityVerification = () => {
                             <span className="text-sm text-muted-foreground">
                               {new Date(entry.timestamp).toLocaleString()}
                             </span>
+                            {entry.created_by_name && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                by {entry.created_by_name}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="text-sm text-muted-foreground">
@@ -5371,6 +5746,12 @@ const EligibilityVerification = () => {
                               <div className="font-medium text-foreground">Patient Name</div>
                               <div>{entry.patientName || entry.patientId}</div>
                             </div>
+                            {entry.created_by_name && (
+                              <div>
+                                <div className="font-medium text-foreground">Verified By</div>
+                                <div>{entry.created_by_name}</div>
+                              </div>
+                            )}
                             <div>
                               <div className="font-medium text-foreground">Total Collectible</div>
                               <div>${(entry.estimatedResponsibility ?? entry.totalCollectible ?? ((entry.coverage?.copay ?? 0) + (entry.coverage?.deductible ?? 0)))}</div>
@@ -5892,6 +6273,31 @@ const EligibilityVerification = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Authorization Request Dialog */}
+      <AuthorizationRequestDialog
+        open={showAuthDialog}
+        onOpenChange={setShowAuthDialog}
+        onSuccess={() => {
+          toast({
+            title: "Authorization Request Created",
+            description: "Prior authorization request has been created successfully.",
+          });
+          setShowAuthDialog(false);
+        }}
+        patientId={verificationForm.patientId}
+        patientData={{
+          name: verificationForm.patientName,
+          dob: verificationForm.dob,
+          memberId: verificationForm.insuranceId,
+          payerId: verificationForm.primaryInsurance,
+          payerName: verificationForm.primaryInsurance,
+          cptCodes: verificationForm.cptCodes.map(c => c.code).filter(Boolean),
+          icdCodes: verificationForm.icdCodes.map(c => c.code).filter(Boolean),
+          providerId: verificationForm.providerId,
+          providerNpi: providers.find(p => p.id === verificationForm.providerId)?.npi || "",
+        }}
+      />
     </div>
   );
 };

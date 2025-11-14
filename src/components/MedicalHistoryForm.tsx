@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   Stethoscope, 
@@ -206,6 +206,9 @@ export function MedicalHistoryForm({ patientId, patientName, isOpen, onClose, on
             <Stethoscope className="h-6 w-6 mr-2 text-blue-600" />
             Medical History - {patientName}
           </DialogTitle>
+          <DialogDescription>
+            Manage patient medical history including allergies, medications, conditions, surgeries, and family history.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">

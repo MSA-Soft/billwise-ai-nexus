@@ -150,3 +150,5 @@ CREATE POLICY "Users can view patients"
 
 Then refresh and check console!
 
+
+

@@ -174,11 +174,9 @@ export function ClaimsTable({
                 <TableHead className="w-12">
                   <Checkbox
                     checked={isAllSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = isPartiallySelected;
-                    }}
                     onCheckedChange={onSelectAll}
                     aria-label="Select all claims"
+                    className={isPartiallySelected ? 'data-[state=checked]:bg-blue-600' : ''}
                   />
                 </TableHead>
                 <TableHead>
@@ -249,8 +247,18 @@ export function ClaimsTable({
             </TableHeader>
             <TableBody>
               {paginatedClaims.map((claim) => (
-                <TableRow key={claim.id} className="hover:bg-gray-50 transition-colors">
-                  <TableCell>
+                <TableRow 
+                  key={claim.id} 
+                  className="hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={(e) => {
+                    // Don't trigger row click if clicking checkbox or action buttons
+                    const target = e.target as HTMLElement;
+                    if (!target.closest('button') && !target.closest('input[type="checkbox"]')) {
+                      onViewClaim(claim);
+                    }
+                  }}
+                >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedClaims.includes(claim.id)}
                       onCheckedChange={() => onSelectClaim(claim.id)}
@@ -320,12 +328,15 @@ export function ClaimsTable({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end space-x-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onViewClaim(claim)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewClaim(claim);
+                        }}
                         className="h-8 w-8 p-0 hover:bg-blue-50"
                       >
                         <Eye className="h-4 w-4 text-blue-600" />
@@ -333,7 +344,10 @@ export function ClaimsTable({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onEditClaim(claim)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditClaim(claim);
+                        }}
                         className="h-8 w-8 p-0 hover:bg-green-50"
                       >
                         <Edit className="h-4 w-4 text-green-600" />
@@ -342,6 +356,7 @@ export function ClaimsTable({
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 hover:bg-gray-50"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <Download className="h-4 w-4 text-gray-600" />
                       </Button>
@@ -349,6 +364,7 @@ export function ClaimsTable({
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 hover:bg-gray-50"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="h-4 w-4 text-gray-600" />
                       </Button>

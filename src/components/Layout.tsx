@@ -64,7 +64,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
         </header>
         
         {/* Main Content */}
-        <div className="p-4 lg:p-6">
+        <div>
           {children}
         </div>
       </main>

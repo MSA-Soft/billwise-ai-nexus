@@ -1,547 +1,1279 @@
-import React, { useState, useEffect } from 'react';
-import { ClaimsDashboard } from './ClaimsDashboard';
-import { ClaimsTable } from './ClaimsTable';
-import { ClaimFormWizard } from './ClaimFormWizard';
-import { ClaimDetailModal } from './ClaimDetailModal';
-import { ClaimsStats } from './ClaimsStats';
-import { ClaimsFilter } from './ClaimsFilter';
-import { ClaimsActions } from './ClaimsActions';
+import React, { useState, useMemo, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ProfessionalClaimForm } from '@/components/ProfessionalClaimForm';
 import { 
-  FileText, 
-  Search, 
   Plus, 
-  Filter,
-  Download,
-  Upload,
-  RefreshCw,
-  TrendingUp,
-  DollarSign,
+  ChevronDown, 
+  Search,
+  FileText,
   CheckCircle,
   Clock,
-  AlertCircle,
   XCircle,
-  Send,
-  Eye,
-  Edit
+  DollarSign,
+  AlertCircle,
+  TrendingUp,
+  ArrowUpDown,
+  Circle,
+  X
 } from 'lucide-react';
 
-// Mock data for demonstration - in real app this would come from your database
+// Mock data matching the image
 const mockClaims = [
   {
-    id: 'CLM-001',
-    patient: 'John Doe',
+    id: '275250928',
+    patient: 'SIMONE, JONATHAN',
+    dos: '08/22/2025',
+    totalCharges: 440.00,
+    balance: 0.00,
+    aiScore: 92,
+    cptCodes: ['99213', '87070'],
+    status: 'PAID',
+    type: 'Professional',
     provider: 'Dr. Smith',
-    dateOfService: '2024-01-15',
-    submissionDate: '2024-01-16',
-    amount: '$450.00',
-    status: 'approved',
-    payer: 'Blue Cross Blue Shield',
-    cptCodes: ['99213', '36415'],
-    icdCodes: ['I10', 'Z00.00'],
-    totalCharges: 450.00,
-    patientResponsibility: 50.00,
-    insuranceAmount: 400.00,
-    copayAmount: 25.00,
-    deductibleAmount: 25.00,
-    priorAuthNumber: 'PA123456',
-    referralNumber: 'REF789',
-    notes: 'Routine checkup with blood work',
-    formType: 'HCFA',
-    submissionMethod: 'EDI',
-    isSecondaryClaim: false,
-    procedures: [
-      {
-        cptCode: '99213',
-        description: 'Office visit, established patient',
-        units: 1,
-        amount: 200.00
-      },
-      {
-        cptCode: '36415',
-        description: 'Blood draw',
-        units: 1,
-        amount: 250.00
-      }
-    ],
-    diagnoses: [
-      {
-        icdCode: 'I10',
-        description: 'Essential hypertension',
-        primary: true
-      },
-      {
-        icdCode: 'Z00.00',
-        description: 'Encounter for general adult medical examination',
-        primary: false
-      }
-    ]
+    submissionDate: '08/23/2025',
+    facility: 'Main Clinic',
+    payer: 'Blue Cross Blue Shield'
   },
   {
-    id: 'CLM-002',
-    patient: 'Sarah Wilson',
-    provider: 'Dr. Johnson',
-    dateOfService: '2024-01-14',
-    submissionDate: '2024-01-15',
-    amount: '$320.00',
-    status: 'pending',
-    payer: 'Aetna',
+    id: '275251313',
+    patient: 'SCHAFFER, JOHN',
+    dos: '08/22/2025',
+    totalCharges: 440.00,
+    balance: 58.17,
+    aiScore: 78,
     cptCodes: ['99214'],
-    icdCodes: ['E11.9'],
-    totalCharges: 320.00,
-    patientResponsibility: 40.00,
-    insuranceAmount: 280.00,
-    copayAmount: 20.00,
-    deductibleAmount: 20.00,
-    priorAuthNumber: '',
-    referralNumber: '',
-    notes: 'Diabetes follow-up visit',
-    formType: 'HCFA',
-    submissionMethod: 'EDI',
-    isSecondaryClaim: false,
-    procedures: [
-      {
-        cptCode: '99214',
-        description: 'Office visit, established patient',
-        units: 1,
-        amount: 320.00
-      }
-    ],
-    diagnoses: [
-      {
-        icdCode: 'E11.9',
-        description: 'Type 2 diabetes mellitus without complications',
-        primary: true
-      }
-    ]
+    status: 'BALANCE DUE PATIENT',
+    type: 'Professional',
+    provider: 'Dr. Johnson',
+    submissionDate: '08/23/2025',
+    facility: 'Main Clinic',
+    payer: 'Aetna'
   },
   {
-    id: 'CLM-003',
-    patient: 'Mike Brown',
+    id: '275250212',
+    patient: 'DELIBERO, KURT',
+    dos: '08/22/2025',
+    totalCharges: 440.00,
+    balance: 0.00,
+    aiScore: 88,
+    cptCodes: ['99396'],
+    status: 'PAID',
+    type: 'Professional',
     provider: 'Dr. Davis',
-    dateOfService: '2024-01-13',
-    submissionDate: '2024-01-14',
-    amount: '$180.00',
-    status: 'denied',
-    payer: 'Medicare',
-    cptCodes: ['99212'],
-    icdCodes: ['M79.3'],
-    totalCharges: 180.00,
-    patientResponsibility: 36.00,
-    insuranceAmount: 144.00,
-    copayAmount: 0.00,
-    deductibleAmount: 36.00,
-    priorAuthNumber: '',
-    referralNumber: '',
-    notes: 'Denied - insufficient documentation',
-    formType: 'HCFA',
-    submissionMethod: 'EDI',
-    isSecondaryClaim: false,
-    procedures: [
-      {
-        cptCode: '99212',
-        description: 'Office visit, established patient',
-        units: 1,
-        amount: 180.00
-      }
-    ],
-    diagnoses: [
-      {
-        icdCode: 'M79.3',
-        description: 'Panniculitis, unspecified',
-        primary: true
-      }
-    ]
+    submissionDate: '08/23/2025',
+    facility: 'Main Clinic',
+    payer: 'Medicare'
   },
   {
-    id: 'CLM-004',
-    patient: 'Emily Davis',
+    id: '270281763',
+    patient: 'ALBANI, CHRISTOPHER',
+    dos: '07/15/2025',
+    totalCharges: 350.00,
+    balance: 350.00,
+    aiScore: 61,
+    cptCodes: ['99203'],
+    status: 'CLAIM AT CONNECTICUT BLUE CROSS',
+    type: 'Professional',
     provider: 'Dr. Wilson',
-    dateOfService: '2024-01-12',
-    submissionDate: '2024-01-13',
-    amount: '$750.00',
-    status: 'processing',
-    payer: 'Cigna',
-    cptCodes: ['99215', '93000'],
-    icdCodes: ['I25.10'],
-    totalCharges: 750.00,
-    patientResponsibility: 75.00,
-    insuranceAmount: 675.00,
-    copayAmount: 50.00,
-    deductibleAmount: 25.00,
-    priorAuthNumber: 'PA789012',
-    referralNumber: '',
-    notes: 'Cardiology consultation with EKG',
-    formType: 'HCFA',
-    submissionMethod: 'EDI',
-    isSecondaryClaim: false,
-    procedures: [
-      {
-        cptCode: '99215',
-        description: 'Office visit, established patient',
-        units: 1,
-        amount: 500.00
-      },
-      {
-        cptCode: '93000',
-        description: 'Electrocardiogram',
-        units: 1,
-        amount: 250.00
-      }
-    ],
-    diagnoses: [
-      {
-        icdCode: 'I25.10',
-        description: 'Atherosclerotic heart disease of native coronary artery without angina pectoris',
-        primary: true
-      }
-    ]
+    submissionDate: '07/16/2025',
+    facility: 'Downtown Office',
+    payer: 'Connecticut Blue Cross'
   },
   {
-    id: 'CLM-005',
-    patient: 'Robert Taylor',
+    id: '271705112',
+    patient: 'PRUNES, ADRIAN',
+    dos: '08/04/2025',
+    totalCharges: 440.00,
+    balance: 440.00,
+    aiScore: 55,
+    cptCodes: ['93000', '85025'],
+    status: 'CLAIM AT HORIZON BLUE CROSSBLUE SHIELD OF NEW JERSEY',
+    type: 'Professional',
     provider: 'Dr. Anderson',
-    dateOfService: '2024-01-11',
-    submissionDate: '2024-01-12',
-    amount: '$280.00',
-    status: 'resubmitted',
-    payer: 'UnitedHealth',
-    cptCodes: ['99213'],
-    icdCodes: ['J06.9'],
-    totalCharges: 280.00,
-    patientResponsibility: 28.00,
-    insuranceAmount: 252.00,
-    copayAmount: 15.00,
-    deductibleAmount: 13.00,
-    priorAuthNumber: '',
-    referralNumber: '',
-    notes: 'Resubmitted with additional documentation',
-    formType: 'HCFA',
-    submissionMethod: 'EDI',
-    isSecondaryClaim: false,
-    procedures: [
-      {
-        cptCode: '99213',
-        description: 'Office visit, established patient',
-        units: 1,
-        amount: 280.00
-      }
-    ],
-    diagnoses: [
-      {
-        icdCode: 'J06.9',
-        description: 'Acute upper respiratory infection, unspecified',
-        primary: true
-      }
-    ]
+    submissionDate: '08/05/2025',
+    facility: 'Main Clinic',
+    payer: 'Horizon Blue Cross Blue Shield of New Jersey'
+  },
+  {
+    id: '271706692',
+    patient: 'RIELEY, ADAM',
+    dos: '08/08/2025',
+    totalCharges: 350.00,
+    balance: 350.00,
+    aiScore: 69,
+    cptCodes: ['99212'],
+    status: 'BALANCE DUE PATIENT',
+    type: 'Professional',
+    provider: 'Dr. Brown',
+    submissionDate: '08/09/2025',
+    facility: 'Main Clinic',
+    payer: 'UnitedHealth'
   }
 ];
 
 export function Claims() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedClaim, setSelectedClaim] = useState<any>(null);
-  const [claims, setClaims] = useState(mockClaims);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
-  const [filters, setFilters] = useState({
-    status: 'all',
-    payer: 'all',
-    dateRange: 'all',
-    provider: 'all',
-    amountRange: 'all',
-    searchTerm: ''
-  });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [exactMatchesOnly, setExactMatchesOnly] = useState(false);
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  // Filters
+  const [patientFilter, setPatientFilter] = useState('all'); // top-right patient filter
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [payerFilter, setPayerFilter] = useState('all');
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [cptFilter, setCptFilter] = useState('');
+  const [serviceDateFrom, setServiceDateFrom] = useState('');
+  const [serviceDateTo, setServiceDateTo] = useState('');
+  const [amountMin, setAmountMin] = useState('');
+  const [amountMax, setAmountMax] = useState('');
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [patients, setPatients] = useState<Array<{ id: string; name: string; patient_id?: string }>>([]);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const [showClaimForm, setShowClaimForm] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
+  const [claimType, setClaimType] = useState<'professional' | 'institutional'>('professional');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [topSection, setTopSection] = useState<'all' | 'denial' | 'ai'>('all');
+  
+  // Column management state
+  const [availableColumns, setAvailableColumns] = useState([
+    'Total Charges',
+    'Status',
+    'Entered',
+    'Facility',
+    'Primary Insurance',
+    'Provider',
+    'Service Date',
+    'Amount',
+    'Payer',
+    'AI Score',
+    'CPT Codes',
+    'Actions'
+  ]);
+  const [visibleColumns, setVisibleColumns] = useState([
+    'Claim ID',
+    'Patient',
+    'Provider',
+    'Service Date',
+    'Amount',
+    'Payer',
+    'Status',
+    'AI Score',
+    'CPT Codes',
+    'Actions'
+  ]);
 
-  // Form states
-  const [showClaimWizard, setShowClaimWizard] = useState(false);
-  const [showClaimDetail, setShowClaimDetail] = useState(false);
-  const [showBulkActions, setShowBulkActions] = useState(false);
+  // Fetch patients from database
+  useEffect(() => {
+    const fetchPatients = async () => {
+      setIsLoadingPatients(true);
+      try {
+        const { data, error } = await supabase
+          .from('patients' as any)
+          .select('id, patient_id, first_name, last_name')
+          .order('last_name', { ascending: true })
+          .limit(500);
 
-  const handleClaimSelect = (claim: any) => {
-    setSelectedClaim(claim);
-    setActiveTab('dashboard');
-  };
+        if (error) {
+          console.error('Error fetching patients:', error);
+          return;
+        }
 
-  const handleClaimUpdate = (updatedClaim: any) => {
-    setClaims(prev => prev.map(c => c.id === updatedClaim.id ? updatedClaim : c));
-    setSelectedClaim(updatedClaim);
-    setShowClaimDetail(false);
-  };
+        // Format patients as "LAST_NAME, FIRST_NAME" to match the UI
+        const formattedPatients = (data || [])
+          .filter(p => p.first_name || p.last_name)
+          .map(p => ({
+            id: p.id,
+            patient_id: p.patient_id || `TEMP-${p.id}`,
+            name: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || `Patient ${p.patient_id || p.id}`
+          }));
 
-  const handleNewClaim = (newClaim: any) => {
-    const claimWithId = {
-      ...newClaim,
-      id: `CLM-${String(claims.length + 1).padStart(3, '0')}`,
-      submissionDate: new Date().toISOString().split('T')[0],
-      status: 'draft'
+        setPatients(formattedPatients);
+      } catch (error) {
+        console.error('Error fetching patients:', error);
+      } finally {
+        setIsLoadingPatients(false);
+      }
     };
-    setClaims(prev => [...prev, claimWithId]);
-    setShowClaimWizard(false);
-    setSelectedClaim(claimWithId);
-    setActiveTab('dashboard');
-  };
 
-  const handleSelectClaim = (claimId: string) => {
-    setSelectedClaims(prev => 
-      prev.includes(claimId) 
-        ? prev.filter(id => id !== claimId)
-        : [...prev, claimId]
-    );
-  };
+    fetchPatients();
+  }, []);
 
-  const handleSelectAll = () => {
-    if (selectedClaims.length === claims.length) {
-      setSelectedClaims([]);
-    } else {
-      setSelectedClaims(claims.map(c => c.id));
+  // Column mapping to data fields
+  const getColumnValue = (claim: any, columnName: string) => {
+    switch (columnName) {
+      case 'Claim ID':
+        return claim.id;
+      case 'Patient':
+        return claim.patient;
+      case 'DOS':
+        return claim.dos;
+      case 'Total Charges':
+      case 'Amount':
+        return `$${claim.totalCharges.toFixed(2)}`;
+      case 'Balance':
+        return `$${claim.balance.toFixed(2)}`;
+      case 'Provider':
+        return claim.provider || 'N/A';
+      case 'Service Date':
+        return claim.dos || 'N/A';
+      case 'Payer':
+        return claim.payer || 'N/A';
+      case 'AI Score':
+        return claim.aiScore !== undefined ? `${claim.aiScore}%` : '—';
+      case 'CPT Codes':
+        return claim.cptCodes ? claim.cptCodes.join(', ') : '—';
+      case 'Status':
+        return claim.status;
+      case 'Type':
+        return claim.type;
+      case 'Rendering Provider':
+        return claim.provider || 'N/A';
+      case 'Entered':
+        return claim.submissionDate || 'N/A';
+      case 'Facility':
+        return claim.facility || 'N/A';
+      case 'Primary Insurance':
+        return claim.payer || 'N/A';
+      default:
+        return 'N/A';
     }
   };
 
-  const handleViewClaim = (claim: any) => {
-    setSelectedClaim(claim);
-    setShowClaimDetail(true);
+  // Get column header display name
+  const getColumnHeader = (columnName: string) => {
+    switch (columnName) {
+      case 'Claim ID':
+        return 'Claim ID';
+      case 'Patient':
+        return 'Patient';
+      case 'Provider':
+        return 'Provider';
+      case 'Service Date':
+        return 'Service Date';
+      case 'Amount':
+        return 'Amount';
+      case 'Payer':
+        return 'Payer';
+      case 'AI Score':
+        return 'AI Score';
+      case 'CPT Codes':
+        return 'CPT Codes';
+      case 'Actions':
+        return 'Actions';
+      case 'DOS':
+        return 'DOS';
+      case 'Total Charges':
+        return 'Total Charges';
+      case 'Balance':
+        return 'Balance';
+      case 'Status':
+        return 'Status';
+      case 'Type':
+        return 'Type';
+      case 'Rendering Provider':
+        return 'Rendering Provider';
+      case 'Entered':
+        return 'Entered';
+      case 'Facility':
+        return 'Facility';
+      case 'Primary Insurance':
+        return 'Primary Insurance';
+      default:
+        return columnName;
+    }
   };
 
-  const handleEditClaim = (claim: any) => {
-    setSelectedClaim(claim);
-    setShowClaimWizard(true);
-  };
+  const filteredClaims = mockClaims.filter(claim => {
+    // unpaidOnly filter
+    if (unpaidOnly && claim.balance === 0) return false;
 
-  const handleBulkAction = (action: string) => {
-    console.log(`Bulk action: ${action} on claims:`, selectedClaims);
-    setShowBulkActions(false);
-    setSelectedClaims([]);
-  };
+    // patient filter (top-right)
+    if (patientFilter && patientFilter !== 'all') {
+      if (claim.patient !== patientFilter) return false;
+    }
 
-  const filteredClaims = claims.filter(claim => {
-    const matchesStatus = filters.status === 'all' || claim.status === filters.status;
-    const matchesPayer = filters.payer === 'all' || claim.payer === filters.payer;
-    const matchesProvider = filters.provider === 'all' || claim.provider === filters.provider;
-    const matchesSearch = !filters.searchTerm || 
-      claim.patient.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
-      claim.id.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
-      claim.provider.toLowerCase().includes(filters.searchTerm.toLowerCase());
-    
-    return matchesStatus && matchesPayer && matchesProvider && matchesSearch;
+    // status filter
+    if (statusFilter && statusFilter !== 'all') {
+      if (statusFilter === 'paid' && claim.status !== 'PAID') return false;
+      if (statusFilter === 'balance' && !(claim.balance > 0)) return false;
+      if (statusFilter === 'at-payer' && !claim.status.toLowerCase().includes('claim at')) return false;
+    }
+
+    // payer filter
+    if (payerFilter && payerFilter !== 'all') {
+      const pf = payerFilter.toLowerCase();
+      if (!claim.payer || !claim.payer.toLowerCase().includes(pf)) return false;
+    }
+
+    // provider filter
+    if (providerFilter && providerFilter !== 'all') {
+      const prov = providerFilter.toLowerCase();
+      if (!claim.provider || !claim.provider.toLowerCase().includes(prov)) return false;
+    }
+
+    // patient search (free text)
+    if (patientSearchTerm) {
+      const s = patientSearchTerm.toLowerCase();
+      if (
+        !(claim.patient && claim.patient.toLowerCase().includes(s)) &&
+        !(claim.id && String(claim.id).includes(s))
+      ) return false;
+    }
+
+    // CPT code filter
+    if (cptFilter) {
+      const cf = cptFilter.trim();
+      if (!claim.cptCodes || !claim.cptCodes.some((c: string) => c.includes(cf))) return false;
+    }
+
+    // Service date range
+    const parseDate = (d: string) => {
+      if (!d) return null;
+      const parts = d.split('/');
+      if (parts.length !== 3) return null;
+      const month = parseInt(parts[0], 10) - 1;
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      return new Date(year, month, day);
+    };
+    const claimDate = parseDate(claim.dos);
+    const fromDate = parseDate(serviceDateFrom);
+    const toDate = parseDate(serviceDateTo);
+    if (fromDate && claimDate && claimDate < fromDate) return false;
+    if (toDate && claimDate && claimDate > toDate) return false;
+
+    // Amount range
+    if (amountMin) {
+      const min = parseFloat(amountMin);
+      if (!isNaN(min) && claim.totalCharges < min) return false;
+    }
+    if (amountMax) {
+      const max = parseFloat(amountMax);
+      if (!isNaN(max) && claim.totalCharges > max) return false;
+    }
+
+    // global searchTerm (top search bar)
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      if (
+        !(claim.patient && claim.patient.toLowerCase().includes(searchLower)) &&
+        !(claim.id && String(claim.id).includes(searchTerm)) &&
+        !(claim.payer && claim.payer.toLowerCase().includes(searchLower))
+      ) return false;
+    }
+
+    return true;
   });
 
+  // Calculate statistics
+  const stats = useMemo(() => {
+    const total = mockClaims.length;
+    const paid = mockClaims.filter(c => c.status === 'PAID').length;
+    const balanceDue = mockClaims.filter(c => c.status === 'BALANCE DUE PATIENT').length;
+    const atPayer = mockClaims.filter(c => c.status.includes('CLAIM AT')).length;
+    const totalCharges = mockClaims.reduce((sum, claim) => sum + claim.totalCharges, 0);
+    const totalBalance = mockClaims.reduce((sum, claim) => sum + claim.balance, 0);
+    const paidAmount = mockClaims
+      .filter(c => c.status === 'PAID')
+      .reduce((sum, claim) => sum + claim.totalCharges, 0);
+
+    return {
+      total,
+      paid,
+      balanceDue,
+      atPayer,
+      totalCharges,
+      totalBalance,
+      paidAmount
+    };
+  }, []);
+
+  const getStatusColor = (status: string) => {
+    if (status === 'PAID') return 'text-green-600';
+    if (status === 'BALANCE DUE PATIENT') return 'text-orange-600';
+    return 'text-blue-600';
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-gray-50">
       <div className="p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <FileText className="h-8 w-8 mr-3 text-blue-600" />
-                Claims Management
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Comprehensive claims processing and management system
-              </p>
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+          {/* Total Claims */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Claims</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">{stats.total}</p>
+                  <p className="text-xs text-gray-500">All claims</p>
+                </div>
+                <div className="p-3 rounded-lg bg-blue-50">
+                  <FileText className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Paid Claims */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Paid</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">{stats.paid}</p>
+                  <p className="text-xs text-gray-500">${stats.paidAmount.toFixed(2)}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-green-50">
+                  <CheckCircle className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Balance Due */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Balance Due</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">{stats.balanceDue}</p>
+                  <p className="text-xs text-gray-500">${stats.totalBalance.toFixed(2)}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-yellow-50">
+                  <Clock className="h-6 w-6 text-yellow-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* At Payer */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">At Payer</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">{stats.atPayer}</p>
+                  <p className="text-xs text-gray-500">Processing</p>
+                </div>
+                <div className="p-3 rounded-lg bg-blue-50">
+                  <TrendingUp className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Total Charges */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Total Charges</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">${(stats.totalCharges / 1000).toFixed(1)}K</p>
+                  <p className="text-xs text-gray-500">All claims</p>
+                </div>
+                <div className="p-3 rounded-lg bg-purple-50">
+                  <DollarSign className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Outstanding Balance */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Outstanding</p>
+                  <p className="text-2xl font-bold text-gray-900 mb-1">${(stats.totalBalance / 1000).toFixed(1)}K</p>
+                  <p className="text-xs text-gray-500">Unpaid</p>
+                </div>
+                <div className="p-3 rounded-lg bg-red-50">
+                  <AlertCircle className="h-6 w-6 text-red-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Top Control Bar */}
+        <div className="mb-6 space-y-4">
+          {/* First Row: Add Claim Buttons and Filters */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Left: Add Claim Buttons */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center">
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-r-none border-r border-blue-700"
+                  onClick={() => {
+                    setClaimType('professional');
+                    setSelectedPatientId(undefined);
+                    setShowClaimForm(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Professional Claim
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-l-none px-2">
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="max-h-96 overflow-y-auto">
+                    {isLoadingPatients ? (
+                      <DropdownMenuItem disabled>Loading patients...</DropdownMenuItem>
+                    ) : patients.length === 0 ? (
+                      <DropdownMenuItem disabled>No patients found</DropdownMenuItem>
+                    ) : (
+                      patients.map((patient) => (
+                        <DropdownMenuItem 
+                          key={patient.id}
+                          onClick={() => {
+                            setClaimType('professional');
+                            setSelectedPatientId(patient.id);
+                            setShowClaimForm(true);
+                          }}
+                        >
+                          {patient.name}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              
+              <div className="flex items-center">
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-r-none border-r border-blue-700"
+                  onClick={() => {
+                    setClaimType('institutional');
+                    setSelectedPatientId(undefined);
+                    setShowClaimForm(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Institutional Claim
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-l-none px-2">
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="max-h-96 overflow-y-auto">
+                    {isLoadingPatients ? (
+                      <DropdownMenuItem disabled>Loading patients...</DropdownMenuItem>
+                    ) : patients.length === 0 ? (
+                      <DropdownMenuItem disabled>No patients found</DropdownMenuItem>
+                    ) : (
+                      patients.map((patient) => (
+                        <DropdownMenuItem 
+                          key={patient.id}
+                          onClick={() => {
+                            setClaimType('institutional');
+                            setSelectedPatientId(patient.id);
+                            setShowClaimForm(true);
+                          }}
+                        >
+                          {patient.name}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            <div className="flex space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowBulkActions(true)}
-                disabled={selectedClaims.length === 0}
-                className="bg-white/80 backdrop-blur-sm border-blue-200 hover:bg-blue-50 text-blue-700"
+
+            {/* Right: Filter Options */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="exact-matches"
+                  checked={exactMatchesOnly}
+                  onCheckedChange={(checked) => setExactMatchesOnly(!!checked)}
+                />
+                <label htmlFor="exact-matches" className="text-sm text-gray-700 cursor-pointer">
+                  Show exact matches only
+                </label>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="unpaid-only"
+                  checked={unpaidOnly}
+                  onCheckedChange={(checked) => setUnpaidOnly(!!checked)}
+                />
+                <label htmlFor="unpaid-only" className="text-sm text-gray-700 cursor-pointer">
+                  Show unpaid claims only
+                </label>
+              </div>
+
+                      <Select value={patientFilter} onValueChange={setPatientFilter} disabled={isLoadingPatients}>
+                        <SelectTrigger className="w-48 bg-white">
+                          <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Filter by patient..."} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Patients</SelectItem>
+                          {patients.map((patient) => (
+                            <SelectItem key={patient.id} value={patient.name}>
+                              {patient.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+            </div>
+          </div>
+
+          {/* Second Row: Search Bar - Left Aligned */}
+          <div className="flex items-center gap-2">
+            <Input
+              type="text"
+              placeholder="Search by name, DOB, account#, member ID, claim ID, or TCN Number"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-white border-gray-300 max-w-2xl"
+            />
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Search className="h-4 w-4 mr-2" />
+              Search
+            </Button>
+          </div>
+        </div>
+
+        {/* Top Sections (visual tab bar matching image) */}
+        <div className="mb-4">
+          <div className="w-full bg-gray-50 border border-gray-200 rounded-full px-1 py-1">
+            <div className="flex">
+              <button
+                onClick={() => {
+                  setTopSection('all');
+                  setStatusFilter('all');
+                  setPatientFilter('all');
+                  setPayerFilter('all');
+                  setProviderFilter('all');
+                  setFiltersOpen(false);
+                }}
+                className={`flex-1 text-center rounded-full py-2 text-sm font-medium transition-colors ${
+                  topSection === 'all'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
               >
-                <Filter className="h-4 w-4 mr-2" />
-                Bulk Actions ({selectedClaims.length})
-              </Button>
-              <Button
-                onClick={() => setShowClaimWizard(true)}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                All Claims
+              </button>
+
+              <button
+                onClick={() => {
+                  setTopSection('denial');
+                  setStatusFilter('at-payer');
+                  setFiltersOpen(false);
+                }}
+                className={`flex-1 text-center rounded-full py-2 text-sm font-medium transition-colors ${
+                  topSection === 'denial'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
               >
-                <Plus className="h-4 w-4 mr-2" />
-                New Claim
-              </Button>
+                Denial Management
+              </button>
+
+              <button
+                onClick={() => {
+                  setTopSection('ai');
+                  setStatusFilter('all');
+                  setFiltersOpen(false);
+                }}
+                className={`flex-1 text-center rounded-full py-2 text-sm font-medium transition-colors ${
+                  topSection === 'ai'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                AI Analytics
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Statistics Cards */}
-        <ClaimsStats claims={filteredClaims} />
+        {/* Conditional main area: All Claims | Denial Management | AI Analytics */}
+        {topSection === 'all' ? (
+          <>
+            {/* Filters Panel (collapsible) */}
+            <div className="mb-4">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setFiltersOpen(!filtersOpen)}
+                      className="flex items-center gap-2 text-gray-700"
+                    >
+                      <svg
+                        className={`h-4 w-4 transform transition-transform ${filtersOpen ? 'rotate-180' : 'rotate-0'}`}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                      <span className="font-semibold">Filters</span>
+                    </button>
+                    <span className="text-sm text-gray-500">Quick Filters</span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Today's Claims</Button>
+                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Pending Claims</Button>
+                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Denied Claims</Button>
+                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">This Week</Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" className="bg-white border border-gray-200">Clear All</Button>
+                  </div>
+                </div>
 
-        {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-white shadow-lg border border-gray-200 p-1 rounded-xl">
-            <TabsTrigger 
-              value="dashboard" 
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white rounded-lg px-6"
-            >
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger 
-              value="claims" 
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white rounded-lg px-6"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Claims List
-            </TabsTrigger>
-            <TabsTrigger 
-              value="reports" 
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white rounded-lg px-6"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Reports
-            </TabsTrigger>
-          </TabsList>
+                {filtersOpen && (
+                  <div className="p-4 border-t border-gray-100">
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-purple-600 mb-2">AI-Powered Filters</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button variant="outline" size="sm" className="bg-white">High Risk Claims</Button>
+                        <Button variant="outline" size="sm" className="bg-white">Ready to Appeal</Button>
+                        <Button variant="outline" size="sm" className="bg-white">Missing Documentation</Button>
+                        <Button variant="outline" size="sm" className="bg-white">Optimization Opportunities</Button>
+                      </div>
+                    </div>
 
-          <TabsContent value="dashboard" className="space-y-6">
-            {selectedClaim ? (
-              <ClaimsDashboard
-                claim={selectedClaim}
-                onEdit={() => setShowClaimWizard(true)}
-                onView={() => setShowClaimDetail(true)}
-                onResubmit={(claim) => {
-                  const updatedClaim = { ...claim, status: 'resubmitted' };
-                  handleClaimUpdate(updatedClaim);
-                }}
-                onApprove={(claim) => {
-                  const updatedClaim = { ...claim, status: 'approved' };
-                  handleClaimUpdate(updatedClaim);
-                }}
-                onDeny={(claim) => {
-                  const updatedClaim = { ...claim, status: 'denied' };
-                  handleClaimUpdate(updatedClaim);
-                }}
-              />
-            ) : (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Claim Selected</h3>
-                  <p className="text-gray-600">Please select a claim from the claims list to view its dashboard.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Status</Label>
+                        <Select value={statusFilter} onValueChange={setStatusFilter} disabled={isLoadingPatients}>
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue placeholder="All statuses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All statuses</SelectItem>
+                            <SelectItem value="paid">Paid</SelectItem>
+                            <SelectItem value="balance">Balance Due</SelectItem>
+                            <SelectItem value="at-payer">At Payer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Payer</Label>
+                        <Select value={payerFilter} onValueChange={setPayerFilter}>
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue placeholder="All payers" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All payers</SelectItem>
+                            <SelectItem value="blue">Blue Cross</SelectItem>
+                            <SelectItem value="aetna">Aetna</SelectItem>
+                            <SelectItem value="medicare">Medicare</SelectItem>
+                            <SelectItem value="united">UnitedHealth</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Provider</Label>
+                        <Select value={providerFilter} onValueChange={setProviderFilter}>
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue placeholder="All providers" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All providers</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Patient Search</Label>
+                        <Input
+                          placeholder="Patient name or ID"
+                          className="bg-white"
+                          value={patientSearchTerm}
+                          onChange={(e) => setPatientSearchTerm(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">CPT Code</Label>
+                        <Input
+                          placeholder="Enter CPT code"
+                          className="bg-white"
+                          value={cptFilter}
+                          onChange={(e) => setCptFilter(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Service Date From</Label>
+                        <Input
+                          placeholder="mm/dd/yyyy"
+                          className="bg-white"
+                          value={serviceDateFrom}
+                          onChange={(e) => setServiceDateFrom(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Service Date To</Label>
+                        <Input
+                          placeholder="mm/dd/yyyy"
+                          className="bg-white"
+                          value={serviceDateTo}
+                          onChange={(e) => setServiceDateTo(e.target.value)}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Amount Range</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Min"
+                            className="bg-white"
+                            value={amountMin}
+                            onChange={(e) => setAmountMin(e.target.value)}
+                          />
+                          <Input
+                            placeholder="Max"
+                            className="bg-white"
+                            value={amountMax}
+                            onChange={(e) => setAmountMax(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end mt-4">
+                      <Button className="bg-white border border-gray-200">Save Current Filter</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Main Content - Claims Table */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div className="p-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-gray-900">Recently Opened</h2>
+                  <div className="flex items-center gap-1 group">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
+                      onClick={() => {
+                        console.log('Sort/filter button clicked');
+                      }}
+                    >
+                      <div className="relative">
+                        <Circle className="h-4 w-4 text-gray-600" strokeWidth={2} />
+                        <ArrowUpDown className="h-2.5 w-2.5 text-gray-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" strokeWidth={2.5} />
+                      </div>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-green-50"
+                      onClick={() => setShowColumnSelector(true)}
+                    >
+                      <Plus className="h-4 w-4 text-green-600" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-gray-200 hover:bg-gray-50">
+                      <TableHead className="text-gray-700 font-semibold w-10">
+                        <Checkbox />
+                      </TableHead>
+                      {visibleColumns.map((columnName, idx) => (
+                        <TableHead key={`${columnName}-${idx}`} className="text-gray-700 font-semibold">
+                          <span>{getColumnHeader(columnName)}</span>
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredClaims.map((claim) => (
+                      <TableRow 
+                        key={claim.id} 
+                        className="border-gray-200 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <TableCell className="w-10">
+                          <Checkbox />
+                        </TableCell>
+                        {visibleColumns.map((columnName, idx) => {
+                          // Actions column gets custom buttons
+                          if (columnName === 'Actions') {
+                            return (
+                              <TableCell key={`${columnName}-${idx}`} className="text-gray-600">
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setClaimType('professional');
+                                      setSelectedPatientId(undefined);
+                                      setShowClaimForm(true);
+                                    }}
+                                  >
+                                    Open
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            );
+                          }
+
+                          const value = getColumnValue(claim, columnName);
+                          const isStatus = columnName === 'Status';
+                          const isNumeric = ['Claim ID', 'Total Charges', 'Balance', 'Amount'].includes(columnName);
+                          
+                          return (
+                            <TableCell 
+                              key={`${columnName}-${idx}`}
+                              className={
+                                isStatus 
+                                  ? getStatusColor(claim.status)
+                                  : isNumeric
+                                  ? 'text-gray-900 font-medium'
+                                  : 'text-gray-600'
+                              }
+                            >
+                              {value}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </>
+        ) : topSection === 'denial' ? (
+          <>
+            {/* Denial Management Header Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Total Denials</p>
+                  <p className="text-2xl font-bold text-gray-900">1</p>
                 </CardContent>
               </Card>
-            )}
-          </TabsContent>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Denial Rate</p>
+                  <p className="text-2xl font-bold text-orange-600">16.7%</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Avg Appeal Time</p>
+                  <p className="text-2xl font-bold text-blue-700">14 days</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Success Rate</p>
+                  <p className="text-2xl font-bold text-green-600">78%</p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <TabsContent value="claims" className="space-y-6">
-            <ClaimsFilter
-              filters={filters}
-              onFiltersChange={setFilters}
-              onClearFilters={() => setFilters({
-                status: 'all',
-                payer: 'all',
-                dateRange: 'all',
-                provider: 'all',
-                amountRange: 'all',
-                searchTerm: ''
-              })}
-            />
-            
-            <ClaimsTable
-              claims={filteredClaims}
-              selectedClaims={selectedClaims}
-              onSelectClaim={handleSelectClaim}
-              onSelectAll={handleSelectAll}
-              onViewClaim={handleViewClaim}
-              onEditClaim={handleEditClaim}
-            />
-          </TabsContent>
+            {/* Sub-tabs */}
+            <div className="mb-4">
+              <div className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1 flex gap-2">
+                <div className="px-3 py-2 bg-white rounded text-sm font-medium">Active Denials</div>
+                <div className="px-3 py-2 text-sm text-gray-600">Analytics</div>
+                <div className="px-3 py-2 text-sm text-gray-600">AI Insights</div>
+                <div className="px-3 py-2 text-sm text-gray-600">Workflows</div>
+              </div>
+            </div>
 
-          <TabsContent value="reports" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Download className="h-5 w-5 mr-2 text-blue-600" />
-                  Claims Reports
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <Button variant="outline" className="h-20 flex flex-col items-center justify-center">
-                    <TrendingUp className="h-6 w-6 mb-2" />
-                    Revenue Report
-                  </Button>
-                  <Button variant="outline" className="h-20 flex flex-col items-center justify-center">
-                    <Clock className="h-6 w-6 mb-2" />
-                    Aging Report
-                  </Button>
-                  <Button variant="outline" className="h-20 flex flex-col items-center justify-center">
-                    <AlertCircle className="h-6 w-6 mb-2" />
-                    Denial Report
-                  </Button>
+            {/* Denied Claims List */}
+            <Card className="bg-white border border-gray-200 shadow-sm">
+              <CardContent className="p-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <div className="text-red-500">⚠️</div>
+                  Denied Claims Requiring Action
+                </h3>
+
+                <div className="mt-4 border rounded p-4 bg-gray-50">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">Denied</span>
+                        <strong>CLM-2024-003</strong>
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        Patient: Mike Wilson | Provider: Dr. Brown
+                      </div>
+                      <div className="text-sm text-gray-600 mt-2">
+                        Amount: $85.00 | Service Date: 2024-01-09
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Auth Required</span>
+                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Missing Documentation</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outline" className="text-sm">AI Analysis</Button>
+                      <Button className="bg-blue-600 text-white text-sm">Generate Appeal</Button>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </>
+        ) : (
+          <>
+            {/* AI Analytics Header Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Avg Risk Score</p>
+                  <p className="text-2xl font-bold text-gray-900">41.2%</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Flagged Claims</p>
+                  <p className="text-2xl font-bold text-orange-600">3</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Potential Savings</p>
+                  <p className="text-2xl font-bold text-green-600">$12,450</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-600">Automation Rate</p>
+                  <p className="text-2xl font-bold text-green-600">78%</p>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Forms */}
-        {showClaimWizard && (
-          <ClaimFormWizard
-            claim={selectedClaim}
-            isOpen={showClaimWizard}
-            onClose={() => setShowClaimWizard(false)}
-            onSubmit={handleNewClaim}
-          />
+            {/* Two-column analytics */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+              <div className="lg:col-span-2">
+                <Card className="bg-white border border-gray-200 shadow-sm">
+                  <CardContent className="p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Risk Distribution</h4>
+                    <div className="h-40 bg-gray-50 rounded border border-gray-100 flex items-center justify-center text-gray-400">[Chart Placeholder]</div>
+                    <div className="text-center mt-2 text-sm text-gray-500">Total Claims Analyzed<br/><strong>{stats.total}</strong></div>
+                  </CardContent>
+                </Card>
+              </div>
+              <div>
+                <Card className="bg-white border border-gray-200 shadow-sm">
+                  <CardContent className="p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Top Issues Detected</h4>
+                    <div className="space-y-2">
+                      <div className="p-2 border rounded bg-gray-50">Missing Prior Authorization <span className="ml-2 text-xs text-red-600">High</span></div>
+                      <div className="p-2 border rounded bg-gray-50">Incomplete Documentation <span className="ml-2 text-xs text-yellow-600">Medium</span></div>
+                      <div className="p-2 border rounded bg-gray-50">Coding Inconsistencies <span className="ml-2 text-xs text-yellow-600">Medium</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* AI-Powered Recommendations */}
+            <div className="mb-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">AI-Powered Recommendations</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-white border border-gray-200 shadow-sm">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-medium text-gray-600">Automate Prior Authorization Checks</p>
+                    <p className="text-xs text-gray-500 mt-2">Implement automated prior auth verification before service delivery</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm">Implement</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white border border-gray-200 shadow-sm">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-medium text-gray-600">Standardize Documentation Templates</p>
+                    <p className="text-xs text-gray-500 mt-2">Create standardized templates for common procedures</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm">Implement</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white border border-gray-200 shadow-sm">
+                  <CardContent className="p-4">
+                    <p className="text-sm font-medium text-gray-600">Enhanced Coding Training</p>
+                    <p className="text-xs text-gray-500 mt-2">Regular training on coding accuracy and updates</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm">Implement</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Predictive Analytics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-sm text-gray-600">Next Week</p>
+                  <p className="text-2xl font-bold text-gray-900">3-5</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-sm text-gray-600">At Risk</p>
+                  <p className="text-2xl font-bold text-orange-600">$15.4K</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-sm text-gray-600">Success Rate</p>
+                  <p className="text-2xl font-bold text-green-600">94%</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4 text-center">
+                  <p className="text-sm text-gray-600">Trend</p>
+                  <p className="text-2xl font-bold text-blue-600">↑ 18%</p>
+                </CardContent>
+              </Card>
+            </div>
+          </>
         )}
 
-        {showClaimDetail && selectedClaim && (
-          <ClaimDetailModal
-            claim={selectedClaim}
-            isOpen={showClaimDetail}
-            onClose={() => setShowClaimDetail(false)}
-            onSave={handleClaimUpdate}
-          />
-        )}
+        {/* Select Columns Modal */}
+        <Dialog open={showColumnSelector} onOpenChange={setShowColumnSelector}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Select Columns</DialogTitle>
+              <DialogDescription>
+                Choose which columns to display in the claims table
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid grid-cols-2 gap-6 py-4">
+              {/* Available Columns */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Available Columns</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {availableColumns.map((column) => (
+                    <div
+                      key={column}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="text-gray-900">{column}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          setAvailableColumns(availableColumns.filter(c => c !== column));
+                          setVisibleColumns([...visibleColumns, column]);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 text-gray-600" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-        {/* Bulk Actions Dialog */}
-        {showBulkActions && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="w-96">
-              <CardHeader>
-                <CardTitle>Bulk Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button 
-                  className="w-full" 
-                  onClick={() => handleBulkAction('approve')}
-                >
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Approve Selected
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => handleBulkAction('deny')}
-                >
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Deny Selected
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => handleBulkAction('resubmit')}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Resubmit Selected
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full"
-                  onClick={() => handleBulkAction('export')}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export Selected
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  className="w-full"
-                  onClick={() => setShowBulkActions(false)}
-                >
-                  Cancel
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              {/* Visible Columns */}
+              <div>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {visibleColumns.map((column) => (
+                    <div
+                      key={column}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    >
+                      <span className="text-gray-900">{column}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          setVisibleColumns(visibleColumns.filter(c => c !== column));
+                          setAvailableColumns([...availableColumns, column]);
+                        }}
+                      >
+                        <X className="h-4 w-4 text-gray-600" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t">
+              <Button
+                onClick={() => setShowColumnSelector(false)}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Done
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Professional Claim Form */}
+        {showClaimForm && (
+          <ProfessionalClaimForm
+            isOpen={showClaimForm}
+            patientId={selectedPatientId}
+            claimType={claimType}
+            onClose={() => {
+              setShowClaimForm(false);
+              setSelectedPatientId(undefined);
+            }}
+          />
         )}
       </div>
     </div>

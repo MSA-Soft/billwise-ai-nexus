@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronUp, ChevronRight, FileText, Hash, DollarSign, Syringe, UserPlus, Circle, Building, MessageSquare, Minus, Package, List, DollarSign as DollarIcon, FilePen, Cloud, Eye, Calendar, Info, X, Check } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronUp, ChevronRight, FileText, Hash, DollarSign, Syringe, UserPlus, Circle, Building, MessageSquare, Minus, Package, List, DollarSign as DollarIcon, FilePen, Cloud, Eye, Calendar, Info, X, Check, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -141,19 +141,9 @@ export const Codes: React.FC = () => {
   const [selectedMenuItem, setSelectedMenuItem] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
-<<<<<<< HEAD
   const [procedureCodes, setProcedureCodes] = useState<Code[]>([]);
-  const [diagnosisCodes, setDiagnosisCodes] = useState<Code[]>([]);
-  const [icdProcedureCodes, setIcdProcedureCodes] = useState<Code[]>([]);
-  const [revenueCodes, setRevenueCodes] = useState<Code[]>([]);
-  const [remittanceCodes, setRemittanceCodes] = useState<Code[]>([]);
-  const [adjustmentCodes, setAdjustmentCodes] = useState<Code[]>([]);
-  const [inventoryCodes, setInventoryCodes] = useState<Code[]>([]);
-  const [chargePanels, setChargePanels] = useState<Code[]>([]);
-  const [feeSchedules, setFeeSchedules] = useState<Code[]>([]);
-  const [contracts, setContracts] = useState<Code[]>([]);
-=======
-  const [procedureCodes, setProcedureCodes] = useState<Code[]>(sampleProcedureCodes);
+  const [isLoadingProcedureCodes, setIsLoadingProcedureCodes] = useState(false);
+  const isFetchingProcedureRef = useRef(false);
   const [diagnosisCodes, setDiagnosisCodes] = useState<Code[]>([]);
   const [isLoadingDiagnosisCodes, setIsLoadingDiagnosisCodes] = useState(false);
   const isFetchingDiagnosisRef = useRef(false);
@@ -166,12 +156,21 @@ export const Codes: React.FC = () => {
   const [remittanceCodes, setRemittanceCodes] = useState<Code[]>([]);
   const [isLoadingRemittanceCodes, setIsLoadingRemittanceCodes] = useState(false);
   const isFetchingRemittanceRef = useRef(false);
-  const [adjustmentCodes, setAdjustmentCodes] = useState<Code[]>(sampleAdjustmentCodes);
-  const [inventoryCodes, setInventoryCodes] = useState<Code[]>(sampleInventoryCodes);
-  const [chargePanels, setChargePanels] = useState<Code[]>(sampleChargePanels);
-  const [feeSchedules, setFeeSchedules] = useState<Code[]>(sampleFeeSchedules);
-  const [contracts, setContracts] = useState<Code[]>(sampleContracts);
->>>>>>> 14dfb14 (Database Added)
+  const [adjustmentCodes, setAdjustmentCodes] = useState<Code[]>([]);
+  const [isLoadingAdjustmentCodes, setIsLoadingAdjustmentCodes] = useState(false);
+  const isFetchingAdjustmentRef = useRef(false);
+  const [inventoryCodes, setInventoryCodes] = useState<Code[]>([]);
+  const [isLoadingInventoryCodes, setIsLoadingInventoryCodes] = useState(false);
+  const isFetchingInventoryRef = useRef(false);
+  const [chargePanels, setChargePanels] = useState<Code[]>([]);
+  const [isLoadingChargePanels, setIsLoadingChargePanels] = useState(false);
+  const isFetchingChargePanelRef = useRef(false);
+  const [feeSchedules, setFeeSchedules] = useState<any[]>([]);
+  const [isLoadingFeeSchedules, setIsLoadingFeeSchedules] = useState(false);
+  const isFetchingFeeScheduleRef = useRef(false);
+  const [contracts, setContracts] = useState<Code[]>([]);
+  const [isLoadingContracts, setIsLoadingContracts] = useState(false);
+  const isFetchingContractRef = useRef(false);
   const [isNewCodeDialogOpen, setIsNewCodeDialogOpen] = useState(false);
   const [isNewDiagnosisDialogOpen, setIsNewDiagnosisDialogOpen] = useState(false);
   const [isNewICDProcedureDialogOpen, setIsNewICDProcedureDialogOpen] = useState(false);
@@ -180,6 +179,8 @@ export const Codes: React.FC = () => {
   const [isNewAdjustmentDialogOpen, setIsNewAdjustmentDialogOpen] = useState(false);
   const [isNewInventoryDialogOpen, setIsNewInventoryDialogOpen] = useState(false);
   const [isNewChargePanelDialogOpen, setIsNewChargePanelDialogOpen] = useState(false);
+  const [isNewFeeScheduleDialogOpen, setIsNewFeeScheduleDialogOpen] = useState(false);
+  const [isFeeSchedulePreviewOpen, setIsFeeSchedulePreviewOpen] = useState(false);
   const [isNewContractDialogOpen, setIsNewContractDialogOpen] = useState(false);
   const [isContractPreviewOpen, setIsContractPreviewOpen] = useState(false);
   const [isContractBasedDialogOpen, setIsContractBasedDialogOpen] = useState(false);
@@ -308,6 +309,29 @@ export const Codes: React.FC = () => {
     priceCreationMethod: 'empty'
   });
 
+  const [newFeeSchedule, setNewFeeSchedule] = useState({
+    priceCreationMethod: 'empty'
+  });
+
+  const [anotherFeeScheduleSettings, setAnotherFeeScheduleSettings] = useState({
+    selectedFeeSchedules: [],
+    priceAdjustment: 'increase',
+    increaseBy: '0.00',
+    decreaseBy: '0.00',
+    adjustTo: '1.0000',
+    adjustToPercent: '100.00',
+    roundUp: false
+  });
+
+  const [feeSchedulePreview, setFeeSchedulePreview] = useState({
+    name: '',
+    effectiveFrom: '',
+    effectiveTo: '',
+    sequenceNumber: 'NEW',
+    description: '',
+    procedures: []
+  });
+
   const [contractPreview, setContractPreview] = useState({
     name: '',
     type: 'FFS',
@@ -330,8 +354,9 @@ export const Codes: React.FC = () => {
   });
 
   const [contractBasedSettings, setContractBasedSettings] = useState({
+    contractMethod: 'maximum-price', // 'maximum-price' or 'specific-contract'
     selectedContract: '',
-    priceAdjustment: 'no-adjustment',
+    priceAdjustment: 'increase',
     increaseBy: '0.00',
     decreaseBy: '0.00',
     adjustTo: '1.0000',
@@ -355,6 +380,16 @@ export const Codes: React.FC = () => {
     roundUp: false
   });
 
+  const [chargesBasedSettings, setChargesBasedSettings] = useState({
+    days: '180',
+    priceAdjustment: 'increase',
+    increaseBy: '0.00',
+    decreaseBy: '0.00',
+    adjustTo: '1.0000',
+    adjustToPercent: '100.00',
+    roundUp: false
+  });
+
   const [paymentsSettings, setPaymentsSettings] = useState({
     selectedPayer: '',
     days: '90'
@@ -362,11 +397,21 @@ export const Codes: React.FC = () => {
 
   const [importSettings, setImportSettings] = useState({
     selectedFile: null as File | null,
-    fileName: ''
+    fileName: '',
+    priceAdjustment: 'increase',
+    increaseBy: '0.00',
+    decreaseBy: '0.00',
+    adjustTo: '1.0000',
+    adjustToPercent: '100.00',
+    roundUp: false
   });
 
   const handleMenuItemClick = (menuItemId: string) => {
     setSelectedMenuItem(menuItemId);
+    // Fetch procedure codes when procedure menu is selected
+    if (menuItemId === 'procedure') {
+      fetchProcedureCodesFromDatabase();
+    }
     // Fetch diagnosis codes when diagnosis menu is selected
     if (menuItemId === 'diagnosis') {
       fetchDiagnosisCodesFromDatabase();
@@ -382,6 +427,99 @@ export const Codes: React.FC = () => {
     // Fetch Remittance codes when remittance menu is selected
     if (menuItemId === 'remittance') {
       fetchRemittanceCodesFromDatabase();
+    }
+    // Fetch Adjustment codes when adjustment menu is selected
+    if (menuItemId === 'adjustment') {
+      fetchAdjustmentCodesFromDatabase();
+    }
+    // Fetch Inventory codes when inventory menu is selected
+    if (menuItemId === 'inventory') {
+      fetchInventoryCodesFromDatabase();
+    }
+    // Fetch Charge Panels when charge-panel menu is selected
+    if (menuItemId === 'charge-panel') {
+      fetchChargePanelsFromDatabase();
+    }
+    // Fetch Contracts when contracts menu is selected
+    if (menuItemId === 'contracts') {
+      fetchContractsFromDatabase();
+    }
+    // Fetch Fee Schedules when fee-schedules menu is selected
+    if (menuItemId === 'fee-schedules') {
+      fetchFeeSchedulesFromDatabase();
+    }
+  };
+
+  // Fetch Procedure codes (CPT/HCPCS) from database
+  const fetchProcedureCodesFromDatabase = async () => {
+    if (isFetchingProcedureRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingProcedureRef.current = true;
+      setIsLoadingProcedureCodes(true);
+      console.log('🔍 Fetching CPT/HCPCS procedure codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch procedure codes.');
+        setProcedureCodes([]);
+        setIsLoadingProcedureCodes(false);
+        isFetchingProcedureRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('cpt_hcpcs_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching CPT/HCPCS codes:', error);
+        if (error.code === '42P01' || error.message.includes('does not exist')) {
+          console.warn('⚠️ CPT/HCPCS codes table not found. Please run CREATE_CPT_HCPCS_CODES_TABLE.sql');
+          toast({
+            title: 'Table Not Found',
+            description: 'CPT/HCPCS codes table does not exist. Please run the SQL setup script.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading CPT/HCPCS codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setProcedureCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.description || dbCode.superbill_description || '',
+        price: dbCode.default_price ? parseFloat(dbCode.default_price) : 0.00,
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: (dbCode.type === 'CPT' || dbCode.type === 'HCPCS') ? dbCode.type : 'CPT' as 'CPT' | 'HCPCS',
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} CPT/HCPCS procedure codes from database`);
+      setProcedureCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchProcedureCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading CPT/HCPCS codes',
+        description: error.message || 'Failed to load CPT/HCPCS codes from database',
+        variant: 'destructive',
+      });
+      setProcedureCodes([]);
+    } finally {
+      setIsLoadingProcedureCodes(false);
+      isFetchingProcedureRef.current = false;
     }
   };
 
@@ -605,6 +743,263 @@ export const Codes: React.FC = () => {
   };
 
   // Fetch diagnosis codes from database
+  // Fetch Adjustment codes from database
+  const fetchAdjustmentCodesFromDatabase = async () => {
+    if (isFetchingAdjustmentRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingAdjustmentRef.current = true;
+      setIsLoadingAdjustmentCodes(true);
+      console.log('🔍 Fetching Adjustment codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Adjustment codes.');
+        setAdjustmentCodes([]);
+        setIsLoadingAdjustmentCodes(false);
+        isFetchingAdjustmentRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('adjustment_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching Adjustment codes:', error);
+        // Check for schema cache error (PGRST205) or table not found
+        if (error.code === 'PGRST205' || error.code === '42P01' || 
+            error.message?.includes('schema cache') || 
+            error.message?.includes('does not exist') ||
+            error.message?.includes('not bind')) {
+          console.warn('⚠️ Adjustment codes table not found or not bound to database. Please run FIX_ADJUSTMENT_CODES_BINDING.sql');
+          toast({
+            title: 'Database Binding Error',
+            description: 'Adjustment codes table is not bound to database. Run FIX_ADJUSTMENT_CODES_BINDING.sql in Supabase SQL Editor to fix this.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Adjustment codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setAdjustmentCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: (Code & { category?: string })[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.description || '',
+        price: 0.00, // Adjustment codes don't have prices
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'HCPCS' as 'CPT' | 'HCPCS', // Adjustment codes don't have a specific type
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || '',
+        category: dbCode.adjustment_type || 'Credit' // Store adjustment type (Credit, Debit, Discount, Write-off)
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} Adjustment codes from database`);
+      setAdjustmentCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchAdjustmentCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading Adjustment codes',
+        description: error.message || 'Failed to load Adjustment codes from database',
+        variant: 'destructive',
+      });
+      setAdjustmentCodes([]);
+    } finally {
+      setIsLoadingAdjustmentCodes(false);
+      isFetchingAdjustmentRef.current = false;
+    }
+  };
+
+  // Fetch Inventory codes from database
+  const fetchInventoryCodesFromDatabase = async () => {
+    if (isFetchingInventoryRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingInventoryRef.current = true;
+      setIsLoadingInventoryCodes(true);
+      console.log('🔍 Fetching Inventory codes from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Inventory codes.');
+        setInventoryCodes([]);
+        setIsLoadingInventoryCodes(false);
+        isFetchingInventoryRef.current = false;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('inventory_codes' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching Inventory codes:', error);
+        // Check for schema cache error (PGRST205) or table not found
+        if (error.code === 'PGRST205' || error.code === '42P01' || 
+            error.message?.includes('schema cache') || 
+            error.message?.includes('does not exist') ||
+            error.message?.includes('not bind')) {
+          console.warn('⚠️ Inventory codes table not found or not bound to database. Please run FIX_INVENTORY_CODES_BINDING.sql');
+          toast({
+            title: 'Database Binding Error',
+            description: 'Inventory codes table is not bound to database. Run FIX_INVENTORY_CODES_BINDING.sql in Supabase SQL Editor to fix this.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Inventory codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
+        setInventoryCodes([]);
+        return;
+      }
+
+      // Transform database records to match Code interface
+      const transformedCodes: Code[] = (data || []).map((dbCode: any) => ({
+        id: dbCode.id,
+        code: dbCode.code || '',
+        description: dbCode.code_description || dbCode.billing_description || '',
+        price: 0.00, // Inventory codes don't have prices
+        inactive: !(dbCode.is_active || dbCode.status === 'active'),
+        type: 'HCPCS' as 'CPT' | 'HCPCS', // Inventory codes don't have a specific type
+        createdAt: dbCode.created_at || '',
+        updatedAt: dbCode.updated_at || dbCode.created_at || ''
+      }));
+
+      console.log(`✅ Successfully loaded ${transformedCodes.length} Inventory codes from database`);
+      setInventoryCodes(transformedCodes);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchInventoryCodesFromDatabase:', error);
+      toast({
+        title: 'Error loading Inventory codes',
+        description: error.message || 'Failed to load Inventory codes from database',
+        variant: 'destructive',
+      });
+      setInventoryCodes([]);
+    } finally {
+      setIsLoadingInventoryCodes(false);
+      isFetchingInventoryRef.current = false;
+    }
+  };
+
+  // Fetch Charge Panels from database
+  const fetchChargePanelsFromDatabase = async () => {
+    if (isFetchingChargePanelRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingChargePanelRef.current = true;
+      setIsLoadingChargePanels(true);
+      console.log('🔍 Fetching Charge Panels from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Charge Panels.');
+        setChargePanels([]);
+        setIsLoadingChargePanels(false);
+        isFetchingChargePanelRef.current = false;
+        return;
+      }
+
+      // Fetch panels with their details
+      const { data: panelsData, error: panelsError } = await supabase
+        .from('charge_panels' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (panelsError) {
+        console.error('❌ Error fetching Charge Panels:', panelsError);
+        if (panelsError.code === 'PGRST205' || panelsError.code === '42P01' || 
+            panelsError.message?.includes('schema cache') || 
+            panelsError.message?.includes('does not exist')) {
+          console.warn('⚠️ Charge panels table not found in schema cache. Please run CREATE_CHARGE_PANELS_TABLE.sql');
+          toast({
+            title: 'Schema Cache Error',
+            description: 'Table exists but not in schema cache. Run CREATE_CHARGE_PANELS_TABLE.sql and restart Supabase project.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Charge Panels',
+            description: panelsError.message,
+            variant: 'destructive',
+          });
+        }
+        setChargePanels([]);
+        return;
+      }
+
+      // Fetch details for all panels
+      const panelIds = (panelsData || []).map((p: any) => p.id);
+      let detailsData: any[] = [];
+      
+      if (panelIds.length > 0) {
+        const { data: details, error: detailsError } = await supabase
+          .from('charge_panel_details' as any)
+          .select('*')
+          .in('charge_panel_id', panelIds)
+          .order('charge_panel_id', { ascending: true })
+          .order('sequence_order', { ascending: true });
+
+        if (!detailsError && details) {
+          detailsData = details;
+        }
+      }
+
+      // Transform database records to match Code interface
+      const transformedPanels: Code[] = (panelsData || []).map((panel: any) => {
+        const panelDetails = detailsData.filter((d: any) => d.charge_panel_id === panel.id);
+        const codesList = panelDetails.map((d: any) => d.code).filter(Boolean).join(', ');
+        
+        return {
+          id: panel.id,
+          code: panel.code || '',
+          description: panel.description || panel.title || '',
+          price: 0.00, // Charge panels don't have direct prices
+          inactive: !(panel.is_active || panel.status === 'active'),
+          type: 'HCPCS' as 'CPT' | 'HCPCS',
+          createdAt: panel.created_at || '',
+          updatedAt: panel.updated_at || panel.created_at || '',
+          // Store additional data for display
+          title: panel.title,
+          panelType: panel.type,
+          codesCount: panelDetails.length
+        } as Code & { title?: string; panelType?: string; codesCount?: number; codesList?: string };
+      });
+
+      console.log(`✅ Successfully loaded ${transformedPanels.length} Charge Panels from database`);
+      setChargePanels(transformedPanels);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchChargePanelsFromDatabase:', error);
+      toast({
+        title: 'Error loading Charge Panels',
+        description: error.message || 'Failed to load Charge Panels from database',
+        variant: 'destructive',
+      });
+      setChargePanels([]);
+    } finally {
+      setIsLoadingChargePanels(false);
+      isFetchingChargePanelRef.current = false;
+    }
+  };
+
   const fetchDiagnosisCodesFromDatabase = async () => {
     if (isFetchingDiagnosisRef.current) {
       return;
@@ -674,6 +1069,883 @@ export const Codes: React.FC = () => {
     } finally {
       setIsLoadingDiagnosisCodes(false);
       isFetchingDiagnosisRef.current = false;
+    }
+  };
+
+  const handleSaveNewAdjustment = async () => {
+    if (!newAdjustment.code || !newAdjustment.description) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Code and Description).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Adjustment code:', newAdjustment);
+
+      // Prepare data for database (using adjustment_codes table)
+      const insertData: any = {
+        code: newAdjustment.code.trim(),
+        description: newAdjustment.description.trim(),
+        adjustment_type: newAdjustment.adjustmentType || 'Credit',
+        status: 'active',
+        is_active: true
+      };
+
+      const { data, error } = await supabase
+        .from('adjustment_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating Adjustment code:', error);
+        // Check for binding/schema cache errors
+        if (error.code === 'PGRST205' || error.code === '42P01' || 
+            error.message?.includes('schema cache') || 
+            error.message?.includes('does not exist') ||
+            error.message?.includes('not bind')) {
+          toast({
+            title: 'Database Binding Error',
+            description: 'Adjustment codes table is not bound to database. Run FIX_ADJUSTMENT_CODES_BINDING.sql in Supabase SQL Editor to fix this.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error(error.message || 'Failed to create Adjustment code');
+      }
+
+      // Reset form
+      setNewAdjustment({
+        code: '',
+        adjustmentType: 'Credit',
+        description: ''
+      });
+      setIsNewAdjustmentDialogOpen(false);
+
+      // Refresh the Adjustment codes list
+      await fetchAdjustmentCodesFromDatabase();
+
+      toast({
+        title: "Adjustment Code Added",
+        description: `Adjustment code ${newAdjustment.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Adjustment code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Adjustment code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewInventory = async () => {
+    if (!newInventory.code) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required field (Code).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Inventory code:', newInventory);
+
+      // Prepare data for database (using inventory_codes table)
+      const insertData: any = {
+        code: newInventory.code.trim(),
+        procedure_code: newInventory.procedureCode || null,
+        quantity: newInventory.quantity || 0,
+        code_description: newInventory.codeDescription || null,
+        billing_description: newInventory.billingDescription || null,
+        use_alert: newInventory.useAlert || false,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(insertData).forEach(key => {
+        if (insertData[key] === null || insertData[key] === '') {
+          delete insertData[key];
+        }
+      });
+
+      const { data, error } = await supabase
+        .from('inventory_codes' as any)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error creating Inventory code:', error);
+        // Check for binding/schema cache errors
+        if (error.code === 'PGRST205' || error.code === '42P01' || 
+            error.message?.includes('schema cache') || 
+            error.message?.includes('does not exist') ||
+            error.message?.includes('not bind')) {
+          toast({
+            title: 'Database Binding Error',
+            description: 'Inventory codes table is not bound to database. Run FIX_INVENTORY_CODES_BINDING.sql in Supabase SQL Editor to fix this.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error(error.message || 'Failed to create Inventory code');
+      }
+
+      // Reset form
+      setNewInventory({
+        code: '',
+        procedureCode: '',
+        quantity: 0,
+        codeDescription: '',
+        billingDescription: '',
+        useAlert: false
+      });
+      setIsNewInventoryDialogOpen(false);
+
+      // Refresh the Inventory codes list
+      await fetchInventoryCodesFromDatabase();
+
+      toast({
+        title: "Inventory Code Added",
+        description: `Inventory code ${newInventory.code} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Inventory code:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Inventory code. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNewChargePanel = async () => {
+    if (!newChargePanel.title || !newChargePanel.code) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Title and Code).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Charge Panel:', newChargePanel);
+
+      // Prepare panel data
+      const panelData: any = {
+        title: newChargePanel.title.trim(),
+        code: newChargePanel.code.trim(),
+        type: newChargePanel.type || 'Professional',
+        description: newChargePanel.description || null,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values
+      Object.keys(panelData).forEach(key => {
+        if (panelData[key] === null || panelData[key] === '') {
+          delete panelData[key];
+        }
+      });
+
+      // Insert the panel
+      const { data: panelResult, error: panelError } = await supabase
+        .from('charge_panels' as any)
+        .insert(panelData)
+        .select()
+        .single();
+
+      if (panelError) {
+        console.error('❌ Error creating Charge Panel:', panelError);
+        if (panelError.code === 'PGRST205' || panelError.code === '42P01' || 
+            panelError.message?.includes('schema cache') || 
+            panelError.message?.includes('does not exist')) {
+          toast({
+            title: 'Schema Cache Error',
+            description: 'Table exists but not in schema cache. Run CREATE_CHARGE_PANELS_TABLE.sql and restart Supabase project.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error(panelError.message || 'Failed to create Charge Panel');
+      }
+
+      // Insert panel details if any exist
+      if (panelResult && !panelError && newChargePanel.codeDetails && newChargePanel.codeDetails.length > 0) {
+        const panelId = (panelResult as any).id;
+        if (!panelId) {
+          throw new Error('Failed to get panel ID after creation');
+        }
+        
+        const validDetails = newChargePanel.codeDetails
+          .filter(detail => !detail.delete && detail.code) // Filter out deleted and empty codes
+          .map((detail, index) => ({
+            charge_panel_id: panelId,
+            code: detail.code || null,
+            pos: detail.pos || null,
+            tos: detail.tos || null,
+            modifier_options: detail.modifierOptions || 'Code Defaults',
+            modifier1: detail.modifier1 || null,
+            modifier2: detail.modifier2 || null,
+            modifier3: detail.modifier3 || null,
+            modifier4: detail.modifier4 || null,
+            price: detail.price || 'Code Default',
+            units: detail.units ? parseFloat(detail.units) : 0.00,
+            total: detail.total || null,
+            other: detail.other || null,
+            sequence_order: index + 1
+          }))
+          .filter(detail => detail.code); // Only include details with codes
+
+        if (validDetails.length > 0) {
+          const { error: detailsError } = await supabase
+            .from('charge_panel_details' as any)
+            .insert(validDetails);
+
+          if (detailsError) {
+            console.error('❌ Error creating Charge Panel Details:', detailsError);
+            // Don't fail the whole operation, just log the error
+            toast({
+              title: "Warning",
+              description: "Charge Panel created but some details failed to save.",
+              variant: "default",
+            });
+          }
+        }
+      }
+
+      // Reset form
+      setNewChargePanel({
+        title: '',
+        code: 'CP001',
+        type: 'Professional',
+        description: '',
+        codeDetails: [{
+          id: '1',
+          code: '',
+          pos: '',
+          tos: '',
+          modifierOptions: 'Code Defaults',
+          modifier1: '',
+          modifier2: '',
+          modifier3: '',
+          modifier4: '',
+          price: 'Code Default',
+          units: '0.00',
+          total: '',
+          other: 'Other',
+          delete: false
+        }]
+      });
+      setIsNewChargePanelDialogOpen(false);
+
+      // Refresh the Charge Panels list
+      await fetchChargePanelsFromDatabase();
+
+      toast({
+        title: "Charge Panel Added",
+        description: `Charge Panel ${newChargePanel.title} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Charge Panel:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Charge Panel. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchFeeSchedulesFromDatabase = async () => {
+    if (isFetchingFeeScheduleRef.current) {
+      return;
+    }
+    isFetchingFeeScheduleRef.current = true;
+    setIsLoadingFeeSchedules(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('fee_schedules' as any)
+        .select('*')
+        .order('sequence_number', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching fee schedules:', error);
+        if (error.code === 'PGRST205' || error.code === '42P01' || 
+            error.message?.includes('schema cache') || 
+            error.message?.includes('does not exist')) {
+          toast({
+            title: 'Table Not Found',
+            description: 'Fee schedules table does not exist. Please run CREATE_FEE_SCHEDULES_TABLE.sql in Supabase SQL Editor.',
+            variant: 'destructive',
+          });
+          setFeeSchedules([]);
+          return;
+        }
+        throw error;
+      }
+
+      if (data) {
+        // Transform data to match the expected structure
+        const transformedData = data.map((schedule: any) => ({
+          id: schedule.id,
+          name: schedule.name,
+          description: schedule.description || '',
+          sequence_number: schedule.sequence_number,
+          effective_from: schedule.effective_from,
+          effective_to: schedule.effective_to,
+          price_creation_method: schedule.price_creation_method,
+          creation_settings: schedule.creation_settings,
+          status: schedule.status,
+          inactive: !schedule.is_active || schedule.status === 'inactive',
+          created_at: schedule.created_at,
+          updated_at: schedule.updated_at
+        }));
+        setFeeSchedules(transformedData);
+      } else {
+        setFeeSchedules([]);
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch fee schedules:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to fetch fee schedules. Please try again.',
+        variant: 'destructive',
+      });
+      setFeeSchedules([]);
+    } finally {
+      setIsLoadingFeeSchedules(false);
+      isFetchingFeeScheduleRef.current = false;
+    }
+  };
+
+  const fetchContractsFromDatabase = async () => {
+    if (isFetchingContractRef.current) {
+      return;
+    }
+
+    try {
+      isFetchingContractRef.current = true;
+      setIsLoadingContracts(true);
+      console.log('🔍 Fetching Contracts from database...');
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ No active session. Cannot fetch Contracts.');
+        setContracts([]);
+        setIsLoadingContracts(false);
+        isFetchingContractRef.current = false;
+        return;
+      }
+
+      // Fetch contracts with their procedures
+      const { data: contractsData, error: contractsError } = await supabase
+        .from('contracts' as any)
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (contractsError) {
+        console.error('❌ Error fetching Contracts:', contractsError);
+        if (contractsError.code === 'PGRST205' || contractsError.code === '42P01' || 
+            contractsError.message?.includes('schema cache') || 
+            contractsError.message?.includes('does not exist')) {
+          console.warn('⚠️ Contracts table not found in schema cache. Please run CREATE_CONTRACTS_TABLE.sql');
+          toast({
+            title: 'Schema Cache Error',
+            description: 'Table exists but not in schema cache. Run CREATE_CONTRACTS_TABLE.sql and restart Supabase project.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Error loading Contracts',
+            description: contractsError.message,
+            variant: 'destructive',
+          });
+        }
+        setContracts([]);
+        return;
+      }
+
+      // Fetch procedures for all contracts
+      const contractIds = (contractsData || []).map((c: any) => c.id);
+      let proceduresData: any[] = [];
+      
+      if (contractIds.length > 0) {
+        const { data: procedures, error: proceduresError } = await supabase
+          .from('contract_procedures' as any)
+          .select('*')
+          .in('contract_id', contractIds)
+          .order('contract_id', { ascending: true })
+          .order('sequence_order', { ascending: true });
+
+        if (!proceduresError && procedures) {
+          proceduresData = procedures;
+        }
+      }
+
+      // Transform database records to match Code interface
+      const transformedContracts: Code[] = (contractsData || []).map((contract: any) => {
+        const contractProcedures = proceduresData.filter((p: any) => p.contract_id === contract.id);
+        const proceduresCount = contractProcedures.length;
+        
+        return {
+          id: contract.id,
+          code: contract.name || '',
+          description: contract.type || '',
+          price: 0.00, // Contracts don't have direct prices
+          inactive: !(contract.is_active || contract.status === 'active'),
+          type: 'HCPCS' as 'CPT' | 'HCPCS',
+          createdAt: contract.created_at || '',
+          updatedAt: contract.updated_at || contract.created_at || '',
+          // Store additional data for display
+          contractType: contract.type,
+          sequenceNumber: contract.sequence_number,
+          proceduresCount: proceduresCount
+        } as Code & { contractType?: string; sequenceNumber?: string; proceduresCount?: number };
+      });
+
+      console.log(`✅ Successfully loaded ${transformedContracts.length} Contracts from database`);
+      setContracts(transformedContracts);
+    } catch (error: any) {
+      console.error('💥 CRITICAL ERROR in fetchContractsFromDatabase:', error);
+      toast({
+        title: 'Error loading Contracts',
+        description: error.message || 'Failed to load Contracts from database',
+        variant: 'destructive',
+      });
+      setContracts([]);
+    } finally {
+      setIsLoadingContracts(false);
+      isFetchingContractRef.current = false;
+    }
+  };
+
+  const handleSaveNewContract = async () => {
+    if (!contractPreview.name || !contractPreview.sequenceNumber) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Name and Sequence #).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Contract:', contractPreview);
+
+      // Prepare contract data
+      const contractData: any = {
+        name: contractPreview.name.trim(),
+        type: contractPreview.type || 'FFS',
+        sequence_number: contractPreview.sequenceNumber.trim(),
+        allow_users_to_update_prices: contractPreview.allowUsersToUpdatePrices || false,
+        status: 'active',
+        is_active: true
+      };
+
+      // Insert the contract
+      const { data: contractResult, error: contractError } = await supabase
+        .from('contracts' as any)
+        .insert(contractData)
+        .select()
+        .single();
+
+      if (contractError) {
+        console.error('❌ Error creating Contract:', contractError);
+        if (contractError.code === 'PGRST205' || contractError.code === '42P01' || 
+            contractError.message?.includes('schema cache') || 
+            contractError.message?.includes('does not exist')) {
+          toast({
+            title: 'Schema Cache Error',
+            description: 'Table exists but not in schema cache. Run CREATE_CONTRACTS_TABLE.sql and restart Supabase project.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        if (contractError.code === '23505') { // Unique constraint violation
+          toast({
+            title: 'Duplicate Sequence Number',
+            description: 'A contract with this sequence number already exists. Please use a different sequence number.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error(contractError.message || 'Failed to create Contract');
+      }
+
+      // Insert contract procedures if any exist
+      if (contractResult && !contractError && contractPreview.procedures && contractPreview.procedures.length > 0) {
+        const contractId = (contractResult as any).id;
+        if (!contractId) {
+          throw new Error('Failed to get contract ID after creation');
+        }
+        
+        const validProcedures = contractPreview.procedures
+          .filter(proc => !proc.exclude && proc.code) // Filter out excluded and empty codes
+          .map((proc, index) => ({
+            contract_id: contractId,
+            code: proc.code || '',
+            price: proc.price ? parseFloat(proc.price.toString()) : 0.00,
+            description: proc.description || null,
+            type: proc.type || 'Procedure',
+            exclude: proc.exclude || false,
+            sequence_order: index + 1
+          }))
+          .filter(proc => proc.code); // Only include procedures with codes
+
+        if (validProcedures.length > 0) {
+          const { error: proceduresError } = await supabase
+            .from('contract_procedures' as any)
+            .insert(validProcedures);
+
+          if (proceduresError) {
+            console.error('❌ Error creating Contract Procedures:', proceduresError);
+            // Don't fail the whole operation, just log the error
+            toast({
+              title: "Warning",
+              description: "Contract created but some procedures failed to save.",
+              variant: "default",
+            });
+          }
+        }
+      }
+
+      // Reset form
+      setContractPreview({
+        name: '',
+        type: 'FFS',
+        sequenceNumber: 'NEW',
+        allowUsersToUpdatePrices: true,
+        procedures: [
+          { id: '1', code: '71271', price: '0.00', description: 'CT THORAX LUNG CANCER SCR C-', type: 'Procedure', exclude: false },
+          { id: '2', code: '76536', price: '0.00', description: 'US EXAM OF HEAD AND NECK', type: 'Procedure', exclude: false },
+          { id: '3', code: '76705', price: '0.00', description: 'ECHO EXAM OF ABDOMEN', type: 'Procedure', exclude: false },
+          { id: '4', code: '76770', price: '0.00', description: 'US EXAM ABDO BACK WALL COMP', type: 'Procedure', exclude: false },
+          { id: '5', code: '76856', price: '0.00', description: 'US EXAM PELVIC COMPLETE', type: 'Procedure', exclude: false },
+          { id: '6', code: '76857', price: '0.00', description: 'US EXAM PELVIC LIMITED', type: 'Procedure', exclude: false },
+          { id: '7', code: '76870', price: '0.00', description: 'US EXAM SCROTUM', type: 'Procedure', exclude: false },
+          { id: '8', code: '77063', price: '0.00', description: 'BREAST TOMOSYNTHESIS BI', type: 'Procedure', exclude: false },
+          { id: '9', code: '77067', price: '0.00', description: 'SCR MAMMO BI INCL CAD', type: 'Procedure', exclude: false },
+          { id: '10', code: '93306', price: '0.00', description: 'TTE W/DOPPLER COMPLETE', type: 'Procedure', exclude: false },
+          { id: '11', code: '93880', price: '0.00', description: 'EXTRACRANIAL BILAT STUDY', type: 'Procedure', exclude: false },
+          { id: '12', code: '93978', price: '0.00', description: 'VASCULAR STUDY', type: 'Procedure', exclude: false }
+        ]
+      });
+      setIsContractPreviewOpen(false);
+      setIsNewContractDialogOpen(false);
+
+      // Refresh the Contracts list
+      await fetchContractsFromDatabase();
+
+      toast({
+        title: "Contract Added",
+        description: `Contract ${contractPreview.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Contract:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Contract. Please try again.',
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Helper function to apply price adjustments
+  const applyPriceAdjustment = (basePrice: number, adjustment: any): number => {
+    let adjustedPrice = basePrice;
+
+    if (adjustment.priceAdjustment === 'increase') {
+      const increasePercent = parseFloat(adjustment.increaseBy || '0');
+      adjustedPrice = basePrice * (1 + increasePercent / 100);
+    } else if (adjustment.priceAdjustment === 'decrease') {
+      const decreasePercent = parseFloat(adjustment.decreaseBy || '0');
+      adjustedPrice = basePrice * (1 - decreasePercent / 100);
+    } else if (adjustment.priceAdjustment === 'adjust-to') {
+      const multiplier = parseFloat(adjustment.adjustTo || '1');
+      adjustedPrice = basePrice * multiplier;
+    }
+
+    if (adjustment.roundUp) {
+      adjustedPrice = Math.ceil(adjustedPrice);
+    }
+
+    return Math.max(0, adjustedPrice); // Ensure price is not negative
+  };
+
+  // Helper function to process procedures based on creation method
+  const processFeeScheduleProcedures = async (
+    method: string,
+    feeScheduleId: string,
+    settings: any
+  ): Promise<void> => {
+    let procedures: any[] = [];
+
+    try {
+      if (method === 'empty') {
+        // Use procedures from feeSchedulePreview
+        procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+          fee_schedule_id: feeScheduleId,
+          code: proc.code || '',
+          price: proc.price ? parseFloat(proc.price.toString()) : 0.00,
+          description: proc.description || null,
+          type: proc.type || 'Procedure',
+          sequence_order: index + 1
+        })).filter(proc => proc.code);
+      } else if (method === 'another-fee-schedule') {
+        // Get selected fee schedule and copy its procedures
+        const selectedSchedule = settings.selectedFeeSchedules.find((s: any) => s.selected);
+        if (selectedSchedule) {
+          // Fetch procedures from the selected fee schedule
+          // Note: This would require fetching from another fee schedule
+          // For now, we'll use the preview procedures
+          procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+            fee_schedule_id: feeScheduleId,
+            code: proc.code || '',
+            price: applyPriceAdjustment(
+              proc.price ? parseFloat(proc.price.toString()) : 0.00,
+              settings
+            ),
+            description: proc.description || null,
+            type: proc.type || 'Procedure',
+            sequence_order: index + 1
+          })).filter(proc => proc.code);
+        }
+      } else if (method === 'medicare') {
+        // Medicare fee schedule - would need to fetch from Medicare API or database
+        // For now, use preview procedures with adjustments
+        procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+          fee_schedule_id: feeScheduleId,
+          code: proc.code || '',
+          price: applyPriceAdjustment(
+            proc.price ? parseFloat(proc.price.toString()) : 0.00,
+            settings
+          ),
+          description: proc.description || null,
+          type: proc.type || 'Procedure',
+          sequence_order: index + 1
+        })).filter(proc => proc.code);
+      } else if (method === 'contract') {
+        // Get procedures from contract
+        if (settings.contractMethod === 'specific-contract' && settings.selectedContract) {
+          // Fetch procedures from the selected contract
+          const { data: contractProcedures } = await supabase
+            .from('contract_procedures' as any)
+            .select('*')
+            .eq('contract_id', settings.selectedContract);
+
+          if (contractProcedures) {
+            procedures = contractProcedures.map((proc: any, index: number) => ({
+              fee_schedule_id: feeScheduleId,
+              code: proc.code || '',
+              price: applyPriceAdjustment(parseFloat(proc.price || '0'), settings),
+              description: proc.description || null,
+              type: proc.type || 'Procedure',
+              sequence_order: index + 1
+            })).filter((proc: any) => proc.code);
+          }
+        } else if (settings.contractMethod === 'maximum-price') {
+          // Get maximum price from all contracts for each code
+          // This would require a more complex query
+          // For now, use preview procedures
+          procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+            fee_schedule_id: feeScheduleId,
+            code: proc.code || '',
+            price: applyPriceAdjustment(
+              proc.price ? parseFloat(proc.price.toString()) : 0.00,
+              settings
+            ),
+            description: proc.description || null,
+            type: proc.type || 'Procedure',
+            sequence_order: index + 1
+          })).filter(proc => proc.code);
+        }
+      } else if (method === 'charges') {
+        // Get maximum charges from the last N days
+        // This would require querying charges/transactions table
+        // For now, use preview procedures
+        procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+          fee_schedule_id: feeScheduleId,
+          code: proc.code || '',
+          price: applyPriceAdjustment(
+            proc.price ? parseFloat(proc.price.toString()) : 0.00,
+            settings
+          ),
+          description: proc.description || null,
+          type: proc.type || 'Procedure',
+          sequence_order: index + 1
+        })).filter(proc => proc.code);
+      } else if (method === 'import') {
+        // Import from file - would need to parse CSV/Excel
+        // For now, use preview procedures
+        procedures = feeSchedulePreview.procedures.map((proc, index) => ({
+          fee_schedule_id: feeScheduleId,
+          code: proc.code || '',
+          price: applyPriceAdjustment(
+            proc.price ? parseFloat(proc.price.toString()) : 0.00,
+            settings
+          ),
+          description: proc.description || null,
+          type: proc.type || 'Procedure',
+          sequence_order: index + 1
+        })).filter(proc => proc.code);
+      }
+
+      // Insert procedures if any exist
+      if (procedures.length > 0) {
+        const { error: proceduresError } = await supabase
+          .from('fee_schedule_procedures' as any)
+          .insert(procedures);
+
+        if (proceduresError) {
+          console.error('❌ Error creating Fee Schedule Procedures:', proceduresError);
+          throw new Error('Failed to save procedures');
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error processing procedures:', error);
+      throw error;
+    }
+  };
+
+  // Main function to save fee schedule
+  const handleSaveFeeSchedule = async () => {
+    if (!feeSchedulePreview.name || !feeSchedulePreview.sequenceNumber) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in the required fields (Name and Sequence #).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      console.log('💾 Creating Fee Schedule:', {
+        preview: feeSchedulePreview,
+        method: newFeeSchedule.priceCreationMethod,
+        settings: {
+          anotherFeeSchedule: anotherFeeScheduleSettings,
+          medicare: medicareSettings,
+          contract: contractBasedSettings,
+          charges: chargesBasedSettings,
+          import: importSettings
+        }
+      });
+
+      // Get settings based on creation method
+      let creationSettings: any = {};
+      if (newFeeSchedule.priceCreationMethod === 'another-fee-schedule') {
+        creationSettings = anotherFeeScheduleSettings;
+      } else if (newFeeSchedule.priceCreationMethod === 'medicare') {
+        creationSettings = medicareSettings;
+      } else if (newFeeSchedule.priceCreationMethod === 'contract') {
+        creationSettings = contractBasedSettings;
+      } else if (newFeeSchedule.priceCreationMethod === 'charges') {
+        creationSettings = chargesBasedSettings;
+      } else if (newFeeSchedule.priceCreationMethod === 'import') {
+        creationSettings = importSettings;
+      }
+
+      // Prepare fee schedule data
+      const feeScheduleData: any = {
+        name: feeSchedulePreview.name.trim(),
+        description: feeSchedulePreview.description || null,
+        sequence_number: feeSchedulePreview.sequenceNumber.trim(),
+        effective_from: feeSchedulePreview.effectiveFrom || null,
+        effective_to: feeSchedulePreview.effectiveTo || null,
+        price_creation_method: newFeeSchedule.priceCreationMethod,
+        creation_settings: creationSettings,
+        status: 'active',
+        is_active: true
+      };
+
+      // Remove null values for optional fields
+      Object.keys(feeScheduleData).forEach(key => {
+        if (feeScheduleData[key] === null || feeScheduleData[key] === '') {
+          if (key !== 'description' && key !== 'effective_from' && key !== 'effective_to') {
+            delete feeScheduleData[key];
+          }
+        }
+      });
+
+      // Insert the fee schedule
+      const { data: feeScheduleResult, error: feeScheduleError } = await supabase
+        .from('fee_schedules' as any)
+        .insert(feeScheduleData)
+        .select()
+        .single();
+
+      if (feeScheduleError) {
+        console.error('❌ Error creating Fee Schedule:', feeScheduleError);
+        if (feeScheduleError.code === 'PGRST205' || feeScheduleError.code === '42P01' || 
+            feeScheduleError.message?.includes('schema cache') || 
+            feeScheduleError.message?.includes('does not exist')) {
+          toast({
+            title: 'Schema Cache Error',
+            description: 'Table exists but not in schema cache. Run CREATE_FEE_SCHEDULES_TABLE.sql and restart Supabase project.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        if (feeScheduleError.code === '23505') { // Unique constraint violation
+          toast({
+            title: 'Duplicate Sequence Number',
+            description: 'A fee schedule with this sequence number already exists. Please use a different sequence number.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error(feeScheduleError.message || 'Failed to create Fee Schedule');
+      }
+
+      // Process and insert procedures based on creation method
+      if (feeScheduleResult && !feeScheduleError) {
+        const feeScheduleId = (feeScheduleResult as any).id;
+        if (!feeScheduleId) {
+          throw new Error('Failed to get fee schedule ID after creation');
+        }
+
+        await processFeeScheduleProcedures(
+          newFeeSchedule.priceCreationMethod,
+          feeScheduleId,
+          creationSettings
+        );
+      }
+
+      // Reset form
+      setFeeSchedulePreview({
+        name: '',
+        effectiveFrom: '',
+        effectiveTo: '',
+        sequenceNumber: 'NEW',
+        description: '',
+        procedures: []
+      });
+      setNewFeeSchedule({ priceCreationMethod: 'empty' });
+      setIsFeeSchedulePreviewOpen(false);
+      setIsNewFeeScheduleDialogOpen(false);
+
+      // Refresh the fee schedules list
+      await fetchFeeSchedulesFromDatabase();
+
+      toast({
+        title: "Fee Schedule Added",
+        description: `Fee Schedule ${feeSchedulePreview.name} has been successfully added.`,
+      });
+    } catch (error: any) {
+      console.error('💥 Failed to create Fee Schedule:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to create Fee Schedule. Please try again.',
+        variant: "destructive",
+      });
     }
   };
 
@@ -1079,6 +2351,9 @@ export const Codes: React.FC = () => {
       });
       setIsNewCodeDialogOpen(false);
 
+      // Refresh the procedure codes list
+      await fetchProcedureCodesFromDatabase();
+
       toast({
         title: "CPT/HCPCS Code Added",
         description: `Code ${newCode.code} has been successfully added.`,
@@ -1173,12 +2448,13 @@ export const Codes: React.FC = () => {
     return matchesSearch && matchesInactive;
   });
 
-  const filteredFeeSchedules = feeSchedules.filter(code => {
+  const filteredFeeSchedules = feeSchedules.filter(schedule => {
     const matchesSearch = 
-      code.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      code.description.toLowerCase().includes(searchTerm.toLowerCase());
+      (schedule.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (schedule.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (schedule.sequence_number || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesInactive = includeInactive || !code.inactive;
+    const matchesInactive = includeInactive || !schedule.inactive;
     
     return matchesSearch && matchesInactive;
   });
@@ -1286,37 +2562,54 @@ export const Codes: React.FC = () => {
           {/* Recently Opened Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recently Opened</CardTitle>
+              <CardTitle>CPT®/HCPCS Codes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4 font-semibold">Code</th>
-                      <th className="text-left py-3 px-4 font-semibold">Description</th>
-                      <th className="text-left py-3 px-4 font-semibold">Price</th>
-                      <th className="text-left py-3 px-4 font-semibold">Inactive</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProcedureCodes.map((code) => (
-                      <tr key={code.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono">{code.code}</td>
-                        <td className="py-3 px-4">{code.description}</td>
-                        <td className="py-3 px-4">${code.price.toFixed(2)}</td>
-                        <td className="py-3 px-4">
-                          {code.inactive ? (
-                            <Badge variant="secondary">Inactive</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
+              {isLoadingProcedureCodes ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-muted-foreground">Loading CPT/HCPCS codes...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-semibold">Code</th>
+                        <th className="text-left py-3 px-4 font-semibold">Description</th>
+                        <th className="text-left py-3 px-4 font-semibold">Price</th>
+                        <th className="text-left py-3 px-4 font-semibold">Inactive</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredProcedureCodes.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                            No CPT/HCPCS codes found. Click "New CPT®/HCPCS" to add your first code.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredProcedureCodes.map((code) => (
+                          <tr key={code.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono">{code.code}</td>
+                            <td className="py-3 px-4">{code.description}</td>
+                            <td className="py-3 px-4">${code.price.toFixed(2)}</td>
+                            <td className="py-3 px-4">
+                              {code.inactive ? (
+                                <Badge variant="secondary">Inactive</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1493,20 +2786,6 @@ export const Codes: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-<<<<<<< HEAD
-                    {filteredICDProcedureCodes.map((code) => (
-                      <tr key={code.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono">{code.code}</td>
-                        <td className="py-3 px-4">{code.description}</td>
-                        <td className="py-3 px-4">
-                          {code.inactive ? (
-                            <Badge variant="secondary">Inactive</Badge>
-                          ) : (
-                            <div className="flex items-center">
-                              <Checkbox checked={!code.inactive} disabled />
-                            </div>
-                          )}
-=======
                     {isLoadingICDProcedureCodes ? (
                       <tr>
                         <td colSpan={3} className="py-8 text-center">
@@ -1514,7 +2793,6 @@ export const Codes: React.FC = () => {
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-3"></div>
                             <span className="text-muted-foreground">Loading ICD Procedure codes...</span>
                           </div>
->>>>>>> 14dfb14 (Database Added)
                         </td>
                       </tr>
                     ) : filteredICDProcedureCodes.length === 0 ? (
@@ -1533,7 +2811,7 @@ export const Codes: React.FC = () => {
                               <Badge variant="secondary">Inactive</Badge>
                             ) : (
                               <div className="flex items-center">
-                                <Checkbox checked={!code.inactive} readOnly />
+                                <Checkbox checked={!code.inactive} disabled />
                               </div>
                             )}
                           </td>
@@ -1801,40 +3079,63 @@ export const Codes: React.FC = () => {
             </Button>
           </div>
 
-          {/* Recently Opened Table */}
+          {/* Adjustment Codes Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recently Opened</CardTitle>
+              <CardTitle>Adjustment Codes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4 font-semibold">Code</th>
-                      <th className="text-left py-3 px-4 font-semibold">Description</th>
-                      <th className="text-left py-3 px-4 font-semibold">Type</th>
-                      <th className="text-left py-3 px-4 font-semibold">Inactive</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAdjustmentCodes.map((code) => (
-                      <tr key={code.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4 font-mono">{code.code}</td>
-                        <td className="py-3 px-4">{code.description}</td>
-                        <td className="py-3 px-4">DISCOUNT</td>
-                        <td className="py-3 px-4">
-                          {code.inactive ? (
-                            <Badge variant="secondary">Inactive</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </td>
+              {isLoadingAdjustmentCodes ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-muted-foreground">Loading Adjustment codes...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-semibold">Code</th>
+                        <th className="text-left py-3 px-4 font-semibold">Description</th>
+                        <th className="text-left py-3 px-4 font-semibold">Type</th>
+                        <th className="text-left py-3 px-4 font-semibold">Inactive</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredAdjustmentCodes.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                            No Adjustment codes found. Click "New Adjustment Code" to add your first code.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAdjustmentCodes.map((code) => {
+                          // Get adjustment type from category field (stored in database)
+                          const adjustmentType = (code as any).category || (code as any).adjustmentType || 'Credit';
+                          return (
+                            <tr key={code.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-4 font-mono">{code.code}</td>
+                              <td className="py-3 px-4">{code.description}</td>
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{adjustmentType}</Badge>
+                              </td>
+                              <td className="py-3 px-4">
+                                {code.inactive ? (
+                                  <Badge variant="secondary">Inactive</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1883,15 +3184,18 @@ export const Codes: React.FC = () => {
             </Button>
           </div>
 
-          {/* Recently Opened Table */}
+          {/* Inventory Codes Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recently Opened</CardTitle>
+              <CardTitle>Inventory Codes</CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredInventoryCodes.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No recent items</p>
+              {isLoadingInventoryCodes ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-muted-foreground">Loading Inventory codes...</p>
+                  </div>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1905,20 +3209,28 @@ export const Codes: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredInventoryCodes.map((code) => (
-                        <tr key={code.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 font-mono">{code.code}</td>
-                          <td className="py-3 px-4">{code.description}</td>
-                          <td className="py-3 px-4">{code.type}</td>
-                          <td className="py-3 px-4">
-                            {code.inactive ? (
-                              <Badge variant="secondary">Inactive</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                      {filteredInventoryCodes.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                            No Inventory codes found. Click "New Inventory" to add your first code.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredInventoryCodes.map((code) => (
+                          <tr key={code.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono">{code.code}</td>
+                            <td className="py-3 px-4">{code.description}</td>
+                            <td className="py-3 px-4">{code.type}</td>
+                            <td className="py-3 px-4">
+                              {code.inactive ? (
+                                <Badge variant="secondary">Inactive</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1976,15 +3288,18 @@ export const Codes: React.FC = () => {
             </Button>
           </div>
 
-          {/* Recently Opened Table */}
+          {/* Charge Panels Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recently Opened</CardTitle>
+              <CardTitle>Charge Panels</CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredChargePanels.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No recent items</p>
+              {isLoadingChargePanels ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-muted-foreground">Loading Charge Panels...</p>
+                  </div>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1993,29 +3308,42 @@ export const Codes: React.FC = () => {
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-semibold">Name</th>
                         <th className="text-left py-3 px-4 font-semibold">Description</th>
+                        <th className="text-left py-3 px-4 font-semibold">Type</th>
                         <th className="text-left py-3 px-4 font-semibold">Codes</th>
                         <th className="text-left py-3 px-4 font-semibold">Inactive</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredChargePanels.map((code) => (
-                        <tr key={code.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium">{code.code}</td>
-                          <td className="py-3 px-4 text-muted-foreground">{code.description || '-'}</td>
-                          <td className="py-3 px-4 font-mono text-sm">
-                            {code.code === 'CT BILLING' ? '93880,76536,93306,93...' : 
-                             code.code === 'MALE US' ? '76770,76870,76536' : 
-                             code.code === 'MALE' ? '76770,76870,76536' : '-'}
-                          </td>
-                          <td className="py-3 px-4">
-                            {code.inactive ? (
-                              <Badge variant="secondary">Inactive</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                      {filteredChargePanels.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                            No Charge Panels found. Click "Add Panel" to create your first charge panel.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredChargePanels.map((panel) => {
+                          const panelData = panel as Code & { title?: string; panelType?: string; codesCount?: number; codesList?: string };
+                          return (
+                            <tr key={panel.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-4 font-medium">{panelData.title || panel.code}</td>
+                              <td className="py-3 px-4 text-muted-foreground">{panel.description || '-'}</td>
+                              <td className="py-3 px-4">
+                                <Badge variant="outline">{panelData.panelType || 'Professional'}</Badge>
+                              </td>
+                              <td className="py-3 px-4 font-mono text-sm">
+                                {panelData.codesCount ? `${panelData.codesCount} codes` : '-'}
+                              </td>
+                              <td className="py-3 px-4">
+                                {panel.inactive ? (
+                                  <Badge variant="secondary">Inactive</Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -2063,7 +3391,7 @@ export const Codes: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-4">
-            <Button>
+            <Button onClick={() => setIsNewFeeScheduleDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               New Fee Schedule
             </Button>
@@ -2073,15 +3401,26 @@ export const Codes: React.FC = () => {
             </Button>
           </div>
 
-          {/* Recently Opened Table */}
+          {/* Fee Schedules Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Recently Opened</CardTitle>
+              <CardTitle>Fee Schedules</CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredFeeSchedules.length === 0 ? (
+              {isLoadingFeeSchedules ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-muted-foreground">Loading fee schedules...</p>
+                  </div>
+                </div>
+              ) : filteredFeeSchedules.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground">No recent items</p>
+                  <p className="text-muted-foreground">
+                    {searchTerm || !includeInactive 
+                      ? 'No fee schedules found matching your criteria.' 
+                      : 'No fee schedules found. Click "New Fee Schedule" to create your first fee schedule.'}
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -2089,24 +3428,44 @@ export const Codes: React.FC = () => {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-semibold">Name</th>
+                        <th className="text-left py-3 px-4 font-semibold">Sequence #</th>
                         <th className="text-left py-3 px-4 font-semibold">Description</th>
-                        <th className="text-left py-3 px-4 font-semibold">Codes</th>
-                        <th className="text-left py-3 px-4 font-semibold">Inactive</th>
+                        <th className="text-left py-3 px-4 font-semibold">Method</th>
+                        <th className="text-left py-3 px-4 font-semibold">Effective From</th>
+                        <th className="text-left py-3 px-4 font-semibold">Effective To</th>
+                        <th className="text-left py-3 px-4 font-semibold">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredFeeSchedules.map((code) => (
-                        <tr key={code.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium">{code.code}</td>
-                          <td className="py-3 px-4 text-muted-foreground">-</td>
-                          <td className="py-3 px-4 font-mono text-sm">
-                            {code.code === 'Default Fee Schedule' ? 'FS001,FS002,FS003,FS...' : '-'}
+                      {filteredFeeSchedules.map((schedule) => (
+                        <tr key={schedule.id} className="border-b hover:bg-gray-50 cursor-pointer">
+                          <td className="py-3 px-4 font-medium">{schedule.name}</td>
+                          <td className="py-3 px-4 font-mono text-sm">{schedule.sequence_number}</td>
+                          <td className="py-3 px-4 text-muted-foreground">
+                            {schedule.description || '-'}
                           </td>
                           <td className="py-3 px-4">
-                            {code.inactive ? (
+                            <Badge variant="outline">
+                              {schedule.price_creation_method === 'empty' ? 'Empty' :
+                               schedule.price_creation_method === 'another-fee-schedule' ? 'Based on Fee Schedule' :
+                               schedule.price_creation_method === 'medicare' ? 'Medicare' :
+                               schedule.price_creation_method === 'contract' ? 'Contract' :
+                               schedule.price_creation_method === 'charges' ? 'Charges' :
+                               schedule.price_creation_method === 'import' ? 'Import' :
+                               schedule.price_creation_method || '-'}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            {schedule.effective_from ? new Date(schedule.effective_from).toLocaleDateString() : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-sm">
+                            {schedule.effective_to ? new Date(schedule.effective_to).toLocaleDateString() : '-'}
+                          </td>
+                          <td className="py-3 px-4">
+                            {schedule.inactive ? (
                               <Badge variant="secondary">Inactive</Badge>
                             ) : (
-                              <span className="text-muted-foreground">-</span>
+                              <Badge variant="default">Active</Badge>
                             )}
                           </td>
                         </tr>
@@ -2174,9 +3533,14 @@ export const Codes: React.FC = () => {
               <CardTitle>Recently Opened</CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredContracts.length === 0 ? (
+              {isLoadingContracts ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-muted-foreground">Loading contracts...</span>
+                </div>
+              ) : filteredContracts.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground">No recent items</p>
+                  <p className="text-muted-foreground">No contracts found. Click "New Contract" to create one.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -2184,26 +3548,31 @@ export const Codes: React.FC = () => {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-semibold">Name</th>
-                        <th className="text-left py-3 px-4 font-semibold">Description</th>
+                        <th className="text-left py-3 px-4 font-semibold">Type</th>
+                        <th className="text-left py-3 px-4 font-semibold">Sequence #</th>
+                        <th className="text-left py-3 px-4 font-semibold">Procedures</th>
                         <th className="text-left py-3 px-4 font-semibold">Status</th>
-                        <th className="text-left py-3 px-4 font-semibold">Inactive</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredContracts.map((code) => (
-                        <tr key={code.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4 font-medium">{code.code}</td>
-                          <td className="py-3 px-4 text-muted-foreground">{code.description || '-'}</td>
-                          <td className="py-3 px-4 text-muted-foreground">-</td>
-                          <td className="py-3 px-4">
-                            {code.inactive ? (
-                              <Badge variant="secondary">Inactive</Badge>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredContracts.map((code) => {
+                        const contract = code as Code & { contractType?: string; sequenceNumber?: string; proceduresCount?: number };
+                        return (
+                          <tr key={code.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-medium">{code.code}</td>
+                            <td className="py-3 px-4 text-muted-foreground">{contract.contractType || '-'}</td>
+                            <td className="py-3 px-4 font-mono text-sm">{contract.sequenceNumber || '-'}</td>
+                            <td className="py-3 px-4 text-muted-foreground">{contract.proceduresCount || 0} procedures</td>
+                            <td className="py-3 px-4">
+                              {code.inactive ? (
+                                <Badge variant="secondary">Inactive</Badge>
+                              ) : (
+                                <Badge variant="default">Active</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -3420,11 +4789,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewAdjustmentDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new adjustment code:', newAdjustment);
-              setIsNewAdjustmentDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewAdjustment}>
               Save Adjustment Code
             </Button>
           </div>
@@ -3538,11 +4903,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewInventoryDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new inventory:', newInventory);
-              setIsNewInventoryDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewInventory}>
               Save Inventory
             </Button>
           </div>
@@ -3851,13 +5212,1002 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsNewChargePanelDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving new charge panel:', newChargePanel);
-              setIsNewChargePanelDialogOpen(false);
-            }}>
+            <Button onClick={handleSaveNewChargePanel}>
               Save Charge Panel
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Fee Schedule Dialog */}
+      <Dialog open={isNewFeeScheduleDialogOpen} onOpenChange={setIsNewFeeScheduleDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>New Fee Schedule</DialogTitle>
+            <DialogDescription>
+              Please choose how you would like to create the prices on this fee schedule.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <RadioGroup
+              value={newFeeSchedule.priceCreationMethod}
+              onValueChange={(value) => setNewFeeSchedule({ ...newFeeSchedule, priceCreationMethod: value })}
+              className="space-y-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="empty" id="fee-schedule-empty" />
+                <Label htmlFor="fee-schedule-empty" className="cursor-pointer">Create an empty fee schedule</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="another-fee-schedule" id="another-fee-schedule" />
+                <Label htmlFor="another-fee-schedule" className="cursor-pointer">
+                  Set prices based on another fee schedule
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="medicare" id="fee-schedule-medicare" />
+                <Label htmlFor="fee-schedule-medicare" className="cursor-pointer">
+                  Set prices based on the Medicare Fee Schedule
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="contract" id="fee-schedule-contract" />
+                <Label htmlFor="fee-schedule-contract" className="cursor-pointer">
+                  Set prices based on a Contract
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="charges" id="fee-schedule-charges" />
+                <Label htmlFor="fee-schedule-charges" className="cursor-pointer">
+                  Set prices based on charges entered
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="import" id="fee-schedule-import" />
+                <Label htmlFor="fee-schedule-import" className="cursor-pointer">
+                  Import prices
+                </Label>
+              </div>
+            </RadioGroup>
+
+            {/* Fee Schedule Selection and Adjust Prices - shown when "another-fee-schedule" is selected */}
+            {newFeeSchedule.priceCreationMethod === 'another-fee-schedule' && (
+              <div className="space-y-6 mt-6 pt-6 border-t">
+                {/* Fee Schedule Selection Table */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Fee Schedule Selection</h3>
+                  <div className="overflow-x-auto border border-gray-300 rounded-md">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="text-left py-3 px-4 font-semibold">Fee Schedule</th>
+                          <th className="text-left py-3 px-4 font-semibold">Effective From</th>
+                          <th className="text-left py-3 px-4 font-semibold">Effective To</th>
+                          <th className="text-left py-3 px-4 font-semibold">Sequence #</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {anotherFeeScheduleSettings.selectedFeeSchedules.map((schedule) => (
+                          <tr key={schedule.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="radio"
+                                  name="fee-schedule-selection"
+                                  id={`schedule-${schedule.id}`}
+                                  checked={schedule.selected}
+                                  onChange={() => {
+                                    const updated = anotherFeeScheduleSettings.selectedFeeSchedules.map(s =>
+                                      s.id === schedule.id ? { ...s, selected: true } : { ...s, selected: false }
+                                    );
+                                    setAnotherFeeScheduleSettings({
+                                      ...anotherFeeScheduleSettings,
+                                      selectedFeeSchedules: updated
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                                />
+                                <Label htmlFor={`schedule-${schedule.id}`} className="cursor-pointer">
+                                  {schedule.name}
+                                </Label>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <Input
+                                type="date"
+                                value={schedule.effectiveFrom}
+                                onChange={(e) => {
+                                  const updated = anotherFeeScheduleSettings.selectedFeeSchedules.map(s =>
+                                    s.id === schedule.id ? { ...s, effectiveFrom: e.target.value } : s
+                                  );
+                                  setAnotherFeeScheduleSettings({
+                                    ...anotherFeeScheduleSettings,
+                                    selectedFeeSchedules: updated
+                                  });
+                                }}
+                                className="w-full"
+                                autoComplete="off"
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <Input
+                                type="date"
+                                value={schedule.effectiveTo}
+                                onChange={(e) => {
+                                  const updated = anotherFeeScheduleSettings.selectedFeeSchedules.map(s =>
+                                    s.id === schedule.id ? { ...s, effectiveTo: e.target.value } : s
+                                  );
+                                  setAnotherFeeScheduleSettings({
+                                    ...anotherFeeScheduleSettings,
+                                    selectedFeeSchedules: updated
+                                  });
+                                }}
+                                className="w-full"
+                                autoComplete="off"
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center space-x-2">
+                                <Input
+                                  value={schedule.sequenceNumber}
+                                  onChange={(e) => {
+                                    const updated = anotherFeeScheduleSettings.selectedFeeSchedules.map(s =>
+                                      s.id === schedule.id ? { ...s, sequenceNumber: e.target.value } : s
+                                    );
+                                    setAnotherFeeScheduleSettings({
+                                      ...anotherFeeScheduleSettings,
+                                      selectedFeeSchedules: updated
+                                    });
+                                  }}
+                                  placeholder="Sequence #"
+                                  className="w-full"
+                                  autoComplete="off"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => {
+                                    const newSchedule = {
+                                      id: String(Date.now()),
+                                      name: 'Fee Schedule',
+                                      effectiveFrom: '',
+                                      effectiveTo: '',
+                                      sequenceNumber: '',
+                                      selected: false
+                                    };
+                                    setAnotherFeeScheduleSettings({
+                                      ...anotherFeeScheduleSettings,
+                                      selectedFeeSchedules: [...anotherFeeScheduleSettings.selectedFeeSchedules, newSchedule]
+                                    });
+                                  }}
+                                >
+                                  <Plus className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Adjust Prices Section */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Adjust Prices</h3>
+                    
+                    <RadioGroup
+                      value={anotherFeeScheduleSettings.priceAdjustment}
+                      onValueChange={(value) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, priceAdjustment: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no-adjustment" id="another-no-adjustment" />
+                        <Label htmlFor="another-no-adjustment">Do not adjust the prices of the new Fee Schedule</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="increase" id="another-increase" />
+                        <Label htmlFor="another-increase" className="flex items-center space-x-2">
+                          <span>Increase prices by</span>
+                          <Input
+                            value={anotherFeeScheduleSettings.increaseBy}
+                            onChange={(e) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, increaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="decrease" id="another-decrease" />
+                        <Label htmlFor="another-decrease" className="flex items-center space-x-2">
+                          <span>Decrease prices by</span>
+                          <Input
+                            value={anotherFeeScheduleSettings.decreaseBy}
+                            onChange={(e) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, decreaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="adjust-to" id="another-adjust-to" />
+                        <Label htmlFor="another-adjust-to" className="flex items-center space-x-2">
+                          <span>Adjust prices to</span>
+                          <Input
+                            value={anotherFeeScheduleSettings.adjustTo}
+                            onChange={(e) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, adjustTo: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>times (or</span>
+                          <Input
+                            value={anotherFeeScheduleSettings.adjustToPercent}
+                            onChange={(e) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, adjustToPercent: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>% of) the selected prices</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="another-round-up"
+                          checked={anotherFeeScheduleSettings.roundUp}
+                          onCheckedChange={(checked) => setAnotherFeeScheduleSettings({ ...anotherFeeScheduleSettings, roundUp: !!checked })}
+                        />
+                        <Label htmlFor="another-round-up">Round prices up to the next whole dollar amount</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Medicare Fee Schedule Settings - shown when "medicare" is selected */}
+            {newFeeSchedule.priceCreationMethod === 'medicare' && (
+              <div className="space-y-6 mt-6 pt-6 border-t">
+                {/* Medicare Fee Schedule Year */}
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="medicare-fee-schedule-year" className="text-sm font-medium text-gray-700 mb-2 block">
+                      Medicare Fee Schedule Year
+                    </Label>
+                    <Select value={medicareSettings.feeScheduleYear} onValueChange={(value) => setMedicareSettings({ ...medicareSettings, feeScheduleYear: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="2025">2025</SelectItem>
+                        <SelectItem value="2024">2024</SelectItem>
+                        <SelectItem value="2023">2023</SelectItem>
+                        <SelectItem value="2022">2022</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Medicare Carrier and Locality */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Medicare Carrier and Locality</h3>
+                    
+                    <RadioGroup
+                      value={medicareSettings.carrierMethod}
+                      onValueChange={(value) => setMedicareSettings({ ...medicareSettings, carrierMethod: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="zip-code" id="medicare-zip-code" />
+                        <Label htmlFor="medicare-zip-code" className="flex items-center space-x-2">
+                          <span>Use your ZIP code</span>
+                          <Input
+                            value={medicareSettings.zipCode}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, zipCode: e.target.value })}
+                            placeholder="ZIP code"
+                            className="w-32"
+                            autoComplete="off"
+                          />
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="carrier-locality" id="medicare-carrier-locality" />
+                        <Label htmlFor="medicare-carrier-locality" className="flex items-center space-x-2">
+                          <span>Enter the carrier and locality</span>
+                          <Input
+                            value={medicareSettings.carrier}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, carrier: e.target.value })}
+                            placeholder="Carrier"
+                            className="w-32"
+                            autoComplete="off"
+                          />
+                          <Input
+                            value={medicareSettings.locality}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, locality: e.target.value })}
+                            placeholder="Locality"
+                            className="w-32"
+                            autoComplete="off"
+                          />
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+
+                {/* Pricing Method */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Pricing Method</h3>
+                    
+                    <RadioGroup
+                      value={medicareSettings.pricingMethod}
+                      onValueChange={(value) => setMedicareSettings({ ...medicareSettings, pricingMethod: value })}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="non-facility" id="medicare-non-facility" />
+                          <Label htmlFor="medicare-non-facility">Non-facility pricing</Label>
+                        </div>
+                        <div className="flex items-center space-x-2 ml-6">
+                          <Checkbox
+                            id="medicare-include-non-applicable"
+                            checked={medicareSettings.includeNonApplicable}
+                            onCheckedChange={(checked) => setMedicareSettings({ ...medicareSettings, includeNonApplicable: !!checked })}
+                          />
+                          <Label htmlFor="medicare-include-non-applicable">Include prices for codes that are not applicable for non-facility</Label>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="facility" id="medicare-facility" />
+                        <Label htmlFor="medicare-facility">Facility pricing</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+
+                {/* Adjust Prices Section */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Adjust Prices</h3>
+                    
+                    <RadioGroup
+                      value={medicareSettings.priceAdjustment}
+                      onValueChange={(value) => setMedicareSettings({ ...medicareSettings, priceAdjustment: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no-adjustment" id="medicare-inline-no-adjustment" />
+                        <Label htmlFor="medicare-inline-no-adjustment">Do not adjust the prices of the new Fee Schedule</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="increase" id="medicare-inline-increase" />
+                        <Label htmlFor="medicare-inline-increase" className="flex items-center space-x-2">
+                          <span>Increase prices by</span>
+                          <Input
+                            value={medicareSettings.increaseBy}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, increaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="decrease" id="medicare-inline-decrease" />
+                        <Label htmlFor="medicare-inline-decrease" className="flex items-center space-x-2">
+                          <span>Decrease prices by</span>
+                          <Input
+                            value={medicareSettings.decreaseBy}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, decreaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="adjust-to" id="medicare-inline-adjust-to" />
+                        <Label htmlFor="medicare-inline-adjust-to" className="flex items-center space-x-2">
+                          <span>Adjust prices to</span>
+                          <Input
+                            value={medicareSettings.adjustTo}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, adjustTo: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>times (or</span>
+                          <Input
+                            value={medicareSettings.adjustToPercent}
+                            onChange={(e) => setMedicareSettings({ ...medicareSettings, adjustToPercent: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>% of) the selected prices</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="medicare-inline-round-up"
+                          checked={medicareSettings.roundUp}
+                          onCheckedChange={(checked) => setMedicareSettings({ ...medicareSettings, roundUp: !!checked })}
+                        />
+                        <Label htmlFor="medicare-inline-round-up">Round prices up to the next whole dollar amount</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Contract Settings - shown when "contract" is selected */}
+            {newFeeSchedule.priceCreationMethod === 'contract' && (
+              <div className="space-y-6 mt-6 pt-6 border-t">
+                {/* Contract Selection Method */}
+                <div className="space-y-4">
+                  <RadioGroup
+                    value={contractBasedSettings.contractMethod}
+                    onValueChange={(value) => setContractBasedSettings({ ...contractBasedSettings, contractMethod: value })}
+                    className="space-y-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="maximum-price" id="contract-maximum-price" />
+                      <Label htmlFor="contract-maximum-price">Use the maximum contract price for each code</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="specific-contract" id="contract-specific" />
+                      <Label htmlFor="contract-specific">Base prices on a specific contract</Label>
+                    </div>
+                  </RadioGroup>
+
+                  {/* Show contract selector when "specific-contract" is selected */}
+                  {contractBasedSettings.contractMethod === 'specific-contract' && (
+                    <div className="ml-6 mt-2">
+                      <Label htmlFor="select-contract" className="text-sm font-medium text-gray-700 mb-2 block">
+                        Specify Contract
+                      </Label>
+                      <Select 
+                        value={contractBasedSettings.selectedContract} 
+                        onValueChange={(value) => setContractBasedSettings({ ...contractBasedSettings, selectedContract: value })}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a contract" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="contract1">Contract 1 - Medicare FFS</SelectItem>
+                          <SelectItem value="contract2">Contract 2 - HMO Standard</SelectItem>
+                          <SelectItem value="contract3">Contract 3 - PPO Premium</SelectItem>
+                          <SelectItem value="contract4">Contract 4 - Medicaid</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Adjust Prices Section */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Adjust Prices</h3>
+                    
+                    <RadioGroup
+                      value={contractBasedSettings.priceAdjustment}
+                      onValueChange={(value) => setContractBasedSettings({ ...contractBasedSettings, priceAdjustment: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no-adjustment" id="contract-no-adjustment" />
+                        <Label htmlFor="contract-no-adjustment">Do not adjust the prices of the new Fee Schedule</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="increase" id="contract-increase" />
+                        <Label htmlFor="contract-increase" className="flex items-center space-x-2">
+                          <span>Increase prices by</span>
+                          <Input
+                            value={contractBasedSettings.increaseBy}
+                            onChange={(e) => setContractBasedSettings({ ...contractBasedSettings, increaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="decrease" id="contract-decrease" />
+                        <Label htmlFor="contract-decrease" className="flex items-center space-x-2">
+                          <span>Decrease prices by</span>
+                          <Input
+                            value={contractBasedSettings.decreaseBy}
+                            onChange={(e) => setContractBasedSettings({ ...contractBasedSettings, decreaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="adjust-to" id="contract-adjust-to" />
+                        <Label htmlFor="contract-adjust-to" className="flex items-center space-x-2">
+                          <span>Adjust prices to</span>
+                          <Input
+                            value={contractBasedSettings.adjustTo}
+                            onChange={(e) => setContractBasedSettings({ ...contractBasedSettings, adjustTo: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>times (or</span>
+                          <Input
+                            value={contractBasedSettings.adjustToPercent}
+                            onChange={(e) => setContractBasedSettings({ ...contractBasedSettings, adjustToPercent: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>% of) the selected prices</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="contract-round-up"
+                          checked={contractBasedSettings.roundUp}
+                          onCheckedChange={(checked) => setContractBasedSettings({ ...contractBasedSettings, roundUp: !!checked })}
+                        />
+                        <Label htmlFor="contract-round-up">Round prices up to the next whole dollar amount</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Charges Based Settings - shown when "charges" is selected */}
+            {newFeeSchedule.priceCreationMethod === 'charges' && (
+              <div className="space-y-6 mt-6 pt-6 border-t">
+                {/* Days Input */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      Set the prices based on the maximum amount entered in the last
+                    </Label>
+                    <Input
+                      value={chargesBasedSettings.days}
+                      onChange={(e) => setChargesBasedSettings({ ...chargesBasedSettings, days: e.target.value })}
+                      className="w-20"
+                      type="number"
+                      min="1"
+                      autoComplete="off"
+                    />
+                    <Label className="text-sm font-medium text-gray-700">days.</Label>
+                  </div>
+                </div>
+
+                {/* Adjust Prices Section */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Adjust Prices</h3>
+                    
+                    <RadioGroup
+                      value={chargesBasedSettings.priceAdjustment}
+                      onValueChange={(value) => setChargesBasedSettings({ ...chargesBasedSettings, priceAdjustment: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no-adjustment" id="charges-no-adjustment" />
+                        <Label htmlFor="charges-no-adjustment">Do not adjust the prices of the new Fee Schedule</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="increase" id="charges-increase" />
+                        <Label htmlFor="charges-increase" className="flex items-center space-x-2">
+                          <span>Increase prices by</span>
+                          <Input
+                            value={chargesBasedSettings.increaseBy}
+                            onChange={(e) => setChargesBasedSettings({ ...chargesBasedSettings, increaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="decrease" id="charges-decrease" />
+                        <Label htmlFor="charges-decrease" className="flex items-center space-x-2">
+                          <span>Decrease prices by</span>
+                          <Input
+                            value={chargesBasedSettings.decreaseBy}
+                            onChange={(e) => setChargesBasedSettings({ ...chargesBasedSettings, decreaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="adjust-to" id="charges-adjust-to" />
+                        <Label htmlFor="charges-adjust-to" className="flex items-center space-x-2">
+                          <span>Adjust prices to</span>
+                          <Input
+                            value={chargesBasedSettings.adjustTo}
+                            onChange={(e) => setChargesBasedSettings({ ...chargesBasedSettings, adjustTo: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>times (or</span>
+                          <Input
+                            value={chargesBasedSettings.adjustToPercent}
+                            onChange={(e) => setChargesBasedSettings({ ...chargesBasedSettings, adjustToPercent: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>% of) the selected prices</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="charges-round-up"
+                          checked={chargesBasedSettings.roundUp}
+                          onCheckedChange={(checked) => setChargesBasedSettings({ ...chargesBasedSettings, roundUp: !!checked })}
+                        />
+                        <Label htmlFor="charges-round-up">Round prices up to the next whole dollar amount</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Import Prices Settings - shown when "import" is selected */}
+            {newFeeSchedule.priceCreationMethod === 'import' && (
+              <div className="space-y-6 mt-6 pt-6 border-t">
+                {/* File to Import Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-1">
+                      <Label htmlFor="fee-schedule-file-to-import" className="text-sm font-medium text-gray-700 mb-2 block">
+                        File to Import
+                      </Label>
+                      <Input
+                        id="fee-schedule-file-to-import"
+                        name="fee-schedule-file-to-import"
+                        value={importSettings.fileName}
+                        placeholder="No file selected"
+                        readOnly
+                        className="bg-gray-50"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="pt-6">
+                      <Button 
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = '.csv,.xls,.xlsx';
+                          input.onchange = (e) => {
+                            const file = (e.target as HTMLInputElement).files?.[0];
+                            if (file) {
+                              setImportSettings({
+                                ...importSettings,
+                                selectedFile: file,
+                                fileName: file.name
+                              });
+                            }
+                          };
+                          input.click();
+                        }}
+                      >
+                        Select a File
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Information Text */}
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <p>Supported formats: Comma delimited (.csv), Excel (.xls or .xlsx)</p>
+                    <p>Note: Excel file import will only import the first sheet.</p>
+                    <p>Codes can have a maximum of 10 characters.</p>
+                  </div>
+                </div>
+
+                {/* Example Format Section */}
+                <div className="space-y-4">
+                  <div className="bg-teal-50 border border-teal-200 rounded-md p-4">
+                    <h3 className="text-lg font-semibold text-teal-900 mb-4">Example Format</h3>
+                    <p className="text-sm text-gray-700 mb-4">
+                      Column headers must be the first row. Columns marked with a * are required.
+                    </p>
+                    
+                    <div className="overflow-x-auto border border-gray-300 rounded-md">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Code*</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Description</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Default</th>
+                            <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Price*</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-gray-300">
+                            <td className="border border-gray-300 px-3 py-2 font-mono">99212</td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm">
+                              <div>If the code is not in your local list, it's added with this description.</div>
+                              <div className="font-semibold">OFFICE VISIT</div>
+                            </td>
+                            <td className="border border-gray-300 px-3 py-2 text-sm">
+                              <div>If the code is not in your local list, it's added with this default price.</div>
+                              <div className="font-semibold">45.00</div>
+                            </td>
+                            <td className="border border-gray-300 px-3 py-2 font-mono">50.25</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Adjust Prices Section */}
+                <div className="space-y-4">
+                  <div className="bg-blue-50 p-4 rounded-md">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-4">Adjust Prices</h3>
+                    
+                    <RadioGroup
+                      value={importSettings.priceAdjustment}
+                      onValueChange={(value) => setImportSettings({ ...importSettings, priceAdjustment: value })}
+                      className="space-y-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no-adjustment" id="import-no-adjustment" />
+                        <Label htmlFor="import-no-adjustment">Do not adjust the prices of the new Fee Schedule</Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="increase" id="import-increase" />
+                        <Label htmlFor="import-increase" className="flex items-center space-x-2">
+                          <span>Increase prices by</span>
+                          <Input
+                            value={importSettings.increaseBy}
+                            onChange={(e) => setImportSettings({ ...importSettings, increaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="decrease" id="import-decrease" />
+                        <Label htmlFor="import-decrease" className="flex items-center space-x-2">
+                          <span>Decrease prices by</span>
+                          <Input
+                            value={importSettings.decreaseBy}
+                            onChange={(e) => setImportSettings({ ...importSettings, decreaseBy: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>%</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="adjust-to" id="import-adjust-to" />
+                        <Label htmlFor="import-adjust-to" className="flex items-center space-x-2">
+                          <span>Adjust prices to</span>
+                          <Input
+                            value={importSettings.adjustTo}
+                            onChange={(e) => setImportSettings({ ...importSettings, adjustTo: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>times (or</span>
+                          <Input
+                            value={importSettings.adjustToPercent}
+                            onChange={(e) => setImportSettings({ ...importSettings, adjustToPercent: e.target.value })}
+                            className="w-20 text-xs"
+                            autoComplete="off"
+                          />
+                          <span>% of) the selected prices</span>
+                        </Label>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="import-round-up"
+                          checked={importSettings.roundUp}
+                          onCheckedChange={(checked) => setImportSettings({ ...importSettings, roundUp: !!checked })}
+                        />
+                        <Label htmlFor="import-round-up">Round prices up to the next whole dollar amount</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end space-x-2 mt-6">
+            <Button variant="outline" onClick={() => setIsNewFeeScheduleDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              console.log('Creating new fee schedule with method:', newFeeSchedule.priceCreationMethod);
+              setIsNewFeeScheduleDialogOpen(false);
+              // Open preview dialog for all methods
+              setIsFeeSchedulePreviewOpen(true);
+            }}>
+              Show Preview
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fee Schedule Preview Dialog */}
+      <Dialog open={isFeeSchedulePreviewOpen} onOpenChange={setIsFeeSchedulePreviewOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-2xl">Fee Schedules</DialogTitle>
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSaveFeeSchedule}>
+                  <Check className="w-4 h-4 mr-2" />
+                  Save
+                </Button>
+                <Button variant="outline" onClick={() => setIsFeeSchedulePreviewOpen(false)}>
+                  <X className="w-4 h-4 mr-2" />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+            {/* Fee Schedule Information */}
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="fee-schedule-name">Name</Label>
+                <Input
+                  id="fee-schedule-name"
+                  name="fee-schedule-name"
+                  value={feeSchedulePreview.name}
+                  onChange={(e) => setFeeSchedulePreview({ ...feeSchedulePreview, name: e.target.value })}
+                  placeholder="Enter fee schedule name"
+                  autoComplete="off"
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="fee-schedule-effective-from">Effective From</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id="fee-schedule-effective-from"
+                      name="fee-schedule-effective-from"
+                      type="date"
+                      value={feeSchedulePreview.effectiveFrom}
+                      onChange={(e) => setFeeSchedulePreview({ ...feeSchedulePreview, effectiveFrom: e.target.value })}
+                      autoComplete="off"
+                    />
+                    <Button variant="outline" size="icon" type="button">
+                      <Calendar className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="fee-schedule-effective-to">Effective To</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id="fee-schedule-effective-to"
+                      name="fee-schedule-effective-to"
+                      type="date"
+                      value={feeSchedulePreview.effectiveTo}
+                      onChange={(e) => setFeeSchedulePreview({ ...feeSchedulePreview, effectiveTo: e.target.value })}
+                      autoComplete="off"
+                    />
+                    <Button variant="outline" size="icon" type="button">
+                      <Calendar className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="fee-schedule-sequence">Sequence #</Label>
+                  <Input
+                    id="fee-schedule-sequence"
+                    name="fee-schedule-sequence"
+                    value={feeSchedulePreview.sequenceNumber}
+                    onChange={(e) => setFeeSchedulePreview({ ...feeSchedulePreview, sequenceNumber: e.target.value })}
+                    placeholder="Enter sequence number"
+                    autoComplete="off"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="fee-schedule-description">Description</Label>
+                <textarea
+                  id="fee-schedule-description"
+                  name="fee-schedule-description"
+                  value={feeSchedulePreview.description}
+                  onChange={(e) => setFeeSchedulePreview({ ...feeSchedulePreview, description: e.target.value })}
+                  placeholder="Enter description"
+                  rows={3}
+                  className="mt-1 flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            {/* Procedures Table */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Procedures</h3>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" type="button">
+                    <ChevronUp className="w-4 h-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" type="button">
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto border border-gray-300 rounded-md">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-blue-600 text-white">
+                      <th className="text-left py-3 px-4 font-semibold">Code</th>
+                      <th className="text-left py-3 px-4 font-semibold">Price</th>
+                      <th className="text-left py-3 px-4 font-semibold">Type</th>
+                      <th className="text-left py-3 px-4 font-semibold">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feeSchedulePreview.procedures.map((procedure, index) => (
+                      <tr 
+                        key={procedure.id} 
+                        className={`border-b ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-gray-100`}
+                      >
+                        <td className="py-3 px-4 font-mono">{procedure.code}</td>
+                        <td className="py-3 px-4">
+                          <Input
+                            value={procedure.price}
+                            onChange={(e) => {
+                              const updatedProcedures = feeSchedulePreview.procedures.map(p => 
+                                p.id === procedure.id ? { ...p, price: e.target.value } : p
+                              );
+                              setFeeSchedulePreview({ ...feeSchedulePreview, procedures: updatedProcedures });
+                            }}
+                            className="w-24 text-xs"
+                            autoComplete="off"
+                          />
+                        </td>
+                        <td className="py-3 px-4 text-sm">{procedure.type}</td>
+                        <td className="py-3 px-4 text-sm">{procedure.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -4054,11 +6404,7 @@ export const Codes: React.FC = () => {
             <Button variant="outline" onClick={() => setIsContractPreviewOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              // Handle save logic here
-              console.log('Saving contract preview:', contractPreview);
-              setIsContractPreviewOpen(false);
-            }}>
+            <Button onClick={handleSaveNewContract}>
               Save Contract
             </Button>
           </div>
@@ -4506,6 +6852,7 @@ export const Codes: React.FC = () => {
                         const file = (e.target as HTMLInputElement).files?.[0];
                         if (file) {
                           setImportSettings({
+                            ...importSettings,
                             selectedFile: file,
                             fileName: file.name
                           });

@@ -66,3 +66,5 @@ Common values: 'M', 'F', 'O', 'U' (Male, Female, Other, Unknown)
 **After running the seed script, refresh your browser and check the console for:**
 `✅ Loaded 15 patients from database`
 
+
+

@@ -14,7 +14,8 @@ import {
   Ruler, 
   Eye, 
   Save,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 
 interface VitalSignsFormProps {

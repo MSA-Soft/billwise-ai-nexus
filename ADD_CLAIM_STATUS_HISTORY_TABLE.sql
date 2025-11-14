@@ -1,6 +1,3 @@
--- Add Claim Status History Table
--- Run this in Supabase SQL Editor if the table doesn't exist
-
 CREATE TABLE IF NOT EXISTS claim_status_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     claim_id UUID NOT NULL REFERENCES claims(id) ON DELETE CASCADE,

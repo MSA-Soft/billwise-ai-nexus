@@ -132,3 +132,5 @@ After the fix, check browser console for:
 
 **Status:** ✅ Code updated. Now verify database table exists and RLS policies are set!
 
+
+

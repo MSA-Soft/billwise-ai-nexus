@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +24,8 @@ import {
   Check,
   X
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PatientRegistrationFormProps {
   isOpen: boolean;
@@ -32,9 +34,18 @@ interface PatientRegistrationFormProps {
 }
 
 export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRegistrationFormProps) {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Data from Customer Setup
+  const [payers, setPayers] = useState<any[]>([]);
+  const [providers, setProviders] = useState<any[]>([]);
+  const [practices, setPractices] = useState<any[]>([]);
+  const [isLoadingPayers, setIsLoadingPayers] = useState(false);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [isLoadingPractices, setIsLoadingPractices] = useState(false);
 
   // Basic Information
   const [firstName, setFirstName] = useState('');
@@ -60,12 +71,112 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
 
   // Insurance Information
   const [insuranceCompany, setInsuranceCompany] = useState('');
+  const [insuranceCompanyId, setInsuranceCompanyId] = useState('');
   const [insuranceId, setInsuranceId] = useState('');
   const [groupNumber, setGroupNumber] = useState('');
   const [policyHolderName, setPolicyHolderName] = useState('');
   const [policyHolderRelationship, setPolicyHolderRelationship] = useState('');
   const [secondaryInsurance, setSecondaryInsurance] = useState('');
   const [secondaryInsuranceId, setSecondaryInsuranceId] = useState('');
+  
+  // Provider/Practice Information
+  const [preferredProvider, setPreferredProvider] = useState('');
+  const [primaryPractice, setPrimaryPractice] = useState('');
+  
+  // Fetch data from Customer Setup
+  useEffect(() => {
+    if (isOpen) {
+      fetchPayers();
+      fetchProviders();
+      fetchPractices();
+    }
+  }, [isOpen]);
+
+  const fetchPayers = async () => {
+    try {
+      setIsLoadingPayers(true);
+      const { data, error } = await supabase
+        .from('insurance_payers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching payers:', error);
+        toast({
+          title: 'Error loading payers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setPayers(data || []);
+    } catch (error: any) {
+      console.error('Error fetching payers:', error);
+      toast({
+        title: 'Error loading payers',
+        description: error.message || 'Failed to load payers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingPayers(false);
+    }
+  };
+
+  const fetchProviders = async () => {
+    try {
+      setIsLoadingProviders(true);
+      const { data, error } = await supabase
+        .from('providers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('last_name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching providers:', error);
+        toast({
+          title: 'Error loading providers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setProviders(data || []);
+    } catch (error: any) {
+      console.error('Error fetching providers:', error);
+      toast({
+        title: 'Error loading providers',
+        description: error.message || 'Failed to load providers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
+
+  const fetchPractices = async () => {
+    try {
+      setIsLoadingPractices(true);
+      const { data, error } = await supabase
+        .from('practices' as any)
+        .select('*')
+        .eq('status', 'active')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching practices:', error);
+        return;
+      }
+
+      setPractices(data || []);
+    } catch (error: any) {
+      console.error('Error fetching practices:', error);
+    } finally {
+      setIsLoadingPractices(false);
+    }
+  };
 
   // Medical Information
   const [allergies, setAllergies] = useState('');
@@ -237,6 +348,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
         zipCode, // CRITICAL: Add separate zipCode field
         insurance: insuranceCompany,
         insuranceCompany, // CRITICAL: Add insuranceCompany field for handler compatibility
+        insuranceCompanyId: insuranceCompanyId, // Store payer ID
         status: 'active' as const,
         emergencyContact: {
           name: emergencyContactName,
@@ -254,7 +366,10 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
         totalVisits: 0,
         outstandingBalance: 0,
         riskLevel: 'low' as const,
-        preferredProvider: '',
+        preferredProvider: preferredProvider,
+        preferredProviderId: preferredProvider,
+        primaryPractice: primaryPractice,
+        primaryPracticeId: primaryPractice,
         lastVisit: '',
         // Additional fields
         gender,
@@ -295,7 +410,10 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
       setEmergencyContactPhone('');
       setEmergencyContactRelation('');
       setInsuranceCompany('');
+      setInsuranceCompanyId('');
       setInsuranceId('');
+      setPreferredProvider('');
+      setPrimaryPractice('');
       setGroupNumber('');
       setPolicyHolderName('');
       setPolicyHolderRelationship('');
@@ -337,7 +455,10 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     setEmergencyContactPhone('');
     setEmergencyContactRelation('');
     setInsuranceCompany('');
+      setInsuranceCompanyId('');
     setInsuranceId('');
+      setPreferredProvider('');
+      setPrimaryPractice('');
     setGroupNumber('');
     setPolicyHolderName('');
     setPolicyHolderRelationship('');
@@ -546,6 +667,64 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     </Select>
                   </div>
                 </div>
+                
+                {/* Provider and Practice Selection */}
+                <div className="pt-4 border-t">
+                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+                    <Stethoscope className="h-4 w-4 mr-2 text-blue-500" />
+                    Provider & Practice Assignment
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="primaryPractice">Primary Practice</Label>
+                      <Select 
+                        value={primaryPractice || "none"} 
+                        onValueChange={(value) => setPrimaryPractice(value === "none" ? "" : value)}
+                        disabled={isLoadingPractices}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingPractices ? "Loading practices..." : "Select practice (optional)"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {practices.length === 0 && !isLoadingPractices ? (
+                            <SelectItem value="no-practices" disabled>No practices found. Please add practices in Customer Setup.</SelectItem>
+                          ) : (
+                            practices.map(practice => (
+                              <SelectItem key={practice.id} value={practice.id}>
+                                {practice.name} {practice.npi ? `(NPI: ${practice.npi})` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="preferredProvider">Preferred Provider</Label>
+                      <Select 
+                        value={preferredProvider || "none"} 
+                        onValueChange={(value) => setPreferredProvider(value === "none" ? "" : value)}
+                        disabled={isLoadingProviders}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select provider (optional)"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {providers.length === 0 && !isLoadingProviders ? (
+                            <SelectItem value="no-providers" disabled>No providers found. Please add providers in Customer Setup.</SelectItem>
+                          ) : (
+                            providers.map(provider => (
+                              <SelectItem key={provider.id} value={provider.id}>
+                                {provider.first_name} {provider.last_name} {provider.credentials ? `, ${provider.credentials}` : ''} {provider.taxonomy_specialty ? `- ${provider.taxonomy_specialty}` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -747,17 +926,31 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="insuranceCompany">Primary Insurance Company *</Label>
-                    <Input
-                      id="insuranceCompany"
-                      value={insuranceCompany}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setInsuranceCompany(v);
-                      setFieldError('insuranceCompany', v.trim() ? undefined : 'Insurance company is required');
+                    <Select
+                      value={insuranceCompanyId}
+                      onValueChange={(value) => {
+                        const payer = payers.find(p => p.id === value);
+                        setInsuranceCompanyId(value);
+                        setInsuranceCompany(payer?.name || '');
+                        setFieldError('insuranceCompany', value ? undefined : 'Insurance company is required');
                     }}
-                      placeholder="Blue Cross Blue Shield"
-                      className={errors.insuranceCompany ? 'border-red-500' : ''}
-                    />
+                      disabled={isLoadingPayers}
+                    >
+                      <SelectTrigger className={errors.insuranceCompany ? 'border-red-500' : ''}>
+                        <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance company"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {payers.length === 0 && !isLoadingPayers ? (
+                          <SelectItem value="none" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                        ) : (
+                          payers.map(payer => (
+                            <SelectItem key={payer.id} value={payer.id}>
+                              {payer.name} {payer.plan_name ? `- ${payer.plan_name}` : ''}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                     {errors.insuranceCompany && (
                       <p className="text-sm text-red-600 flex items-center">
                         <X className="h-3 w-3 mr-1" />

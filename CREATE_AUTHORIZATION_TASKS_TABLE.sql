@@ -222,6 +222,25 @@ CREATE POLICY "Users can view history of tasks they have access to"
         )
     );
 
+CREATE POLICY "Users can insert history for tasks they have access to"
+    ON authorization_task_history FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM authorization_tasks at
+            WHERE at.id = authorization_task_history.task_id
+            AND (
+                at.assigned_to = auth.uid() OR 
+                at.created_by = auth.uid() OR
+                EXISTS (
+                    SELECT 1 FROM authorization_requests ar
+                    WHERE ar.id = at.authorization_request_id
+                    AND ar.user_id = auth.uid()
+                )
+            )
+        )
+    );
+
 -- Policies for authorization_task_templates
 CREATE POLICY "All authenticated users can view active templates"
     ON authorization_task_templates FOR SELECT

@@ -43,9 +43,10 @@ interface ClaimDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedClaim: ClaimData) => void;
+  fullPage?: boolean; // New prop to control full-page vs modal rendering
 }
 
-export function ClaimDetailModal({ claim, isOpen, onClose, onSave }: ClaimDetailModalProps) {
+export function ClaimDetailModal({ claim, isOpen, onClose, onSave, fullPage = false }: ClaimDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedClaim, setEditedClaim] = useState<ClaimData | null>(null);
 
@@ -101,43 +102,9 @@ export function ClaimDetailModal({ claim, isOpen, onClose, onSave }: ClaimDetail
 
   const currentClaim = editedClaim || claim;
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <div className="flex items-center">
-              <FileText className="h-6 w-6 mr-2 text-blue-600" />
-              Claim Details - {currentClaim.id}
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge className={`${getStatusColor(currentClaim.status)} border flex items-center`}>
-                {getStatusIcon(currentClaim.status)}
-                <span className="ml-1 capitalize">{currentClaim.status}</span>
-              </Badge>
-              {isEditing ? (
-                <div className="flex space-x-2">
-                  <Button size="sm" onClick={handleSave} className="bg-green-600 hover:bg-green-700">
-                    <Save className="h-4 w-4 mr-1" />
-                    Save
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={handleCancel}>
-                    <X className="h-4 w-4 mr-1" />
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button size="sm" onClick={handleEdit}>
-                  <Edit className="h-4 w-4 mr-1" />
-                  Edit
-                </Button>
-              )}
-            </div>
-          </DialogTitle>
-          <DialogDescription>
-            Comprehensive view and editing of claim information
-          </DialogDescription>
-        </DialogHeader>
+  // Render the content (used in both dialog and full-page modes)
+  const renderContent = () => (
+    <>
 
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
@@ -439,6 +406,90 @@ export function ClaimDetailModal({ claim, isOpen, onClose, onSave }: ClaimDetail
             )}
           </div>
         </div>
+    </>
+  );
+
+  // Render in full-page mode
+  if (fullPage) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center">
+                <FileText className="h-6 w-6 mr-2 text-blue-600" />
+                Claim Details - {currentClaim.id}
+              </CardTitle>
+              <div className="flex items-center space-x-2">
+                <Badge className={`${getStatusColor(currentClaim.status)} border flex items-center`}>
+                  {getStatusIcon(currentClaim.status)}
+                  <span className="ml-1 capitalize">{currentClaim.status}</span>
+                </Badge>
+                {isEditing ? (
+                  <div className="flex space-x-2">
+                    <Button size="sm" onClick={handleSave} className="bg-green-600 hover:bg-green-700">
+                      <Save className="h-4 w-4 mr-1" />
+                      Save
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleCancel}>
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" onClick={handleEdit}>
+                    <Edit className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        {renderContent()}
+      </div>
+    );
+  }
+
+  // Render in dialog mode (when isOpen is true and it's a modal)
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center">
+              <FileText className="h-6 w-6 mr-2 text-blue-600" />
+              Claim Details - {currentClaim.id}
+            </div>
+            <div className="flex items-center space-x-2">
+              <Badge className={`${getStatusColor(currentClaim.status)} border flex items-center`}>
+                {getStatusIcon(currentClaim.status)}
+                <span className="ml-1 capitalize">{currentClaim.status}</span>
+              </Badge>
+              {isEditing ? (
+                <div className="flex space-x-2">
+                  <Button size="sm" onClick={handleSave} className="bg-green-600 hover:bg-green-700">
+                    <Save className="h-4 w-4 mr-1" />
+                    Save
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleCancel}>
+                    <X className="h-4 w-4 mr-1" />
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" onClick={handleEdit}>
+                  <Edit className="h-4 w-4 mr-1" />
+                  Edit
+                </Button>
+              )}
+            </div>
+          </DialogTitle>
+          <DialogDescription>
+            Comprehensive view and editing of claim information
+          </DialogDescription>
+        </DialogHeader>
+        {renderContent()}
       </DialogContent>
     </Dialog>
   );

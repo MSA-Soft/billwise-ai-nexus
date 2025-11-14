@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { authorizationTaskService } from '@/services/authorizationTaskService';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +56,7 @@ interface Appointment {
 }
 
 export function Schedule() {
+  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -401,6 +404,71 @@ export function Schedule() {
           } : undefined,
         };
 
+        // Check if appointment was just marked as completed
+        const wasJustCompleted = updated.status === 'completed' && 
+          selectedAppointment?.status !== 'completed';
+        
+        // Handle authorization visit recording and next visit task when appointment is completed
+        if (wasJustCompleted && patient && user?.id) {
+          try {
+            const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
+            const appointmentDate = `${updated.scheduled_date} ${updated.scheduled_time || '00:00:00'}`;
+            const serviceDate = new Date(updated.scheduled_date);
+            
+            // Import visit usage service
+            const { visitUsageService } = await import('@/services/visitUsageService');
+            
+            // Find active authorization for this patient
+            const { data: auths } = await supabase
+              .from('authorization_requests')
+              .select('id, patient_name, status, authorization_expiration_date, visits_authorized, visits_used')
+              .eq('patient_name', patientName)
+              .eq('status', 'approved')
+              .not('authorization_expiration_date', 'is', null)
+              .gte('authorization_expiration_date', serviceDate.toISOString().split('T')[0])
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            // Auto-record visit if authorization found
+            if (auths && auths.length > 0) {
+              const auth = auths[0];
+              try {
+                await visitUsageService.recordVisitUsage(
+                  auth.id,
+                  {
+                    appointment_id: updated.id,
+                    visit_date: serviceDate,
+                    service_type: updated.appointment_type,
+                    status: 'completed',
+                    notes: `Auto-recorded from appointment completion: ${updated.notes || ''}`,
+                  },
+                  user.id
+                );
+                console.log('✅ Visit auto-recorded for authorization:', auth.id);
+              } catch (visitError: any) {
+                // Don't fail if visit recording fails - might be exhausted or expired
+                console.warn('⚠️ Could not auto-record visit:', visitError.message);
+              }
+            }
+            
+            // Create next visit task
+            await authorizationTaskService.createNextVisitTask(
+              patient.id,
+              patientName,
+              appointmentDate,
+              undefined, // nextVisitDate - will be calculated
+              {
+                userId: user.id,
+                priority: 'medium',
+                notes: `Visit completed: ${updated.appointment_type || 'Appointment'} on ${new Date(updated.scheduled_date).toLocaleDateString()}. ${updated.notes || ''}`,
+              }
+            );
+          } catch (error: any) {
+            // Don't fail the appointment update if task creation fails
+            console.warn('Failed to create next visit task or record visit:', error);
+          }
+        }
+
         // Update local state
         setAppointments(prev => prev.map(apt => 
           apt.id === transformedAppointment.id ? transformedAppointment : apt
@@ -408,7 +476,9 @@ export function Schedule() {
 
         toast({
           title: 'Success',
-          description: 'Appointment updated successfully.',
+          description: wasJustCompleted 
+            ? 'Appointment completed. Next visit task created in Task Management.'
+            : 'Appointment updated successfully.',
         });
       } else {
         // Create new appointment

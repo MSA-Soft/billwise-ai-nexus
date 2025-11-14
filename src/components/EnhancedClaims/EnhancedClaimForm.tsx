@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,8 @@ import {
   Building,
   DollarSign
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface EnhancedClaimFormProps {
   claimId?: string;
@@ -83,36 +85,208 @@ export function EnhancedClaimForm({
     notes: ''
   });
 
+  const { toast } = useToast();
   const [procedures, setProcedures] = useState<any[]>([]);
   const [diagnoses, setDiagnoses] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mock data
-  const mockPatients = [
-    { id: '1', name: 'John Doe', dob: '1980-01-01', phone: '(555) 123-4567' },
-    { id: '2', name: 'Jane Smith', dob: '1975-05-15', phone: '(555) 987-6543' },
-    { id: '3', name: 'Bob Wilson', dob: '1990-12-10', phone: '(555) 456-7890' }
-  ];
+  // Data from Customer Setup
+  const [providers, setProviders] = useState<any[]>([]);
+  const [payers, setPayers] = useState<any[]>([]);
+  const [facilities, setFacilities] = useState<any[]>([]);
+  const [practices, setPractices] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [isLoadingPayers, setIsLoadingPayers] = useState(false);
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const isFetchingRef = useRef(false);
 
-  const mockProviders = [
-    { id: '1', name: 'Dr. Smith', specialty: 'General Practice' },
-    { id: '2', name: 'Dr. Johnson', specialty: 'Cardiology' },
-    { id: '3', name: 'Dr. Brown', specialty: 'Orthopedics' }
-  ];
+  // Fetch providers from Customer Setup
+  useEffect(() => {
+    fetchProviders();
+    fetchPayers();
+    fetchFacilities();
+    fetchPractices();
+    fetchPatients();
+  }, []);
 
-  const mockInsuranceProviders = [
-    { id: '1', name: 'Blue Cross Blue Shield' },
-    { id: '2', name: 'Aetna' },
-    { id: '3', name: 'Cigna' },
-    { id: '4', name: 'UnitedHealth' }
-  ];
+  const fetchProviders = async () => {
+    if (isFetchingRef.current) return;
+    try {
+      setIsLoadingProviders(true);
+      const { data, error } = await supabase
+        .from('providers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('last_name', { ascending: true });
 
-  const mockFacilities = [
-    { id: '1', name: 'Main Clinic', address: '123 Main St' },
-    { id: '2', name: 'Downtown Office', address: '456 Oak Ave' },
-    { id: '3', name: 'Urgent Care Center', address: '789 Pine St' }
-  ];
+      if (error) {
+        console.error('Error fetching providers:', error);
+        toast({
+          title: 'Error loading providers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedProviders = (data || []).map((p: any) => ({
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        firstName: p.first_name || '',
+        lastName: p.last_name || '',
+        specialty: p.taxonomy_specialty || '',
+        npi: p.npi || '',
+        credentials: p.credentials || ''
+      }));
+
+      setProviders(transformedProviders);
+    } catch (error: any) {
+      console.error('Error fetching providers:', error);
+      toast({
+        title: 'Error loading providers',
+        description: error.message || 'Failed to load providers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
+
+  const fetchPayers = async () => {
+    try {
+      setIsLoadingPayers(true);
+      const { data, error } = await supabase
+        .from('insurance_payers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching payers:', error);
+        toast({
+          title: 'Error loading payers',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedPayers = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        planName: p.plan_name || '',
+        payerType: p.payer_type || ''
+      }));
+
+      setPayers(transformedPayers);
+    } catch (error: any) {
+      console.error('Error fetching payers:', error);
+      toast({
+        title: 'Error loading payers',
+        description: error.message || 'Failed to load payers',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingPayers(false);
+    }
+  };
+
+  const fetchFacilities = async () => {
+    try {
+      setIsLoadingFacilities(true);
+      const { data, error } = await supabase
+        .from('facilities' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching facilities:', error);
+        toast({
+          title: 'Error loading facilities',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const transformedFacilities = (data || []).map((f: any) => ({
+        id: f.id,
+        name: f.name || f.facility_name || '',
+        address: [f.address_line1, f.address_line2].filter(Boolean).join(', ') || '',
+        city: f.city || '',
+        state: f.state || '',
+        zipCode: f.zip_code || f.zip || ''
+      }));
+
+      setFacilities(transformedFacilities);
+    } catch (error: any) {
+      console.error('Error fetching facilities:', error);
+      toast({
+        title: 'Error loading facilities',
+        description: error.message || 'Failed to load facilities',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingFacilities(false);
+    }
+  };
+
+  const fetchPractices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('practices' as any)
+        .select('*')
+        .eq('status', 'active')
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching practices:', error);
+        return;
+      }
+
+      const transformedPractices = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        npi: p.npi || ''
+      }));
+
+      setPractices(transformedPractices);
+    } catch (error: any) {
+      console.error('Error fetching practices:', error);
+    }
+  };
+
+  const fetchPatients = async () => {
+    try {
+      setIsLoadingPatients(true);
+      const { data, error } = await supabase
+        .from('patients' as any)
+        .select('*')
+        .order('last_name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching patients:', error);
+        return;
+      }
+
+      const transformedPatients = (data || []).map((p: any) => ({
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+        dob: p.date_of_birth || '',
+        phone: p.phone || ''
+      }));
+
+      setPatients(transformedPatients);
+    } catch (error: any) {
+      console.error('Error fetching patients:', error);
+    } finally {
+      setIsLoadingPatients(false);
+    }
+  };
 
   const mockPlaceOfServiceCodes = [
     { code: '11', description: 'Office' },
@@ -316,31 +490,47 @@ export function EnhancedClaimForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="patient_id">Patient</Label>
-                  <Select value={formData.patient_id} onValueChange={(value) => handleInputChange('patient_id', value)}>
+                  <Select 
+                    value={formData.patient_id} 
+                    onValueChange={(value) => handleInputChange('patient_id', value)}
+                    disabled={isLoadingPatients}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select patient" />
+                      <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select patient"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPatients.map(patient => (
+                      {patients.length === 0 && !isLoadingPatients ? (
+                        <SelectItem value="none" disabled>No patients found. Please add patients first.</SelectItem>
+                      ) : (
+                        patients.map(patient => (
                         <SelectItem key={patient.id} value={patient.id}>
-                          {patient.name} - {patient.dob}
+                            {patient.name} {patient.dob ? `- ${patient.dob}` : ''}
                         </SelectItem>
-                      ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label htmlFor="provider_id">Provider</Label>
-                  <Select value={formData.provider_id} onValueChange={(value) => handleInputChange('provider_id', value)}>
+                  <Select 
+                    value={formData.provider_id} 
+                    onValueChange={(value) => handleInputChange('provider_id', value)}
+                    disabled={isLoadingProviders}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select provider" />
+                      <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select provider"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockProviders.map(provider => (
+                      {providers.length === 0 && !isLoadingProviders ? (
+                        <SelectItem value="none" disabled>No providers found. Please add providers in Customer Setup.</SelectItem>
+                      ) : (
+                        providers.map(provider => (
                         <SelectItem key={provider.id} value={provider.id}>
-                          {provider.name} - {provider.specialty}
+                            {provider.name} {provider.credentials ? `, ${provider.credentials}` : ''} {provider.specialty ? `- ${provider.specialty}` : ''}
                         </SelectItem>
-                      ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -364,6 +554,51 @@ export function EnhancedClaimForm({
                     value={formData.service_date_to}
                     onChange={(e) => handleInputChange('service_date_to', e.target.value)}
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="facility_id">Facility</Label>
+                  <Select 
+                    value={formData.facility_id || "none"} 
+                    onValueChange={(value) => handleInputChange('facility_id', value === "none" ? "" : value)}
+                    disabled={isLoadingFacilities}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={isLoadingFacilities ? "Loading facilities..." : "Select facility"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {facilities.length === 0 && !isLoadingFacilities ? (
+                        <SelectItem value="no-facilities" disabled>No facilities found. Please add facilities in Customer Setup.</SelectItem>
+                      ) : (
+                        facilities.map(facility => (
+                          <SelectItem key={facility.id} value={facility.id}>
+                            {facility.name} {facility.city ? `- ${facility.city}, ${facility.state}` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="place_of_service_code">Place of Service</Label>
+                  <Select 
+                    value={formData.place_of_service_code} 
+                    onValueChange={(value) => handleInputChange('place_of_service_code', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select place of service" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mockPlaceOfServiceCodes.map(pos => (
+                        <SelectItem key={pos.code} value={pos.code}>
+                          {pos.code} - {pos.description}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardContent>
@@ -535,30 +770,42 @@ export function EnhancedClaimForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="primary_insurance_id">Primary Insurance</Label>
-                  <Select value={formData.primary_insurance_id} onValueChange={(value) => handleInputChange('primary_insurance_id', value)}>
+                  <Select 
+                    value={formData.primary_insurance_id} 
+                    onValueChange={(value) => handleInputChange('primary_insurance_id', value)}
+                    disabled={isLoadingPayers}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select primary insurance" />
+                      <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select primary insurance"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockInsuranceProviders.map(insurance => (
-                        <SelectItem key={insurance.id} value={insurance.id}>
-                          {insurance.name}
+                      {payers.length === 0 && !isLoadingPayers ? (
+                        <SelectItem value="none" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                      ) : (
+                        payers.map(payer => (
+                          <SelectItem key={payer.id} value={payer.id}>
+                            {payer.name} {payer.planName ? `- ${payer.planName}` : ''}
                         </SelectItem>
-                      ))}
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label htmlFor="secondary_insurance_id">Secondary Insurance</Label>
-                  <Select value={formData.secondary_insurance_id} onValueChange={(value) => handleInputChange('secondary_insurance_id', value)}>
+                  <Select 
+                    value={formData.secondary_insurance_id} 
+                    onValueChange={(value) => handleInputChange('secondary_insurance_id', value)}
+                    disabled={isLoadingPayers}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select secondary insurance" />
+                      <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select secondary insurance"} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
-                      {mockInsuranceProviders.map(insurance => (
-                        <SelectItem key={insurance.id} value={insurance.id}>
-                          {insurance.name}
+                      {payers.map(payer => (
+                        <SelectItem key={payer.id} value={payer.id}>
+                          {payer.name} {payer.planName ? `- ${payer.planName}` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
