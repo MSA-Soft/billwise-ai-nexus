@@ -19,59 +19,9 @@ import Layout from '@/components/Layout';
 import { runAllTests } from '@/utils/testConnection';
 
 const Index: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<string>('billing');
-
-  // Test database connection on component mount
-  useEffect(() => {
-    runAllTests().then(success => {
-      if (success) {
-        console.log('🎉 Database connection verified on Index page!');
-      } else {
-        console.warn('⚠️ Database connection issues detected on Index page');
-      }
-    });
-  }, []);
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'billing':
-        return <BillingWorkflow />;
-      case 'quick-actions':
-        return <QuickActions />;
-      case 'authorization':
-        return <AuthorizationTracking />;
-      case 'practices':
-        return <Practices />;
-      case 'providers':
-        return <Providers />;
-      case 'facilities':
-        return <Facilities />;
-      case 'referring-providers':
-        return <ReferringProviders />;
-      case 'payers':
-        return <Payers />;
-      case 'payer-agreements':
-        return <PayerAgreements />;
-      case 'collection-agencies':
-        return <CollectionAgencies />;
-      case 'alert-control':
-        return <AlertControl />;
-      case 'codes':
-        return <Codes />;
-      case 'statements':
-        return <Statements />;
-      case 'superbills':
-        return <Superbills />;
-      case 'labels':
-        return <Labels />;
-      default:
-        return <BillingWorkflow />;
-    }
-  };
-
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderContent()}
+    <Layout currentPage="dashboard">
+      <BillingWorkflow />
     </Layout>
   );
 };

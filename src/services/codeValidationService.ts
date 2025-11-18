@@ -128,120 +128,8 @@ export class CodeValidationService {
 
     try {
       const cleanCode = code.replace(/[^A-Z0-9]/g, '').toUpperCase();
-      
-      if (!cleanCode || cleanCode.length < 5) {
-        result.errors.push('CPT code must be 5 digits');
-        return result;
-      }
-
-      const cptCode = this.cptCodes.get(cleanCode);
-      if (cptCode) {
-        result.isValid = true;
-        result.description = cptCode.description;
-        result.category = cptCode.category;
-        
-        if (cptCode.modifierRequired) {
-          result.warnings.push('This code may require a modifier');
-        }
-        
-        if (cptCode.globalPeriod !== '000') {
-          result.warnings.push(`Global period: ${cptCode.globalPeriod} days`);
-        }
-      } else {
-        const suggestions = this.findSimilarCPTCodes(cleanCode);
-        if (suggestions.length > 0) {
-          result.suggestions = suggestions.map(s => `${s.code} - ${s.description}`);
-          result.errors.push('Code not found. Did you mean one of these?');
-        } else {
-          result.errors.push('Invalid CPT code');
-        }
-      }
-
-      this.validateCPTFormat(cleanCode, result);
-      
-    } catch (error) {
-      result.errors.push('Error validating CPT code');
-      console.error('CPT validation error:', error);
-    }
-
-    return result;
-  }
-
-  // Validate CDT (Dental) Code
-  async validateCDT(code: string): Promise<CodeValidationResult> {
-    const result: CodeValidationResult = {
-      isValid: false,
-      code: code.toUpperCase(),
-      description: '',
-      category: '',
-      warnings: [],
-      errors: [],
-      suggestions: [],
-    };
-
-    try {
-      // Clean and format the code
-      const cleanCode = code.replace(/[^A-Z0-9.]/g, '').toUpperCase();
-      
-      if (!cleanCode) {
-        result.errors.push('Invalid ICD-10 code format');
-        return result;
-      }
-
-      // Check if code exists in our database
-      const icd10Code = this.icd10Codes.get(cleanCode);
-      if (icd10Code) {
-        result.isValid = true;
-        result.description = icd10Code.description;
-        result.category = icd10Code.category;
-        
-        if (!icd10Code.isBillable) {
-          result.warnings.push('This code is not billable');
-        }
-        
-        if (icd10Code.requiresAdditionalDigits) {
-          result.warnings.push('This code may require additional digits for specificity');
-        }
-      } else {
-        // Unknown to our local dataset: treat as provisionally valid if format is correct
-        const suggestions = this.findSimilarICD10Codes(cleanCode);
-        if (suggestions.length > 0) {
-          result.suggestions = suggestions.map(s => `${s.code} - ${s.description}`);
-        }
-        result.warnings.push('Code not found in local set. Proceed if format is correct.');
-        result.isValid = true; // provisional; finalized after format validation below
-      }
-
-      // Additional validation rules
-      this.validateICD10Format(cleanCode, result);
-      // Final validity is based on presence of hard errors (format issues)
-      result.isValid = result.errors.length === 0;
-      
-    } catch (error) {
-      result.errors.push('Error validating ICD-10 code');
-      console.error('ICD-10 validation error:', error);
-    }
-
-    return result;
-  }
-
-  // Validate CPT Procedure Code
-  async validateCPT(code: string): Promise<CodeValidationResult> {
-    const result: CodeValidationResult = {
-      isValid: false,
-      code: code.toUpperCase(),
-      description: '',
-      category: '',
-      warnings: [],
-      errors: [],
-      suggestions: [],
-    };
-
-    try {
-      const cleanCode = code.replace(/[^A-Z0-9]/g, '').toUpperCase();
-      
       if (!cleanCode || cleanCode.length !== 5) {
-        result.errors.push('CPT code must be 5 digits');
+        result.errors.push('CPT code must be exactly 5 digits');
         return result;
       }
 
@@ -250,11 +138,9 @@ export class CodeValidationService {
         result.isValid = true;
         result.description = cptCode.description;
         result.category = cptCode.category;
-        
         if (cptCode.modifierRequired) {
           result.warnings.push('This code may require a modifier');
         }
-        
         if (cptCode.globalPeriod !== '000') {
           result.warnings.push(`Global period: ${cptCode.globalPeriod} days`);
         }
@@ -267,14 +153,11 @@ export class CodeValidationService {
           result.errors.push('Invalid CPT code');
         }
       }
-
       this.validateCPTFormat(cleanCode, result);
-      
     } catch (error) {
       result.errors.push('Error validating CPT code');
       console.error('CPT validation error:', error);
     }
-
     return result;
   }
 
@@ -292,26 +175,21 @@ export class CodeValidationService {
 
     try {
       const cleanCode = code.replace(/[^A-Z0-9]/g, '').toUpperCase();
-      
       if (!cleanCode || cleanCode.length !== 5) {
         result.errors.push('CDT code must be 5 characters (D followed by 4 digits)');
         return result;
       }
-
       if (!/^D[0-9]{4}$/.test(cleanCode)) {
         result.errors.push('CDT code must start with D followed by 4 digits');
         return result;
       }
-
       // For now, mark as valid if format is correct
       result.isValid = true;
       result.description = 'Dental procedure code';
-      
     } catch (error) {
       result.errors.push('Error validating CDT code');
       console.error('CDT validation error:', error);
     }
-
     return result;
   }
 

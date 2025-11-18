@@ -324,56 +324,37 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   ];
 
   const handleItemClick = (itemId: string) => {
-    // Items that are rendered on the Index page (controlled by activeTab)
-    const indexPageItemIds = new Set<string>([
-      'billing-workflow',
-      'quick-actions',
-      'recent-activity',
-      'authorization',
-      // Map sidebar "dashboard" to Index's default "billing" tab
-      'dashboard'
-    ]);
+    const routeMap = {
+      dashboard: '/',
+      scheduling: '/customer-setup?tab=schedule',
+      patients: '/customer-setup?tab=patients',
+      claims: '/customer-setup?tab=claims',
+      billings: '/customer-setup?tab=billings',
+      payments: '/customer-setup?tab=payments',
+      reports: '/customer-setup?tab=reports',
+      'eligibility-verification': '/customer-setup?tab=eligibility-verification',
+      'code-validation': '/customer-setup?tab=code-validation',
+      authorization: '/customer-setup?tab=authorization',
+      'enhanced-claims': '/customer-setup?tab=enhanced-claims',
+    };
 
-    // Items that should open the Customer Setup page with a specific tab
-    const customerSetupItemIds = new Set<string>([
-      ...customerSetupItems.map(item => item.id),
-      // Navigation items that actually belong to Customer Setup
-      'eligibility-verification',
-      'code-validation',
-      'claims',
-      'enhanced-claims',
-      'patients',
-      'scheduling',
-      'schedule',
-      'reports',
-      'prior-authorization',
-      'billings',
-      'payments'
-    ]);
-
-    // Special handling for eligibility-verification: always refresh page
-    if (itemId === 'eligibility-verification') {
-      // Check if already on eligibility-verification page
-      const currentPath = window.location.pathname;
-      const currentTab = new URLSearchParams(window.location.search).get('tab');
-      
-      if (currentPath === '/customer-setup' && currentTab === 'eligibility-verification') {
-        // Already on the page, just refresh
-        window.location.reload();
-      } else {
-        // Navigate to it with a refresh parameter to force reload
-        window.location.href = `/customer-setup?tab=${itemId}&refresh=${Date.now()}`;
+    const route = routeMap[itemId];
+    if (route) {
+      // Eligibility still special case (force refresh)
+      if (itemId === 'eligibility-verification') {
+        const currentPath = window.location.pathname;
+        const currentTab = new URLSearchParams(window.location.search).get('tab');
+        if (currentPath === '/customer-setup' && currentTab === 'eligibility-verification') {
+          window.location.reload();
+        } else {
+          window.location.href = `/customer-setup?tab=eligibility-verification&refresh=${Date.now()}`;
+        }
+        return;
       }
-      return;
-    } else if (customerSetupItemIds.has(itemId)) {
-      navigate(`/customer-setup?tab=${itemId}`);
-    } else if (indexPageItemIds.has(itemId)) {
-      // Special-case mapping for dashboard → billing
-      const target = itemId === 'dashboard' ? 'billing' : itemId;
-      onPageChange?.(target);
+      navigate(route);
     } else {
-      // Default to Index page behavior if unknown
-      onPageChange?.(itemId);
+      // Default/fallback: Go to dashboard
+      navigate('/');
     }
 
     if (isMobile) {

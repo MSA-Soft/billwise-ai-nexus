@@ -25,6 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 
 interface ProfessionalClaimFormProps {
   isOpen: boolean;
@@ -372,115 +373,57 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
 
           {/* Right Side - Claim Summary */}
           <div className="w-80 bg-gray-50 border-l border-gray-200 overflow-y-auto">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">Claim Summary</h3>
-                <ChevronDown className="h-4 w-4 text-gray-400" />
-              </div>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <Label className="text-gray-500 text-xs">Form Version</Label>
-                <p className="text-gray-900">CMS-1500 02-12</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Total Amount</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Ins Payments</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Pat Payments</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Adjustments</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Balance</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Patient Credits</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Patient Follow Up Date</Label>
-                <div className="relative">
-                  <Input className="bg-white border-gray-300 text-sm" />
-                  <Calendar className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Patient Recall Date</Label>
-                <div className="relative">
-                  <Input className="bg-white border-gray-300 text-sm" />
-                  <Calendar className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Date of Service</Label>
-                <Input className="bg-white border-gray-300 text-sm" />
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Date Entered</Label>
-                <p className="text-gray-900">Now</p>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Last Billed Date</Label>
-                <Input className="bg-white border-gray-300 text-sm" />
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Last Statement</Label>
-                <Input className="bg-white border-gray-300 text-sm" />
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Follow Up Date</Label>
-                <div className="relative">
-                  <Input className="bg-white border-gray-300 text-sm" />
-                  <Calendar className="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-gray-500 text-xs">Copay Remaining</Label>
-                <p className="text-gray-900">$0.00</p>
-              </div>
-
-              {/* Collapsible Sections */}
-              <div className="space-y-2 mt-6">
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Estimate</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Patient Notes</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Follow Up Activity</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Alerts</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Tasks</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Documents</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-                <div className="flex items-center justify-between p-2 hover:bg-gray-100 rounded cursor-pointer">
-                  <span className="text-gray-700 text-sm">Payment</span>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </div>
-              </div>
-            </div>
+            <Accordion type="multiple" defaultValue={["claim-summary"]}>
+              <AccordionItem value="claim-summary">
+                <AccordionTrigger>
+                  <h3 className="font-semibold text-gray-900">Claim Summary</h3>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-gray-500 text-xs">Form Version</Label>
+                      <p className="text-gray-900">CMS-1500 02-12</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Total Amount</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Ins Payments</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Pat Payments</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Adjustments</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Balance</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Patient Credits</Label>
+                      <p className="text-gray-900">$0.00</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Patient Follow Up Date</Label>
+                      <p className="text-gray-900">--</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Patient Recall Date</Label>
+                      <p className="text-gray-900">--</p>
+                    </div>
+                    <div>
+                      <Label className="text-gray-500 text-xs">Date of Service</Label>
+                      <p className="text-gray-900">--</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
         </div>
       </div>

@@ -8,11 +8,10 @@ import { useMobile } from '@/hooks/use-mobile';
 
 interface LayoutProps {
   children: React.ReactNode;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  currentPage: string;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
+const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const isMobile = useMobile();
@@ -25,7 +24,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) =>
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar currentPage={activeTab} onPageChange={setActiveTab} />
+      <Sidebar currentPage={currentPage} />
       <main className="flex-1 overflow-y-auto">
         {/* Header */}
         <header className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
