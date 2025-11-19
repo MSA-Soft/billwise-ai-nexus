@@ -12,6 +12,10 @@ export interface CodeValidationResult {
   warnings: string[];
   errors: string[];
   suggestions: string[];
+  codeType?: string;
+  timestamp?: string;
+  denialRisk?: { riskLevel: string; riskScore: number; riskFactors: string[] };
+  recommendations?: string[];
 }
 
 export interface ICD10Code {

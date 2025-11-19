@@ -230,8 +230,8 @@ export function Claims() {
 
         // Format patients as "LAST_NAME, FIRST_NAME" to match the UI
         const formattedPatients = (data || [])
-          .filter(p => p.first_name || p.last_name)
-          .map(p => ({
+          .filter((p: any) => p.first_name || p.last_name)
+          .map((p: any) => ({
             id: p.id,
             patient_id: p.patient_id || `TEMP-${p.id}`,
             name: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || `Patient ${p.patient_id || p.id}`
