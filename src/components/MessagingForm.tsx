@@ -14,7 +14,9 @@ import {
   Plus,
   Phone,
   Mail,
-  Clock
+  Clock,
+  Eye,
+  File
 } from 'lucide-react';
 
 interface MessagingFormProps {

@@ -23,10 +23,10 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react';
-import { SimpleAppointmentForm } from '@/components/Scheduling/SimpleAppointmentForm';
-import { AppointmentDetails } from '@/components/Scheduling/AppointmentDetails';
-import { CalendarView } from '@/components/Scheduling/CalendarView';
-import { WeekView } from '@/components/Scheduling/WeekView';
+import { SimpleAppointmentForm } from '@/components/scheduling/SimpleAppointmentForm';
+import { AppointmentDetails } from '@/components/scheduling/AppointmentDetails';
+import { CalendarView } from '@/components/scheduling/CalendarView';
+import { WeekView } from '@/components/scheduling/WeekView';
 
 interface Appointment {
   id: string;
@@ -132,8 +132,8 @@ export function Schedule() {
       
       if (appointmentsData && appointmentsData.length > 0) {
         // Get unique patient IDs
-        const patientIds = [...new Set(appointmentsData.map(apt => apt.patient_id).filter(Boolean))];
-        const providerIds = [...new Set(appointmentsData.map(apt => apt.provider_id).filter(Boolean))];
+        const patientIds = [...new Set((appointmentsData as any[]).map(apt => apt.patient_id).filter(Boolean))];
+        const providerIds = [...new Set((appointmentsData as any[]).map(apt => apt.provider_id).filter(Boolean))];
 
         // Fetch patients
         let patientsMap: Record<string, any> = {};
@@ -144,7 +144,7 @@ export function Schedule() {
             .in('id', patientIds);
           
           if (patientsData) {
-            patientsData.forEach(patient => {
+            (patientsData as any[]).forEach(patient => {
               patientsMap[patient.id] = patient;
             });
           }
@@ -155,18 +155,18 @@ export function Schedule() {
         if (providerIds.length > 0) {
           const { data: providersData } = await supabase
             .from('providers' as any)
-            .select('id, first_name, last_name, title')
+            .select('id, first_name, last_name, title, specialty')
             .in('id', providerIds);
           
           if (providersData) {
-            providersData.forEach(provider => {
+            (providersData as any[]).forEach(provider => {
               providersMap[provider.id] = provider;
             });
           }
         }
 
         // Combine appointments with patient and provider data
-        finalAppointmentsData = appointmentsData.map((apt: any) => ({
+        finalAppointmentsData = (appointmentsData as any[]).map((apt: any) => ({
           ...apt,
           patients: apt.patient_id ? patientsMap[apt.patient_id] : null,
           providers: apt.provider_id ? providersMap[apt.provider_id] : null,
@@ -360,38 +360,39 @@ export function Schedule() {
         let patient = null;
         let provider = null;
 
-        if (updated.patient_id) {
+        if ((updated as any).patient_id) {
           const { data: patientData } = await supabase
             .from('patients' as any)
             .select('id, first_name, last_name, phone, email')
-            .eq('id', updated.patient_id)
-            .single();
+            .eq('id', (updated as any).patient_id)
+            .maybeSingle();
           patient = patientData;
         }
 
-        if (updated.provider_id) {
+        if ((updated as any).provider_id) {
           const { data: providerData } = await supabase
             .from('providers' as any)
-            .select('id, first_name, last_name, title')
-            .eq('id', updated.provider_id)
-            .single();
+            .select('id, first_name, last_name, title, specialty')
+            .eq('id', (updated as any).provider_id)
+            .maybeSingle();
           provider = providerData;
         }
 
+        const updatedAny = updated as any;
         // Transform updated appointment
         const transformedAppointment: Appointment = {
-          id: updated.id,
-          patient_id: updated.patient_id || '',
-          provider_id: updated.provider_id || '',
-          appointment_type: updated.appointment_type || '',
-          scheduled_date: updated.scheduled_date || '',
-          scheduled_time: updated.scheduled_time || '00:00',
-          duration_minutes: updated.duration_minutes || 30,
-          status: updated.status || 'scheduled',
-          location: updated.location || '',
-          notes: updated.notes || '',
-          created_at: updated.created_at || new Date().toISOString(),
-          updated_at: updated.updated_at || new Date().toISOString(),
+          id: updatedAny.id,
+          patient_id: updatedAny.patient_id || '',
+          provider_id: updatedAny.provider_id || '',
+          appointment_type: updatedAny.appointment_type || '',
+          scheduled_date: updatedAny.scheduled_date || '',
+          scheduled_time: updatedAny.scheduled_time || '00:00',
+          duration_minutes: updatedAny.duration_minutes || 30,
+          status: updatedAny.status || 'scheduled',
+          location: updatedAny.location || '',
+          notes: updatedAny.notes || '',
+          created_at: updatedAny.created_at || new Date().toISOString(),
+          updated_at: updatedAny.updated_at || new Date().toISOString(),
           patient: patient ? {
             id: patient.id,
             first_name: patient.first_name || '',
@@ -402,6 +403,7 @@ export function Schedule() {
           provider: provider ? {
             id: provider.id,
             name: `${provider.title ? `${provider.title} ` : ''}${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 'Unknown Provider',
+            specialty: provider.specialty || ''
           } : undefined,
         };
 

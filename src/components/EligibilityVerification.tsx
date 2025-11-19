@@ -822,7 +822,7 @@ const EligibilityVerification = () => {
           return;
         }
 
-        setNppList(data.map(p => ({
+        setNppList(((data as any) || []).map((p: any) => ({
           id: p.id,
           name: `${p.first_name} ${p.last_name}${p.title ? `, ${p.title}` : ''}`,
           npi: p.npi
@@ -1928,7 +1928,7 @@ const EligibilityVerification = () => {
           if (saveError) {
             console.error('Error saving verification:', saveError);
           } else if (savedVerification) {
-            verificationId = savedVerification.id;
+            verificationId = (savedVerification as any).id;
 
             // Log audit action
             await eligibilityAuditService.logVerify(

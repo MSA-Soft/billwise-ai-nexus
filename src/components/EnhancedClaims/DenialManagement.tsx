@@ -12,7 +12,8 @@ import {
   BarChart3,
   Eye,
   Edit,
-  RefreshCw
+  RefreshCw,
+  CheckCircle
 } from 'lucide-react';
 
 interface ClaimData {

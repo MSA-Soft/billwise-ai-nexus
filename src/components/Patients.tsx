@@ -559,28 +559,29 @@ export function Patients() {
       }
 
       // Transform updated database record to match component format
+      const updatedData = updated as any;
       const transformedPatient = {
-        id: updated.id,
-        name: `${updated.first_name || ''} ${updated.last_name || ''}`.trim(),
+        id: updatedData.id,
+        name: `${updatedData.first_name || ''} ${updatedData.last_name || ''}`.trim(),
         age: updatedPatient.age, // Keep calculated age
-        dateOfBirth: updated.date_of_birth,
-        phone: updated.phone_primary || updated.phone || '',
-        email: updated.email,
+        dateOfBirth: updatedData.date_of_birth,
+        phone: updatedData.phone_primary || updatedData.phone || '',
+        email: updatedData.email,
         address: [
-          updated.address_line1,
-          updated.city,
-          updated.state,
-          updated.zip_code,
+          updatedData.address_line1,
+          updatedData.city,
+          updatedData.state,
+          updatedData.zip_code,
         ].filter(Boolean).join(', '),
-        city: updated.city,
-        state: updated.state,
-        zipCode: updated.zip_code,
+        city: updatedData.city,
+        state: updatedData.state,
+        zipCode: updatedData.zip_code,
         insurance: updatedPatient.insurance || updatedPatient.insuranceCompany || '',
-        status: updated.status || 'active',
+        status: updatedData.status || 'active',
         emergencyContact: {
-          name: updated.emergency_contact_name,
-          phone: updated.emergency_contact_phone,
-          relation: updated.emergency_contact_relationship || updated.emergency_contact_relation || '',
+          name: updatedData.emergency_contact_name,
+          phone: updatedData.emergency_contact_phone,
+          relation: updatedData.emergency_contact_relationship || updatedData.emergency_contact_relation || '',
         },
         medicalInfo: updatedPatient.medicalInfo || { allergies: [], medications: [], conditions: [] },
         appointments: updatedPatient.appointments || [],
@@ -592,13 +593,13 @@ export function Patients() {
         preferredProvider: updatedPatient.preferredProvider || '',
         lastVisit: updatedPatient.lastVisit || '',
         // Additional fields
-        patient_id: updated.patient_id,
-        gender: updated.gender,
-        ssn: updated.ssn,
-        maritalStatus: updated.marital_status,
-        race: updated.race,
-        ethnicity: updated.ethnicity,
-        language: updated.language,
+        patient_id: updatedData.patient_id,
+        gender: updatedData.gender,
+        ssn: updatedData.ssn,
+        maritalStatus: updatedData.marital_status,
+        race: updatedData.race,
+        ethnicity: updatedData.ethnicity,
+        language: updatedData.language,
       };
 
       // Update local state
