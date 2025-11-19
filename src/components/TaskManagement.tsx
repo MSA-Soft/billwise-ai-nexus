@@ -278,11 +278,11 @@ export function TaskManagement() {
         else if (hasPending && completionPercentage < 50) overallStatus = 'at_risk';
 
         const nextAppt = patientAppointments
-          .filter((apt: any) => new Date(apt.scheduled_date) >= new Date())
+          .filter((apt: any) => apt.scheduled_date && new Date(apt.scheduled_date) >= new Date())
           .sort((a: any, b: any) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())[0];
 
         const lastAppt = patientAppointments
-          .filter((apt: any) => new Date(apt.scheduled_date) < new Date())
+          .filter((apt: any) => apt.scheduled_date && new Date(apt.scheduled_date) < new Date())
           .sort((a: any, b: any) => new Date(b.scheduled_date).getTime() - new Date(a.scheduled_date).getTime())[0];
 
         return {
@@ -290,8 +290,8 @@ export function TaskManagement() {
           patient_name: `${patient.first_name} ${patient.last_name}`,
           patient_dob: patient.date_of_birth,
           registration_date: patient.created_at,
-          last_appointment: lastAppt?.scheduled_date,
-          next_appointment: nextAppt?.scheduled_date,
+          last_appointment: lastAppt?.scheduled_date || null,
+          next_appointment: nextAppt?.scheduled_date || null,
           total_visits: patientAppointments.filter((apt: any) => apt.status === 'completed').length,
           pending_authorizations: patientAuthorizations.filter((auth: any) => 
             !auth.status || auth.status === 'pending'
