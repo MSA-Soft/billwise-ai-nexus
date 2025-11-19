@@ -3,6 +3,7 @@
 // Based on industry best practices for authorization visit management
 
 import { supabase } from '@/integrations/supabase/client';
+import { authorizationTaskService } from './authorizationTaskService';
 
 export interface VisitUsageRecord {
   id: string;
@@ -288,7 +289,6 @@ export class VisitUsageService {
             .eq('id', authorizationId);
 
           // Create renewal task
-          const { authorizationTaskService } = await import('./authorizationTaskService');
           await authorizationTaskService.createTaskFromAuthRequest(
             authorizationId,
             'follow_up',

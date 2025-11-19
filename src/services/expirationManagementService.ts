@@ -3,6 +3,7 @@
 // Based on industry best practices with multi-tier alerting system
 
 import { supabase } from '@/integrations/supabase/client';
+import { authorizationTaskService } from './authorizationTaskService';
 
 export interface ExpirationAlert {
   authorization_id: string;
@@ -316,7 +317,6 @@ export class ExpirationManagementService {
       if (error) throw error;
 
       // Create renewal task
-      const { authorizationTaskService } = await import('./authorizationTaskService');
       await authorizationTaskService.createTaskFromAuthRequest(
         authorizationId,
         'follow_up',

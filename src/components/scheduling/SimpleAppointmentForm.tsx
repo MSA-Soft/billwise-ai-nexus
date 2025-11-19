@@ -307,7 +307,10 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
     
     try {
       // Generate a patient ID (same format as Patients component)
-      const { generatePatientId } = await import('@/utils/patientIdGenerator');
+      const { generatePatientId } = await import('@/utils/patientIdGenerator').catch(() => {
+        // Fallback if dynamic import fails
+        return { generatePatientId: async () => `PAT-${Date.now()}` };
+      });
       const patientId = await generatePatientId();
       
       // Create patient record in patients table

@@ -1120,7 +1120,10 @@ const EligibilityVerification = () => {
 
     try {
       // Generate patient ID if not provided
-      const { generatePatientId } = await import('@/utils/patientIdGenerator');
+      const { generatePatientId } = await import('@/utils/patientIdGenerator').catch(() => {
+        // Fallback if dynamic import fails, use a simple generator
+        return { generatePatientId: async () => `PAT-${Date.now()}` };
+      });
       const patientId = patientIdSearch.trim() || await generatePatientId();
       const patientName = `${quickAddForm.firstName} ${quickAddForm.lastName}`.trim();
 

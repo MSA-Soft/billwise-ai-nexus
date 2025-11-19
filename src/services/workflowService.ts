@@ -2,6 +2,7 @@
 // Rule-based automation, conditional workflows, and auto-assignment
 
 import { supabase } from '@/integrations/supabase/client';
+import { authorizationTaskService } from './authorizationTaskService';
 
 export interface WorkflowRule {
   id?: string;
@@ -316,7 +317,6 @@ export class WorkflowService {
 
   // Action: Create Task
   private async actionCreateTask(action: WorkflowAction, eventData: any): Promise<void> {
-    const { authorizationTaskService } = await import('./authorizationTaskService');
     const authorizationRequestId = eventData.authorization_request_id || eventData.id;
     const taskType = action.parameters.task_type || 'follow_up';
     const assignedTo = action.parameters.assigned_to;

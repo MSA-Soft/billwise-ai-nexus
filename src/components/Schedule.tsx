@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { authorizationTaskService } from '@/services/authorizationTaskService';
+import { visitUsageService } from '@/services/visitUsageService';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -414,9 +415,6 @@ export function Schedule() {
             const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
             const appointmentDate = `${updated.scheduled_date} ${updated.scheduled_time || '00:00:00'}`;
             const serviceDate = new Date(updated.scheduled_date);
-            
-            // Import visit usage service
-            const { visitUsageService } = await import('@/services/visitUsageService');
             
             // Find active authorization for this patient
             const { data: auths } = await supabase
