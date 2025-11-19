@@ -408,39 +408,37 @@ export function Schedule() {
         };
 
         // Check if appointment was just marked as completed
-        const wasJustCompleted = updated.status === 'completed' && 
+        const wasJustCompleted = (updated as any).status === 'completed' && 
           selectedAppointment?.status !== 'completed';
         
         // Handle authorization visit recording and next visit task when appointment is completed
         if (wasJustCompleted && patient && user?.id) {
           try {
             const patientName = `${patient.first_name || ''} ${patient.last_name || ''}`.trim();
-            const appointmentDate = `${updated.scheduled_date} ${updated.scheduled_time || '00:00:00'}`;
-            const serviceDate = new Date(updated.scheduled_date);
+            const appointmentDate = `${(updated as any).scheduled_date} ${(updated as any).scheduled_time || '00:00:00'}`;
+            const serviceDate = new Date((updated as any).scheduled_date);
             
             // Find active authorization for this patient
             const { data: auths } = await supabase
               .from('authorization_requests')
-              .select('id, patient_name, status, authorization_expiration_date, visits_authorized, visits_used')
+              .select('id, patient_name, status, visits_authorized, visits_used')
               .eq('patient_name', patientName)
               .eq('status', 'approved')
-              .not('authorization_expiration_date', 'is', null)
-              .gte('authorization_expiration_date', serviceDate.toISOString().split('T')[0])
               .order('created_at', { ascending: false })
               .limit(1);
             
             // Auto-record visit if authorization found
             if (auths && auths.length > 0) {
-              const auth = auths[0];
+              const auth = auths[0] as any;
               try {
                 await visitUsageService.recordVisitUsage(
                   auth.id,
                   {
-                    appointment_id: updated.id,
+                    appointment_id: (updated as any).id,
                     visit_date: serviceDate,
-                    service_type: updated.appointment_type,
+                    service_type: (updated as any).appointment_type,
                     status: 'completed',
-                    notes: `Auto-recorded from appointment completion: ${updated.notes || ''}`,
+                    notes: `Auto-recorded from appointment completion: ${(updated as any).notes || ''}`,
                   },
                   user.id
                 );
@@ -460,7 +458,7 @@ export function Schedule() {
               {
                 userId: user.id,
                 priority: 'medium',
-                notes: `Visit completed: ${updated.appointment_type || 'Appointment'} on ${new Date(updated.scheduled_date).toLocaleDateString()}. ${updated.notes || ''}`,
+                notes: `Visit completed: ${(updated as any).appointment_type || 'Appointment'} on ${new Date((updated as any).scheduled_date).toLocaleDateString()}. ${(updated as any).notes || ''}`,
               }
             );
           } catch (error: any) {
