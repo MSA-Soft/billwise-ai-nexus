@@ -3,6 +3,26 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
+// Plugin to ensure React vendor loads first
+const reactFirstPlugin = () => ({
+  name: 'react-first',
+  transformIndexHtml(html: string) {
+    // Reorder modulepreload links to ensure react-vendor loads first
+    const reactVendorRegex = /<link rel="modulepreload"[^>]*react-vendor[^>]*>/i;
+    const reactVendorMatch = html.match(reactVendorRegex);
+    if (reactVendorMatch) {
+      // Remove react-vendor from its current position
+      html = html.replace(reactVendorRegex, '');
+      // Insert it right after the main script tag
+      html = html.replace(
+        /(<script[^>]*index[^>]*><\/script>)/i,
+        `$1\n    ${reactVendorMatch[0]}`
+      );
+    }
+    return html;
+  }
+});
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -14,6 +34,7 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    reactFirstPlugin(),
     mode === 'development' &&
     componentTagger(),
   ].filter(Boolean),
@@ -26,11 +47,19 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Vendor chunks
+          // CRITICAL: React and React-DOM must be in their own chunk that loads FIRST
+          // This ensures React is available before any other chunks that depend on it
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom')) {
-              return 'react-vendor';
+            // Put React in its own chunk that will load first
+            if (id.includes('/react/') || 
+                id.includes('/react-dom/') ||
+                id.includes('\\react\\') ||
+                id.includes('\\react-dom\\') ||
+                id.includes('react/jsx-runtime') ||
+                id.includes('react/jsx-dev-runtime')) {
+              return 'react-vendor'; // Separate chunk for React
             }
+            
             if (id.includes('@supabase')) {
               return 'supabase-vendor';
             }
@@ -46,7 +75,7 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('lucide-react')) {
               return 'icons-vendor';
             }
-            // Other node_modules
+            // Other node_modules (but NOT react/react-dom)
             return 'vendor';
           }
           
@@ -82,6 +111,14 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('/src/services/')) {
             return 'services';
           }
+        },
+        // Ensure React vendor chunk loads before other chunks
+        chunkFileNames: (chunkInfo) => {
+          // React vendor must be named first to ensure it loads first
+          if (chunkInfo.name === 'react-vendor') {
+            return 'assets/react-vendor-[hash].js';
+          }
+          return 'assets/[name]-[hash].js';
         },
       },
     },
