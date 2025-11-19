@@ -199,8 +199,8 @@ export function EnhancedAnalyticsDashboard() {
 
       // Calculate task metrics
       const totalTasks = tasksData.length;
-      const completedTasks = tasksData.filter(t => t.status === 'completed').length;
-      const overdueTasks = tasksData.filter(t => {
+      const completedTasks = tasksData.filter((t: any) => t.status === 'completed').length;
+      const overdueTasks = tasksData.filter((t: any) => {
         if (!t.due_date || t.status === 'completed' || t.status === 'cancelled') return false;
         return new Date(t.due_date) < new Date();
       }).length;
