@@ -674,10 +674,10 @@ const EligibilityVerification = () => {
 
         // Filter out duplicates and null values, create display-friendly format
         const uniquePatients = (data || [])
-          .filter(p => p.patient_id || p.first_name || p.last_name)
-          .map(p => ({
-            id: (p as any).id,
-            patient_id: (p as any).patient_id || `TEMP-${(p as any).id}`,
+          .filter((p: any) => p.patient_id || p.first_name || p.last_name)
+          .map((p: any) => ({
+            id: p.id,
+            patient_id: p.patient_id || `TEMP-${p.id}`,
             patient_name: `${(p as any).first_name ?? ''} ${(p as any).last_name ?? ''}`.trim() || `Patient ${(p as any).patient_id || (p as any).id}`,
           }));
 
@@ -758,7 +758,7 @@ const EligibilityVerification = () => {
       setIsLoadingProviders(true);
       try {
         const { data, error } = await supabase
-          .from('providers')
+          .from('providers' as any)
           .select('id, npi, first_name, last_name, title')
           .eq('is_active', true)
           .order('last_name', { ascending: true })
@@ -775,7 +775,7 @@ const EligibilityVerification = () => {
         }
 
         if (data) {
-          setProviders(data || []);
+          setProviders((data as any) || []);
         } else {
           setProviders([
             { id: '1', npi: '1234567890', first_name: 'John', last_name: 'Smith', title: 'MD' },
