@@ -267,14 +267,15 @@ export function PatientDashboardEnhanced({
         };
       }
 
+      const medicalData = data as any;
       return {
-        allergies: (data.allergies as any[])?.map((a: any) => 
+        allergies: (medicalData.allergies as any[])?.map((a: any) => 
           typeof a === 'string' ? a : a.allergen || a.name || String(a)
         ) || [],
-        medications: (data.medications as any[])?.map((m: any) => 
+        medications: (medicalData.medications as any[])?.map((m: any) => 
           typeof m === 'string' ? m : m.name || String(m)
         ) || [],
-        conditions: (data.conditions as any[])?.map((c: any) => 
+        conditions: (medicalData.conditions as any[])?.map((c: any) => 
           typeof c === 'string' ? c : c.condition || c.name || String(c)
         ) || []
       };
