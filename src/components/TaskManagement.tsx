@@ -913,13 +913,13 @@ export function TaskManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-semibold mb-2 block">Status</Label>
-                  <Badge className={getStatusColor(selectedTask.status)} variant="outline" className="text-base px-3 py-1">
+                  <Badge variant="outline" className={`text-base px-3 py-1 ${getStatusColor(selectedTask.status)}`}>
                     {selectedTask.status.replace('_', ' ').toUpperCase()}
                   </Badge>
                 </div>
                 <div>
                   <Label className="text-sm font-semibold mb-2 block">Priority</Label>
-                  <Badge className={getPriorityColor(selectedTask.priority)} className="text-base px-3 py-1">
+                  <Badge className={`text-base px-3 py-1 ${getPriorityColor(selectedTask.priority)}`}>
                     {selectedTask.priority.toUpperCase()}
                   </Badge>
                 </div>

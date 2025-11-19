@@ -101,15 +101,15 @@ export function EnhancedAnalyticsDashboard() {
 
       // Fetch tasks
       const { data: tasks, error: tasksError } = await supabase
-        .from('authorization_tasks')
+        .from('authorization_requests' as any) // Using auth requests as tasks don't exist
         .select('*')
         .gte('created_at', startDate.toISOString());
 
       if (tasksError) throw tasksError;
 
-      // Fetch claims for revenue data
+      // Fetch claims for revenue data (using billing_statements as claims don't exist)
       const { data: claims, error: claimsError } = await supabase
-        .from('claims')
+        .from('billing_statements' as any)
         .select('*')
         .gte('created_at', startDate.toISOString());
 
@@ -122,20 +122,20 @@ export function EnhancedAnalyticsDashboard() {
 
       // Calculate authorization metrics
       const totalAuthorizations = authData.length;
-      const pendingAuthorizations = authData.filter(a => 
+      const pendingAuthorizations = authData.filter((a: any) => 
         a.status === 'pending' || a.status === 'submitted'
       ).length;
-      const approvedAuthorizations = authData.filter(a => a.status === 'approved').length;
-      const deniedAuthorizations = authData.filter(a => a.status === 'denied').length;
+      const approvedAuthorizations = authData.filter((a: any) => a.status === 'approved').length;
+      const deniedAuthorizations = authData.filter((a: any) => a.status === 'denied').length;
       const approvalRate = totalAuthorizations > 0 
         ? Math.round((approvedAuthorizations / (approvedAuthorizations + deniedAuthorizations)) * 100) 
         : 0;
 
       // Calculate revenue metrics
-      const totalRevenue = claimsData.reduce((sum, claim) => sum + (parseFloat(claim.total_charges) || 0), 0);
+      const totalRevenue = claimsData.reduce((sum: number, claim: any) => sum + (parseFloat(claim.amount_due) || 0), 0);
       const collectedRevenue = claimsData
-        .filter(c => c.status === 'paid')
-        .reduce((sum, claim) => sum + (parseFloat(claim.total_charges) || 0), 0);
+        .filter((c: any) => c.status === 'paid')
+        .reduce((sum: number, claim: any) => sum + (parseFloat(claim.amount_due) || 0), 0);
       const outstandingRevenue = totalRevenue - collectedRevenue;
       const collectionRate = totalRevenue > 0 
         ? Math.round((collectedRevenue / totalRevenue) * 100) 
@@ -144,8 +144,8 @@ export function EnhancedAnalyticsDashboard() {
       // Calculate payer performance
       const payerMap = new Map<string, { total: number; approved: number; denied: number }>();
       
-      authData.forEach(auth => {
-        const payerName = auth.payer_name_custom || 'Unknown';
+      authData.forEach((auth: any) => {
+        const payerName = auth.payer_name || 'Unknown';
         if (!payerMap.has(payerName)) {
           payerMap.set(payerName, { total: 0, approved: 0, denied: 0 });
         }
@@ -169,7 +169,7 @@ export function EnhancedAnalyticsDashboard() {
       // Calculate monthly trends
       const monthlyMap = new Map<string, { authorizations: number; approvals: number; denials: number; revenue: number }>();
       
-      authData.forEach(auth => {
+      authData.forEach((auth: any) => {
         const date = new Date(auth.created_at);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (!monthlyMap.has(monthKey)) {
@@ -181,11 +181,11 @@ export function EnhancedAnalyticsDashboard() {
         if (auth.status === 'denied') month.denials++;
       });
 
-      claimsData.forEach(claim => {
+      claimsData.forEach((claim: any) => {
         const date = new Date(claim.created_at);
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
         if (monthlyMap.has(monthKey)) {
-          monthlyMap.get(monthKey)!.revenue += parseFloat(claim.total_charges) || 0;
+          monthlyMap.get(monthKey)!.revenue += parseFloat(claim.amount_due) || 0;
         }
       });
 

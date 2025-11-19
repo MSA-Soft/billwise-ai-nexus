@@ -514,20 +514,20 @@ export function Schedule() {
         let patient = null;
         let provider = null;
 
-        if (created.patient_id) {
+        if ((created as any).patient_id) {
           const { data: patientData } = await supabase
             .from('patients' as any)
             .select('id, first_name, last_name, phone, email')
-            .eq('id', created.patient_id)
+            .eq('id', (created as any).patient_id)
             .single();
           patient = patientData;
         }
 
-        if (created.provider_id) {
+        if ((created as any).provider_id) {
           const { data: providerData } = await supabase
             .from('providers' as any)
-            .select('id, first_name, last_name, title')
-            .eq('id', created.provider_id)
+            .select('id, first_name, last_name, title, specialty')
+            .eq('id', (created as any).provider_id)
             .single();
           provider = providerData;
         }
@@ -535,18 +535,18 @@ export function Schedule() {
         // Transform created appointment
 
         const transformedAppointment: Appointment = {
-          id: created.id,
-          patient_id: created.patient_id || '',
-          provider_id: created.provider_id || '',
-          appointment_type: created.appointment_type || '',
-          scheduled_date: created.scheduled_date || '',
-          scheduled_time: created.scheduled_time || '00:00',
-          duration_minutes: created.duration_minutes || 30,
-          status: created.status || 'scheduled',
-          location: created.location || '',
-          notes: created.notes || '',
-          created_at: created.created_at || new Date().toISOString(),
-          updated_at: created.updated_at || new Date().toISOString(),
+          id: (created as any).id,
+          patient_id: (created as any).patient_id || '',
+          provider_id: (created as any).provider_id || '',
+          appointment_type: (created as any).appointment_type || '',
+          scheduled_date: (created as any).scheduled_date || '',
+          scheduled_time: (created as any).scheduled_time || '00:00',
+          duration_minutes: (created as any).duration_minutes || 30,
+          status: (created as any).status || 'scheduled',
+          location: (created as any).location || '',
+          notes: (created as any).notes || '',
+          created_at: (created as any).created_at || new Date().toISOString(),
+          updated_at: (created as any).updated_at || new Date().toISOString(),
           patient: patient ? {
             id: patient.id,
             first_name: patient.first_name || '',
@@ -557,6 +557,7 @@ export function Schedule() {
           provider: provider ? {
             id: provider.id,
             name: `${provider.title ? `${provider.title} ` : ''}${provider.first_name || ''} ${provider.last_name || ''}`.trim() || 'Unknown Provider',
+            specialty: provider.specialty || '',
           } : undefined,
         };
 
