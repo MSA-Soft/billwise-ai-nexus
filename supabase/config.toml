@@ -1,10 +1,1 @@
 project_id = "aruiufyicvfmppcrebgo"
-
-[functions.chat-assistant]
-verify_jwt = true
-
-[functions.process-billing-cycle]
-verify_jwt = true
-
-[functions.analyze-authorization]
-verify_jwt = true

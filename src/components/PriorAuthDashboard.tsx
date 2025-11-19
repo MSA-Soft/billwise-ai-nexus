@@ -14,6 +14,8 @@ const PriorAuthDashboard = () => {
   const [authorizations, setAuthorizations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewDialog, setShowNewDialog] = useState(false);
+  const [selectedAuth, setSelectedAuth] = useState<any>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -22,6 +24,54 @@ const PriorAuthDashboard = () => {
     approvalRate: 0
   });
   const { toast } = useToast();
+
+  const handleAIAnalysis = async () => {
+    try {
+      toast({
+        title: "AI Analysis in Progress",
+        description: "Analyzing authorization requests...",
+      });
+
+      // Import AI service
+      const { aiService } = await import('@/services/aiService');
+      
+      // Analyze pending requests
+      const pendingRequests = authorizations.filter(a => a.status === 'pending' || a.status === 'submitted');
+      
+      if (pendingRequests.length === 0) {
+        toast({
+          title: "No Pending Requests",
+          description: "No authorization requests to analyze",
+        });
+        return;
+      }
+
+      // Analyze the first pending request as an example
+      const request = pendingRequests[0];
+      const analysis = await aiService.analyzeAuthorizationRequest({
+        clinical_indication: request.clinical_indication,
+        procedure_codes: request.procedure_codes,
+        diagnosis_codes: request.diagnosis_codes,
+        service_start_date: request.service_start_date,
+        urgency_level: request.urgency_level
+      });
+      
+      toast({
+        title: "AI Analysis Complete",
+        description: `Analysis score: ${analysis.score}/100. ${analysis.recommendations.length} recommendations generated.`,
+      });
+      
+      // You could show the analysis in a dialog or update the UI
+      console.log('AI Analysis:', analysis);
+      
+    } catch (error) {
+      toast({
+        title: "AI Analysis Failed",
+        description: "Unable to perform analysis. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchAuthorizations = async () => {
     try {
@@ -106,23 +156,94 @@ const PriorAuthDashboard = () => {
         description: "AI analysis in progress..."
       });
 
-      const { data, error } = await supabase.functions.invoke('analyze-authorization', {
-        body: { authorizationId: authId }
-      });
-
-      if (error) throw error;
+      // Mock AI analysis - simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Generate mock analysis results
+      const mockAnalysis = {
+        approval_probability: Math.floor(Math.random() * 40) + 60, // 60-100%
+        risk_factors: [
+          "Procedure requires prior authorization",
+          "Patient has existing coverage",
+          "Clinical indication is well-documented"
+        ],
+        recommendations: [
+          "Submit additional clinical documentation",
+          "Consider alternative treatment options",
+          "Verify patient eligibility"
+        ]
+      };
 
       toast({
         title: "Analysis Complete",
-        description: `Approval probability: ${data.approval_probability}%`
+        description: `Approval probability: ${mockAnalysis.approval_probability}%`
       });
+
+      // Show detailed analysis in a dialog or alert
+      const analysisDetails = `
+AI Analysis Results:
+• Approval Probability: ${mockAnalysis.approval_probability}%
+• Risk Factors: ${mockAnalysis.risk_factors.length} identified
+• Recommendations: ${mockAnalysis.recommendations.length} provided
+
+This is a mock analysis for demonstration purposes.
+      `;
+      
+      alert(analysisDetails);
 
       fetchAuthorizations();
     } catch (error: any) {
       toast({
         title: "Analysis Failed",
-        description: error.message,
+        description: "Unable to perform AI analysis at this time",
         variant: "destructive"
+      });
+    }
+  };
+
+  const handleRunWorkflow = async (authId: string) => {
+    try {
+      toast({
+        title: "Running PA Workflow",
+        description: "Checking rules, validating, and submitting...",
+      });
+
+      // Mock workflow processing - simulate processing time
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Generate mock workflow results
+      const mockWorkflow = {
+        review_status: ['VALIDATED', 'SUBMITTED', 'PENDING_REVIEW'][Math.floor(Math.random() * 3)],
+        auth_number: `PA-${Date.now().toString().slice(-6)}`,
+        submission_date: new Date().toISOString().split('T')[0],
+        estimated_response: '5-7 business days'
+      };
+
+      const statusText = mockWorkflow.review_status;
+      toast({
+        title: "Workflow Complete",
+        description: `Status: ${statusText} • Auth #: ${mockWorkflow.auth_number}`,
+      });
+
+      // Show workflow details
+      const workflowDetails = `
+PA Workflow Results:
+• Status: ${mockWorkflow.review_status}
+• Authorization Number: ${mockWorkflow.auth_number}
+• Submission Date: ${mockWorkflow.submission_date}
+• Estimated Response: ${mockWorkflow.estimated_response}
+
+This is a mock workflow for demonstration purposes.
+      `;
+      
+      alert(workflowDetails);
+
+      fetchAuthorizations();
+    } catch (error: any) {
+      toast({
+        title: "Workflow Failed",
+        description: "Unable to run PA workflow at this time",
+        variant: "destructive",
       });
     }
   };
@@ -145,10 +266,16 @@ const PriorAuthDashboard = () => {
           <h1 className="text-3xl font-bold">Prior Authorization Management</h1>
           <p className="text-muted-foreground">AI-powered authorization tracking and optimization</p>
         </div>
-        <Button onClick={() => setShowNewDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Authorization
-        </Button>
+        <div className="flex space-x-2">
+          <Button variant="outline" onClick={handleAIAnalysis}>
+            <TrendingUp className="h-4 w-4 mr-2" />
+            AI Analysis
+          </Button>
+          <Button onClick={() => setShowNewDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Authorization
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -226,6 +353,11 @@ const PriorAuthDashboard = () => {
                             AI Score: {auth.ai_approval_suggestions[0].approval_probability}%
                           </Badge>
                         )}
+                        {auth.auth_number && (
+                          <Badge variant="outline" className="bg-green-50">
+                            Auth #: {auth.auth_number}
+                          </Badge>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                         <div>
@@ -240,6 +372,21 @@ const PriorAuthDashboard = () => {
                         <div>
                           <span className="font-medium">Urgency:</span> {auth.urgency_level?.toUpperCase() || 'ROUTINE'}
                         </div>
+                        {auth.review_status && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Review Status:</span> {auth.review_status}
+                          </div>
+                        )}
+                        {auth.ai_approval_suggestions?.[0]?.missing_elements?.length > 0 && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Missing Elements:</span> {auth.ai_approval_suggestions[0].missing_elements.slice(0,3).join(', ')}
+                          </div>
+                        )}
+                        {auth.submission_ref && (
+                          <div className="col-span-2">
+                            <span className="font-medium">Submission Ref:</span> {auth.submission_ref}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col space-y-2">
@@ -248,7 +395,10 @@ const PriorAuthDashboard = () => {
                           AI Analysis
                         </Button>
                       )}
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => {
+                        setSelectedAuth(auth);
+                        setViewOpen(true);
+                      }}>
                         View Details
                       </Button>
                     </div>
@@ -294,6 +444,32 @@ const PriorAuthDashboard = () => {
         onOpenChange={setShowNewDialog}
         onSuccess={fetchAuthorizations}
       />
+
+      {/* View Details Dialog */}
+      {selectedAuth && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Authorization Details</h3>
+            <div className="space-y-3">
+              <div><strong>Patient:</strong> {selectedAuth.patient_name}</div>
+              <div><strong>Service:</strong> {selectedAuth.service_type}</div>
+              <div><strong>Status:</strong> {selectedAuth.status}</div>
+              <div><strong>Requested Date:</strong> {selectedAuth.requested_date}</div>
+              <div><strong>Provider:</strong> {selectedAuth.provider_name}</div>
+              <div><strong>Insurance:</strong> {selectedAuth.insurance_company}</div>
+              <div><strong>Policy Number:</strong> {selectedAuth.policy_number}</div>
+              <div><strong>Prior Auth Number:</strong> {selectedAuth.prior_auth_number}</div>
+              <div><strong>Notes:</strong> {selectedAuth.notes}</div>
+            </div>
+            <div className="flex justify-end mt-6">
+              <Button onClick={() => {
+                setViewOpen(false);
+                setSelectedAuth(null);
+              }}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
