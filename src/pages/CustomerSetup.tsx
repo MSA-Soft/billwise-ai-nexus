@@ -151,7 +151,7 @@ const CustomerSetup: React.FC = () => {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout currentPage={activeTab}>
       {renderContent()}
     </Layout>
   );

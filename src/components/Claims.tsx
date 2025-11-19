@@ -168,6 +168,22 @@ export function Claims() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [topSection, setTopSection] = useState<'all' | 'denial' | 'ai'>('all');
   
+  // Quick filter buttons state
+  const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
+  
+  // AI filter buttons state
+  const [activeAIFilter, setActiveAIFilter] = useState<string | null>(null);
+  
+  // Saved filters state
+  const [savedFilters, setSavedFilters] = useState<Array<{ name: string; filters: any }>>([]);
+  
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Denial Management sub-tab state
+  const [denialSubTab, setDenialSubTab] = useState<'active' | 'analytics' | 'ai-insights' | 'workflows'>('active');
+  
   // Column management state
   const [availableColumns, setAvailableColumns] = useState([
     'Total Charges',
@@ -317,9 +333,148 @@ export function Claims() {
     }
   };
 
+  // Helper function to get today's date in mm/dd/yyyy format
+  const getTodayDate = () => {
+    const today = new Date();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const year = today.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  // Helper function to get start of week date
+  const getWeekStartDate = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const diff = today.getDate() - dayOfWeek;
+    const weekStart = new Date(today.setDate(diff));
+    const month = String(weekStart.getMonth() + 1).padStart(2, '0');
+    const day = String(weekStart.getDate()).padStart(2, '0');
+    const year = weekStart.getFullYear();
+    return `${month}/${day}/${year}`;
+  };
+
+  // Apply quick filter logic
+  const applyQuickFilter = (filterType: string) => {
+    const today = getTodayDate();
+    const weekStart = getWeekStartDate();
+    
+    switch (filterType) {
+      case 'today':
+        setServiceDateFrom(today);
+        setServiceDateTo(today);
+        setActiveQuickFilter('today');
+        break;
+      case 'pending':
+        setStatusFilter('at-payer');
+        setActiveQuickFilter('pending');
+        break;
+      case 'denied':
+        // Filter for denied claims (status contains "DENIED" or similar)
+        setStatusFilter('at-payer');
+        setActiveQuickFilter('denied');
+        break;
+      case 'this-week':
+        setServiceDateFrom(weekStart);
+        setServiceDateTo(getTodayDate());
+        setActiveQuickFilter('this-week');
+        break;
+    }
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setExactMatchesOnly(false);
+    setUnpaidOnly(false);
+    setPatientFilter('all');
+    setStatusFilter('all');
+    setPayerFilter('all');
+    setProviderFilter('all');
+    setPatientSearchTerm('');
+    setCptFilter('');
+    setServiceDateFrom('');
+    setServiceDateTo('');
+    setAmountMin('');
+    setAmountMax('');
+    setActiveQuickFilter(null);
+    setActiveAIFilter(null);
+  };
+
+  // Apply AI filter
+  const applyAIFilter = (filterType: string) => {
+    setActiveAIFilter(filterType);
+    switch (filterType) {
+      case 'high-risk':
+        // Filter claims with AI score < 70
+        setStatusFilter('all');
+        break;
+      case 'ready-appeal':
+        // Filter denied claims that are ready for appeal
+        setStatusFilter('at-payer');
+        break;
+      case 'missing-docs':
+        // Filter claims with missing documentation (AI score < 60)
+        setStatusFilter('all');
+        break;
+      case 'optimization':
+        // Filter claims with optimization opportunities
+        setStatusFilter('all');
+        break;
+    }
+  };
+
+  // Save current filter
+  const saveCurrentFilter = () => {
+    const filterName = prompt('Enter a name for this filter:');
+    if (filterName) {
+      const currentFilterState = {
+        searchTerm,
+        exactMatchesOnly,
+        unpaidOnly,
+        patientFilter,
+        statusFilter,
+        payerFilter,
+        providerFilter,
+        patientSearchTerm,
+        cptFilter,
+        serviceDateFrom,
+        serviceDateTo,
+        amountMin,
+        amountMax,
+        activeQuickFilter,
+        activeAIFilter
+      };
+      setSavedFilters([...savedFilters, { name: filterName, filters: currentFilterState }]);
+      alert(`Filter "${filterName}" saved successfully!`);
+    }
+  };
+
+  // Sort claims
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
   const filteredClaims = mockClaims.filter(claim => {
     // unpaidOnly filter
     if (unpaidOnly && claim.balance === 0) return false;
+
+    // AI filter: High Risk (AI score < 70)
+    if (activeAIFilter === 'high-risk' && claim.aiScore >= 70) return false;
+    
+    // AI filter: Missing Documentation (AI score < 60)
+    if (activeAIFilter === 'missing-docs' && claim.aiScore >= 60) return false;
+    
+    // AI filter: Ready to Appeal (denied claims)
+    if (activeAIFilter === 'ready-appeal' && !claim.status.toLowerCase().includes('denied') && !claim.status.toLowerCase().includes('claim at')) return false;
+    
+    // AI filter: Optimization Opportunities (claims with balance and low AI score)
+    if (activeAIFilter === 'optimization' && (claim.balance === 0 || claim.aiScore >= 80)) return false;
 
     // patient filter (top-right)
     if (patientFilter && patientFilter !== 'all') {
@@ -397,6 +552,70 @@ export function Claims() {
     }
 
     return true;
+  });
+
+  // Apply sorting
+  const sortedClaims = [...filteredClaims].sort((a, b) => {
+    if (!sortColumn) return 0;
+    
+    let aValue: any;
+    let bValue: any;
+    
+    switch (sortColumn) {
+      case 'Claim ID':
+        aValue = a.id;
+        bValue = b.id;
+        break;
+      case 'Patient':
+        aValue = a.patient;
+        bValue = b.patient;
+        break;
+      case 'Service Date':
+      case 'DOS':
+        const parseDate = (d: string) => {
+          if (!d) return null;
+          const parts = d.split('/');
+          if (parts.length !== 3) return null;
+          const month = parseInt(parts[0], 10) - 1;
+          const day = parseInt(parts[1], 10);
+          const year = parseInt(parts[2], 10);
+          return new Date(year, month, day).getTime();
+        };
+        aValue = parseDate(a.dos) || 0;
+        bValue = parseDate(b.dos) || 0;
+        break;
+      case 'Amount':
+      case 'Total Charges':
+        aValue = a.totalCharges;
+        bValue = b.totalCharges;
+        break;
+      case 'Balance':
+        aValue = a.balance;
+        bValue = b.balance;
+        break;
+      case 'Status':
+        aValue = a.status;
+        bValue = b.status;
+        break;
+      case 'AI Score':
+        aValue = a.aiScore || 0;
+        bValue = b.aiScore || 0;
+        break;
+      case 'Payer':
+        aValue = a.payer || '';
+        bValue = b.payer || '';
+        break;
+      case 'Provider':
+        aValue = a.provider || '';
+        bValue = b.provider || '';
+        break;
+      default:
+        return 0;
+    }
+    
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
   });
 
   // Calculate statistics
@@ -757,14 +976,49 @@ export function Claims() {
                     </button>
                     <span className="text-sm text-gray-500">Quick Filters</span>
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Today's Claims</Button>
-                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Pending Claims</Button>
-                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">Denied Claims</Button>
-                      <Button variant="ghost" size="sm" className="bg-gray-50 border border-gray-200">This Week</Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={`border border-gray-200 ${activeQuickFilter === 'today' ? 'bg-blue-100 text-blue-700' : 'bg-gray-50'}`}
+                        onClick={() => applyQuickFilter('today')}
+                      >
+                        Today's Claims
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={`border border-gray-200 ${activeQuickFilter === 'pending' ? 'bg-blue-100 text-blue-700' : 'bg-gray-50'}`}
+                        onClick={() => applyQuickFilter('pending')}
+                      >
+                        Pending Claims
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={`border border-gray-200 ${activeQuickFilter === 'denied' ? 'bg-blue-100 text-blue-700' : 'bg-gray-50'}`}
+                        onClick={() => applyQuickFilter('denied')}
+                      >
+                        Denied Claims
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className={`border border-gray-200 ${activeQuickFilter === 'this-week' ? 'bg-blue-100 text-blue-700' : 'bg-gray-50'}`}
+                        onClick={() => applyQuickFilter('this-week')}
+                      >
+                        This Week
+                      </Button>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" className="bg-white border border-gray-200">Clear All</Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="bg-white border border-gray-200"
+                      onClick={clearAllFilters}
+                    >
+                      Clear All
+                    </Button>
                   </div>
                 </div>
 
@@ -773,10 +1027,62 @@ export function Claims() {
                     <div className="mb-3">
                       <p className="text-xs font-medium text-purple-600 mb-2">AI-Powered Filters</p>
                       <div className="flex gap-2 flex-wrap">
-                        <Button variant="outline" size="sm" className="bg-white">High Risk Claims</Button>
-                        <Button variant="outline" size="sm" className="bg-white">Ready to Appeal</Button>
-                        <Button variant="outline" size="sm" className="bg-white">Missing Documentation</Button>
-                        <Button variant="outline" size="sm" className="bg-white">Optimization Opportunities</Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className={`bg-white ${activeAIFilter === 'high-risk' ? 'bg-purple-100 border-purple-300 text-purple-700' : ''}`}
+                          onClick={() => {
+                            if (activeAIFilter === 'high-risk') {
+                              setActiveAIFilter(null);
+                            } else {
+                              applyAIFilter('high-risk');
+                            }
+                          }}
+                        >
+                          High Risk Claims
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className={`bg-white ${activeAIFilter === 'ready-appeal' ? 'bg-purple-100 border-purple-300 text-purple-700' : ''}`}
+                          onClick={() => {
+                            if (activeAIFilter === 'ready-appeal') {
+                              setActiveAIFilter(null);
+                            } else {
+                              applyAIFilter('ready-appeal');
+                            }
+                          }}
+                        >
+                          Ready to Appeal
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className={`bg-white ${activeAIFilter === 'missing-docs' ? 'bg-purple-100 border-purple-300 text-purple-700' : ''}`}
+                          onClick={() => {
+                            if (activeAIFilter === 'missing-docs') {
+                              setActiveAIFilter(null);
+                            } else {
+                              applyAIFilter('missing-docs');
+                            }
+                          }}
+                        >
+                          Missing Documentation
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className={`bg-white ${activeAIFilter === 'optimization' ? 'bg-purple-100 border-purple-300 text-purple-700' : ''}`}
+                          onClick={() => {
+                            if (activeAIFilter === 'optimization') {
+                              setActiveAIFilter(null);
+                            } else {
+                              applyAIFilter('optimization');
+                            }
+                          }}
+                        >
+                          Optimization Opportunities
+                        </Button>
                       </div>
                     </div>
 
@@ -884,7 +1190,12 @@ export function Claims() {
                     </div>
 
                     <div className="flex justify-end mt-4">
-                      <Button className="bg-white border border-gray-200">Save Current Filter</Button>
+                      <Button 
+                        className="bg-white border border-gray-200"
+                        onClick={saveCurrentFilter}
+                      >
+                        Save Current Filter
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -897,19 +1208,48 @@ export function Claims() {
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900">Recently Opened</h2>
                   <div className="flex items-center gap-1 group">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
-                      onClick={() => {
-                        console.log('Sort/filter button clicked');
-                      }}
-                    >
-                      <div className="relative">
-                        <Circle className="h-4 w-4 text-gray-600" strokeWidth={2} />
-                        <ArrowUpDown className="h-2.5 w-2.5 text-gray-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" strokeWidth={2.5} />
-                      </div>
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity rounded-full"
+                        >
+                          <div className="relative">
+                            <Circle className="h-4 w-4 text-gray-600" strokeWidth={2} />
+                            <ArrowUpDown className="h-2.5 w-2.5 text-gray-600 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" strokeWidth={2.5} />
+                          </div>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleSort('Claim ID')}>
+                          Sort by Claim ID {sortColumn === 'Claim ID' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleSort('Patient')}>
+                          Sort by Patient {sortColumn === 'Patient' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleSort('Service Date')}>
+                          Sort by Service Date {sortColumn === 'Service Date' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleSort('Amount')}>
+                          Sort by Amount {sortColumn === 'Amount' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleSort('Status')}>
+                          Sort by Status {sortColumn === 'Status' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleSort('AI Score')}>
+                          Sort by AI Score {sortColumn === 'AI Score' && (sortDirection === 'asc' ? '↑' : '↓')}
+                        </DropdownMenuItem>
+                        {sortColumn && (
+                          <DropdownMenuItem onClick={() => {
+                            setSortColumn(null);
+                            setSortDirection('asc');
+                          }}>
+                            Clear Sort
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -937,7 +1277,7 @@ export function Claims() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredClaims.map((claim) => (
+                    {sortedClaims.map((claim) => (
                       <TableRow 
                         key={claim.id} 
                         className="border-gray-200 hover:bg-gray-50 cursor-pointer"
@@ -1027,47 +1367,112 @@ export function Claims() {
             {/* Sub-tabs */}
             <div className="mb-4">
               <div className="w-full bg-gray-50 border border-gray-200 rounded-md px-2 py-1 flex gap-2">
-                <div className="px-3 py-2 bg-white rounded text-sm font-medium">Active Denials</div>
-                <div className="px-3 py-2 text-sm text-gray-600">Analytics</div>
-                <div className="px-3 py-2 text-sm text-gray-600">AI Insights</div>
-                <div className="px-3 py-2 text-sm text-gray-600">Workflows</div>
+                <button
+                  onClick={() => setDenialSubTab('active')}
+                  className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
+                    denialSubTab === 'active' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Active Denials
+                </button>
+                <button
+                  onClick={() => setDenialSubTab('analytics')}
+                  className={`px-3 py-2 rounded text-sm transition-colors ${
+                    denialSubTab === 'analytics' 
+                      ? 'bg-white text-gray-900 font-medium shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Analytics
+                </button>
+                <button
+                  onClick={() => setDenialSubTab('ai-insights')}
+                  className={`px-3 py-2 rounded text-sm transition-colors ${
+                    denialSubTab === 'ai-insights' 
+                      ? 'bg-white text-gray-900 font-medium shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  AI Insights
+                </button>
+                <button
+                  onClick={() => setDenialSubTab('workflows')}
+                  className={`px-3 py-2 rounded text-sm transition-colors ${
+                    denialSubTab === 'workflows' 
+                      ? 'bg-white text-gray-900 font-medium shadow-sm' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Workflows
+                </button>
               </div>
             </div>
 
-            {/* Denied Claims List */}
-            <Card className="bg-white border border-gray-200 shadow-sm">
-              <CardContent className="p-4">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <div className="text-red-500">⚠️</div>
-                  Denied Claims Requiring Action
-                </h3>
+            {/* Denied Claims List - Show different content based on sub-tab */}
+            {denialSubTab === 'active' && (
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <div className="text-red-500">⚠️</div>
+                    Denied Claims Requiring Action
+                  </h3>
 
-                <div className="mt-4 border rounded p-4 bg-gray-50">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">Denied</span>
-                        <strong>CLM-2024-003</strong>
+                  <div className="mt-4 border rounded p-4 bg-gray-50">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">Denied</span>
+                          <strong>CLM-2024-003</strong>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Patient: Mike Wilson | Provider: Dr. Brown
+                        </div>
+                        <div className="text-sm text-gray-600 mt-2">
+                          Amount: $85.00 | Service Date: 2024-01-09
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Auth Required</span>
+                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Missing Documentation</span>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-600">
-                        Patient: Mike Wilson | Provider: Dr. Brown
+                      <div className="flex flex-col gap-2">
+                        <Button variant="outline" className="text-sm">AI Analysis</Button>
+                        <Button className="bg-blue-600 text-white text-sm">Generate Appeal</Button>
                       </div>
-                      <div className="text-sm text-gray-600 mt-2">
-                        Amount: $85.00 | Service Date: 2024-01-09
-                      </div>
-                      <div className="flex gap-2 mt-3">
-                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Auth Required</span>
-                        <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Missing Documentation</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button variant="outline" className="text-sm">AI Analysis</Button>
-                      <Button className="bg-blue-600 text-white text-sm">Generate Appeal</Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
+            
+            {denialSubTab === 'analytics' && (
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Denial Analytics</h3>
+                  <p className="text-gray-600">Analytics dashboard for denial trends and patterns will be displayed here.</p>
+                </CardContent>
+              </Card>
+            )}
+            
+            {denialSubTab === 'ai-insights' && (
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
+                  <p className="text-gray-600">AI-powered insights and recommendations for denial management will be displayed here.</p>
+                </CardContent>
+              </Card>
+            )}
+            
+            {denialSubTab === 'workflows' && (
+              <Card className="bg-white border border-gray-200 shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Workflows</h3>
+                  <p className="text-gray-600">Automated workflows for denial management will be displayed here.</p>
+                </CardContent>
+              </Card>
+            )}
           </>
         ) : (
           <>
@@ -1133,7 +1538,14 @@ export function Claims() {
                     <p className="text-sm font-medium text-gray-600">Automate Prior Authorization Checks</p>
                     <p className="text-xs text-gray-500 mt-2">Implement automated prior auth verification before service delivery</p>
                     <div className="mt-3 flex justify-end">
-                      <Button size="sm">Implement</Button>
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          alert('Automate Prior Authorization Checks feature will be implemented. This will set up automated verification before service delivery.');
+                        }}
+                      >
+                        Implement
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1142,7 +1554,14 @@ export function Claims() {
                     <p className="text-sm font-medium text-gray-600">Standardize Documentation Templates</p>
                     <p className="text-xs text-gray-500 mt-2">Create standardized templates for common procedures</p>
                     <div className="mt-3 flex justify-end">
-                      <Button size="sm">Implement</Button>
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          alert('Standardize Documentation Templates feature will be implemented. This will create standardized templates for common procedures.');
+                        }}
+                      >
+                        Implement
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -1151,7 +1570,14 @@ export function Claims() {
                     <p className="text-sm font-medium text-gray-600">Enhanced Coding Training</p>
                     <p className="text-xs text-gray-500 mt-2">Regular training on coding accuracy and updates</p>
                     <div className="mt-3 flex justify-end">
-                      <Button size="sm">Implement</Button>
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          alert('Enhanced Coding Training feature will be implemented. This will set up regular training on coding accuracy and updates.');
+                        }}
+                      >
+                        Implement
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

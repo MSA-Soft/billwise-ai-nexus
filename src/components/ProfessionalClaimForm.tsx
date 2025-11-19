@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -17,7 +18,17 @@ import {
   Calendar,
   ChevronDown,
   ChevronRight,
-  AlertTriangle
+  ChevronUp,
+  AlertTriangle,
+  Calculator,
+  FileText,
+  Activity,
+  Bell,
+  CheckSquare,
+  Folder,
+  DollarSign,
+  Plus,
+  ExternalLink
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -26,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ProfessionalClaimFormProps {
   isOpen: boolean;
@@ -52,6 +64,21 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
     secondaryInsurance: '',
     tertiaryInsurance: '',
     dateOfService: '',
+  });
+  const [paymentData, setPaymentData] = useState({
+    currentBalance: '0.00',
+    newBalance: '0.00',
+    copayDue: '0.00',
+    paymentApplication: 'post-new-payment',
+    paymentAmount: '',
+    sendReceipt: false,
+    receivedDate: '',
+    depositDate: '',
+    checkNumber: '',
+    paymentType: 'copay',
+    paymentSource: 'check',
+    otherSource: '',
+    memo: 'PATIENT COPAY - CHECK',
   });
 
   if (!isOpen) return null;
@@ -371,14 +398,15 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
             </Tabs>
           </div>
 
-          {/* Right Side - Claim Summary */}
+          {/* Right Side - Claim Summary and Additional Accordions */}
           <div className="w-80 bg-gray-50 border-l border-gray-200 overflow-y-auto">
-            <Accordion type="multiple" defaultValue={["claim-summary"]}>
-              <AccordionItem value="claim-summary">
-                <AccordionTrigger>
+            <Accordion type="single" defaultValue="claim-summary" collapsible className="w-full">
+              {/* Claim Summary Accordion */}
+              <AccordionItem value="claim-summary" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
                   <h3 className="font-semibold text-gray-900">Claim Summary</h3>
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent className="px-4 pb-4">
                   <div className="space-y-4">
                     <div>
                       <Label className="text-gray-500 text-xs">Form Version</Label>
@@ -419,6 +447,434 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                     <div>
                       <Label className="text-gray-500 text-xs">Date of Service</Label>
                       <p className="text-gray-900">--</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Estimate Accordion */}
+              <AccordionItem value="estimate" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Estimate</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          className="w-full justify-between bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                        >
+                          New Estimate
+                          <ChevronDown className="h-4 w-4 ml-2" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56">
+                        <DropdownMenuItem>Create New Estimate</DropdownMenuItem>
+                        <DropdownMenuItem>View Existing Estimates</DropdownMenuItem>
+                        <DropdownMenuItem>Copy from Previous</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {/* Add your estimate list/content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Patient Notes Accordion */}
+              <AccordionItem value="patient-notes" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Patient Notes</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="flex-1 justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Note
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Select defaultValue="notes-for-claim">
+                          <SelectTrigger className="w-48 bg-white border-gray-300 text-gray-700 h-9 text-sm">
+                            <SelectValue placeholder="Notes for this Claim" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all-notes">All Notes</SelectItem>
+                            <SelectItem value="appointment-notes">Appointment Notes</SelectItem>
+                            <SelectItem value="claim-notes">Claim Notes</SelectItem>
+                            <SelectItem value="my-notes">My Notes</SelectItem>
+                            <SelectItem value="patient-notes">Patient Notes</SelectItem>
+                            <SelectItem value="payment-notes">Payment Notes</SelectItem>
+                            <SelectItem value="notes-for-claim">Notes for this Claim</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="flex flex-col">
+                          <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
+                            <ChevronUp className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
+                            <ChevronUp className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                          <ExternalLink className="h-4 w-4 text-gray-600" />
+                        </Button>
+                      </div>
+                    </div>
+                    {/* Add your patient notes list/content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Follow Up Activity Accordion */}
+              <AccordionItem value="follow-up-activity" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Follow Up Activity</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Button 
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start bg-teal-50 hover:bg-teal-100 text-gray-900 border-l-4 border-l-green-500 pl-3"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                        Follow Up Notes
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Note
+                      </Button>
+                    </div>
+                    {/* Add your follow up activity content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Alerts Accordion */}
+              <AccordionItem value="alerts" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Alerts</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-900">Alerts</span>
+                        <ChevronDown className="h-4 w-4 text-gray-500" />
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Alert
+                      </Button>
+                    </div>
+                    {/* Add your alerts list/content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Tasks Accordion */}
+              <AccordionItem value="tasks" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Tasks</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Task
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Checkbox id="show-completed-tasks" />
+                        <label 
+                          htmlFor="show-completed-tasks" 
+                          className="text-sm text-gray-700 cursor-pointer"
+                        >
+                          Show Completed Tasks
+                        </label>
+                      </div>
+                      <Select defaultValue="claim-tasks">
+                        <SelectTrigger className="w-32 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
+                          <SelectValue placeholder="Claim Tasks" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="claim-tasks">Claim Tasks</SelectItem>
+                          <SelectItem value="all-tasks">All Tasks</SelectItem>
+                          <SelectItem value="my-tasks">My Tasks</SelectItem>
+                          <SelectItem value="overdue-tasks">Overdue Tasks</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Add your tasks list/content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Documents Accordion */}
+              <AccordionItem value="documents" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Documents</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                          >
+                            Add
+                            <ChevronDown className="h-4 w-4 ml-2" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem>Upload Document</DropdownMenuItem>
+                          <DropdownMenuItem>Create New Document</DropdownMenuItem>
+                          <DropdownMenuItem>Link Existing Document</DropdownMenuItem>
+                          <DropdownMenuItem>Scan Document</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <div className="flex items-center gap-1">
+                        <Select defaultValue="claim-documents">
+                          <SelectTrigger className="w-40 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
+                            <SelectValue placeholder="Claim Documents" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="claim-documents">Claim Documents</SelectItem>
+                            <SelectItem value="all-documents">All Documents</SelectItem>
+                            <SelectItem value="patient-documents">Patient Documents</SelectItem>
+                            <SelectItem value="claim-related">Claim Related</SelectItem>
+                            <SelectItem value="attachments">Attachments</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-9 w-9 p-0 hover:bg-gray-100"
+                          title="Sort/Refresh"
+                        >
+                          <div className="flex flex-col">
+                            <ChevronUp className="h-3 w-3 text-gray-600" />
+                            <ChevronDown className="h-3 w-3 text-gray-600 -mt-1" />
+                          </div>
+                        </Button>
+                      </div>
+                    </div>
+                    {/* Add your documents list/content here */}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Payment Accordion */}
+              <AccordionItem value="payment" className="border-b border-gray-200">
+                <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                  <h3 className="font-semibold text-gray-900">Payment</h3>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    {/* Balance Fields */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Current Balance</Label>
+                        <p className="text-gray-900 font-medium">${paymentData.currentBalance}</p>
+                      </div>
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">New Balance</Label>
+                        <p className="text-gray-900 font-medium">${paymentData.newBalance}</p>
+                      </div>
+                      <div>
+                        <Label className="text-gray-500 text-xs mb-1">Copay Due</Label>
+                        <p className="text-gray-900 font-medium">${paymentData.copayDue}</p>
+                      </div>
+                    </div>
+
+                    {/* Payment Application Options */}
+                    <div>
+                      <Label className="text-gray-700 text-sm font-medium mb-2 block">Payment Application Options</Label>
+                      <RadioGroup 
+                        value={paymentData.paymentApplication} 
+                        onValueChange={(value) => setPaymentData({...paymentData, paymentApplication: value})}
+                        className="space-y-2"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="cannot-apply" id="cannot-apply" disabled />
+                          <label htmlFor="cannot-apply" className="text-sm text-gray-500 cursor-not-allowed">
+                            Cannot apply copay to claim with no copay due
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="apply-credit" id="apply-credit" />
+                          <label htmlFor="apply-credit" className="text-sm text-gray-700 cursor-pointer">
+                            Apply account credit to claim
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="post-new-payment" id="post-new-payment" />
+                          <label htmlFor="post-new-payment" className="text-sm text-gray-700 cursor-pointer">
+                            Post new payment to claim
+                          </label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="do-not-apply" id="do-not-apply" />
+                          <label htmlFor="do-not-apply" className="text-sm text-gray-700 cursor-pointer">
+                            Do not apply a payment or credit
+                          </label>
+                        </div>
+                      </RadioGroup>
+                    </div>
+
+                    {/* Payment Details */}
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-gray-700 text-xs mb-1">Payment Amount</Label>
+                        <Input
+                          type="number"
+                          value={paymentData.paymentAmount}
+                          onChange={(e) => setPaymentData({...paymentData, paymentAmount: e.target.value})}
+                          className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="send-receipt" 
+                          checked={paymentData.sendReceipt}
+                          onCheckedChange={(checked) => setPaymentData({...paymentData, sendReceipt: !!checked})}
+                        />
+                        <label htmlFor="send-receipt" className="text-sm text-gray-700 cursor-pointer">
+                          Send receipt
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-gray-700 text-xs mb-1">Received Date</Label>
+                          <div className="relative">
+                            <Input
+                              type="date"
+                              value={paymentData.receivedDate}
+                              onChange={(e) => setPaymentData({...paymentData, receivedDate: e.target.value})}
+                              className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
+                            />
+                            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-gray-700 text-xs mb-1">Deposit Date</Label>
+                          <div className="relative">
+                            <Input
+                              type="date"
+                              value={paymentData.depositDate}
+                              onChange={(e) => setPaymentData({...paymentData, depositDate: e.target.value})}
+                              className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
+                            />
+                            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-gray-700 text-xs mb-1">Check #</Label>
+                        <Input
+                          value={paymentData.checkNumber}
+                          onChange={(e) => setPaymentData({...paymentData, checkNumber: e.target.value})}
+                          className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                          placeholder="Enter check number"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Payment Type and Source */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-gray-700 text-sm font-medium mb-2 block">Type</Label>
+                        <RadioGroup 
+                          value={paymentData.paymentType} 
+                          onValueChange={(value) => setPaymentData({...paymentData, paymentType: value})}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="copay" id="type-copay" />
+                            <label htmlFor="type-copay" className="text-sm text-gray-700 cursor-pointer">
+                              Copay
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="payment" id="type-payment" />
+                            <label htmlFor="type-payment" className="text-sm text-gray-700 cursor-pointer">
+                              Payment
+                            </label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+                      <div>
+                        <Label className="text-gray-700 text-sm font-medium mb-2 block">Source</Label>
+                        <RadioGroup 
+                          value={paymentData.paymentSource} 
+                          onValueChange={(value) => setPaymentData({...paymentData, paymentSource: value})}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="check" id="source-check" />
+                            <label htmlFor="source-check" className="text-sm text-gray-700 cursor-pointer">
+                              Check
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="cash" id="source-cash" />
+                            <label htmlFor="source-cash" className="text-sm text-gray-700 cursor-pointer">
+                              Cash
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2 gap-2">
+                            <RadioGroupItem value="credit-card" id="source-credit-card" />
+                            <label htmlFor="source-credit-card" className="text-sm text-gray-700 cursor-pointer">
+                              Credit Card
+                            </label>
+                            {paymentData.paymentSource === 'credit-card' && (
+                              <Select value={paymentData.otherSource} onValueChange={(value) => setPaymentData({...paymentData, otherSource: value})}>
+                                <SelectTrigger className="w-24 h-7 text-xs bg-white border-gray-300">
+                                  <SelectValue placeholder="Other" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="visa">Visa</SelectItem>
+                                  <SelectItem value="mastercard">Mastercard</SelectItem>
+                                  <SelectItem value="amex">Amex</SelectItem>
+                                  <SelectItem value="discover">Discover</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        </RadioGroup>
+                      </div>
+                    </div>
+
+                    {/* Memo */}
+                    <div>
+                      <Label className="text-gray-700 text-xs mb-1">Memo</Label>
+                      <Input
+                        value={paymentData.memo}
+                        onChange={(e) => setPaymentData({...paymentData, memo: e.target.value})}
+                        className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                        placeholder="Enter memo"
+                      />
                     </div>
                   </div>
                 </AccordionContent>

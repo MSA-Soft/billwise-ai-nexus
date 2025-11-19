@@ -1,18 +1,3 @@
--- ============================================================================
--- FIX INVENTORY CODES DATABASE BINDING - COMPLETE SOLUTION
--- ============================================================================
--- This script will:
--- 1. Create the inventory_codes table if it doesn't exist
--- 2. Ensure all required columns exist
--- 3. Fix all permissions (anon, authenticated, service_role)
--- 4. Set up RLS policies correctly
--- 5. Refresh the schema cache
--- 6. Verify everything is working
--- ============================================================================
--- Run this in Supabase SQL Editor to fix the "not bind with database" error
--- ============================================================================
-
--- Step 1: Create table if it doesn't exist
 CREATE TABLE IF NOT EXISTS public.inventory_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code VARCHAR(50) NOT NULL,
@@ -267,6 +252,9 @@ FROM public.inventory_codes;
 SELECT 
     '✅ Inventory codes table is ready and bound to database!' AS status,
     '⚠️ If you still see errors, wait 1-2 minutes for PostgREST to refresh, or restart your Supabase project.' AS note;
+
+
+
 
 
 

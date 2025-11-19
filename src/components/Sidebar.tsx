@@ -324,30 +324,55 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   ];
 
   const handleItemClick = (itemId: string) => {
-    const routeMap = {
+    const routeMap: Record<string, string> = {
+      // Main Navigation
       dashboard: '/',
-      scheduling: '/customer-setup?tab=schedule',
-      patients: '/customer-setup?tab=patients',
-      claims: '/customer-setup?tab=claims',
-      billings: '/customer-setup?tab=billings',
-      payments: '/customer-setup?tab=payments',
-      reports: '/customer-setup?tab=reports',
-      'eligibility-verification': '/customer-setup?tab=eligibility-verification',
-      'code-validation': '/customer-setup?tab=code-validation',
-      authorization: '/customer-setup?tab=authorization',
-      'enhanced-claims': '/customer-setup?tab=enhanced-claims',
+      scheduling: '/scheduling',
+      patients: '/patients',
+      claims: '/claims',
+      billings: '/billings',
+      payments: '/payments',
+      reports: '/reports',
+      'eligibility-verification': '/eligibility-verification',
+      'code-validation': '/code-validation',
+      authorization: '/authorization',
+      'enhanced-claims': '/enhanced-claims',
+      // Workflow
+      'billing-workflow': '/billing-workflow',
+      'quick-actions': '/quick-actions',
+      'recent-activity': '/recent-activity',
+      // Analytics
+      'financial-reports': '/financial-reports',
+      'performance-metrics': '/performance-metrics',
+      'audit-trail': '/audit-trail',
+      // Patient Submenu
+      'prior-authorization': '/prior-authorization',
+      // Customer Setup Items
+      practices: '/customer-setup?tab=practices',
+      providers: '/customer-setup?tab=providers',
+      facilities: '/customer-setup?tab=facilities',
+      'referring-providers': '/customer-setup?tab=referring-providers',
+      payers: '/customer-setup?tab=payers',
+      'payer-agreements': '/customer-setup?tab=payer-agreements',
+      'collection-agencies': '/customer-setup?tab=collection-agencies',
+      codes: '/customer-setup?tab=codes',
+      'alert-control': '/customer-setup?tab=alert-control',
+      statements: '/customer-setup?tab=statements',
+      superbills: '/customer-setup?tab=superbills',
+      labels: '/customer-setup?tab=labels',
+      customization: '/customer-setup?tab=customization',
+      settings: '/customer-setup?tab=settings',
     };
 
     const route = routeMap[itemId];
     if (route) {
-      // Eligibility still special case (force refresh)
+      // Special handling for eligibility verification (force refresh if needed)
       if (itemId === 'eligibility-verification') {
         const currentPath = window.location.pathname;
-        const currentTab = new URLSearchParams(window.location.search).get('tab');
-        if (currentPath === '/customer-setup' && currentTab === 'eligibility-verification') {
+        if (currentPath === '/eligibility-verification') {
           window.location.reload();
         } else {
-          window.location.href = `/customer-setup?tab=eligibility-verification&refresh=${Date.now()}`;
+          navigate(route);
         }
         return;
       }
