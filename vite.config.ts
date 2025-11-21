@@ -6,20 +6,47 @@ import { componentTagger } from "lovable-tagger";
 // Plugin to ensure React vendor loads first
 const reactFirstPlugin = () => ({
   name: 'react-first',
-  transformIndexHtml(html: string) {
-    // Reorder modulepreload links to ensure react-vendor loads first
-    const reactVendorRegex = /<link rel="modulepreload"[^>]*react-vendor[^>]*>/i;
-    const reactVendorMatch = html.match(reactVendorRegex);
-    if (reactVendorMatch) {
-      // Remove react-vendor from its current position
-      html = html.replace(reactVendorRegex, '');
-      // Insert it right after the main script tag
-      html = html.replace(
-        /(<script[^>]*index[^>]*><\/script>)/i,
-        `$1\n    ${reactVendorMatch[0]}`
-      );
+  transformIndexHtml: {
+    enforce: 'post',
+    transform(html: string) {
+      // Find all modulepreload links
+      const modulepreloadRegex = /<link rel="modulepreload"[^>]*>/gi;
+      const modulepreloadMatches = html.match(modulepreloadRegex) || [];
+      
+      // Separate react-vendor from others
+      const reactVendorLinks: string[] = [];
+      const otherLinks: string[] = [];
+      
+      modulepreloadMatches.forEach(link => {
+        if (link.includes('react-vendor')) {
+          reactVendorLinks.push(link);
+        } else {
+          otherLinks.push(link);
+        }
+      });
+      
+      // Remove all modulepreload links
+      html = html.replace(modulepreloadRegex, '');
+      
+      // Find the main script tag
+      const scriptMatch = html.match(/(<script[^>]*type="module"[^>]*><\/script>)/i);
+      if (scriptMatch && reactVendorLinks.length > 0) {
+        // Insert react-vendor links FIRST, then other links, then the script
+        const newLinks = [...reactVendorLinks, ...otherLinks].join('\n    ');
+        html = html.replace(
+          scriptMatch[0],
+          `${newLinks}\n    ${scriptMatch[0]}`
+        );
+      } else if (reactVendorLinks.length > 0) {
+        // If no script tag found, insert before closing body tag
+        html = html.replace(
+          '</body>',
+          `    ${reactVendorLinks.join('\n    ')}\n    ${otherLinks.join('\n    ')}\n  </body>`
+        );
+      }
+      
+      return html;
     }
-    return html;
   }
 });
 
@@ -60,6 +87,8 @@ export default defineConfig(({ mode }) => ({
               return 'react-vendor'; // Separate chunk for React
             }
             
+            // Don't put React-dependent libraries in vendor chunk
+            // They should be in separate chunks that depend on react-vendor
             if (id.includes('@supabase')) {
               return 'supabase-vendor';
             }
@@ -75,7 +104,8 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('lucide-react')) {
               return 'icons-vendor';
             }
-            // Other node_modules (but NOT react/react-dom)
+            // Other node_modules (but NOT react/react-dom or React-dependent libs)
+            // IMPORTANT: Don't put anything that uses React in the vendor chunk
             return 'vendor';
           }
           
