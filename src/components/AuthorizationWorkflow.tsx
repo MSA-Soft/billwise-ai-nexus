@@ -179,77 +179,94 @@ const AuthorizationWorkflow = () => {
     internalNotes: ""
   });
 
-  // Mock data - Enhanced for scalability demonstration
-  const patients = [
-    { id: "PAT001", name: "Amina Khan", dob: "1985-05-10", insurance: "Blue Cross Blue Shield", phone: "(555) 123-4567" },
-    { id: "PAT002", name: "Hassan Ahmed", dob: "1978-07-22", insurance: "Aetna", phone: "(555) 234-5678" },
-    { id: "PAT003", name: "Zainab Ali", dob: "1992-11-08", insurance: "Cigna", phone: "(555) 345-6789" },
-    { id: "PAT004", name: "Mohammed Hassan", dob: "1980-03-15", insurance: "UnitedHealthcare", phone: "(555) 456-7890" },
-    { id: "PAT005", name: "Fatima Ahmed", dob: "1995-08-20", insurance: "Humana", phone: "(555) 567-8901" },
-    { id: "PAT006", name: "Omar Khan", dob: "1975-12-03", insurance: "Medicare", phone: "(555) 678-9012" },
-    { id: "PAT007", name: "Aisha Ali", dob: "1988-06-18", insurance: "Medicaid", phone: "(555) 789-0123" },
-    { id: "PAT008", name: "Yusuf Hassan", dob: "1990-09-25", insurance: "Anthem", phone: "(555) 890-1234" },
-    { id: "PAT009", name: "Maryam Khan", dob: "1983-04-12", insurance: "Kaiser Permanente", phone: "(555) 901-2345" },
-    { id: "PAT010", name: "Ahmed Ali", dob: "1972-11-30", insurance: "Molina Healthcare", phone: "(555) 012-3456" }
-  ];
+  const [patients, setPatients] = useState<any[]>([]);
+  const [payers, setPayers] = useState<any[]>([]);
+  const [authRequests, setAuthRequests] = useState<any[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
 
-  const payers = [
-    { id: "BCBS", name: "Blue Cross Blue Shield", type: "Commercial", authRequired: true, avgProcessingTime: "3-5 days" },
-    { id: "AETNA", name: "Aetna", type: "Commercial", authRequired: true, avgProcessingTime: "2-4 days" },
-    { id: "CIGNA", name: "Cigna", type: "Commercial", authRequired: true, avgProcessingTime: "1-3 days" },
-    { id: "UHC", name: "UnitedHealthcare", type: "Commercial", authRequired: true, avgProcessingTime: "2-4 days" },
-    { id: "HUMANA", name: "Humana", type: "Commercial", authRequired: true, avgProcessingTime: "3-5 days" },
-    { id: "ANTHEM", name: "Anthem", type: "Commercial", authRequired: true, avgProcessingTime: "2-4 days" },
-    { id: "KAISER", name: "Kaiser Permanente", type: "Commercial", authRequired: true, avgProcessingTime: "1-2 days" },
-    { id: "MOLINA", name: "Molina Healthcare", type: "Commercial", authRequired: true, avgProcessingTime: "4-6 days" },
-    { id: "MEDICARE", name: "Medicare", type: "Government", authRequired: false, avgProcessingTime: "N/A" },
-    { id: "MEDICAID", name: "Medicaid", type: "Government", authRequired: true, avgProcessingTime: "5-7 days" },
-    { id: "TRICARE", name: "TRICARE", type: "Government", authRequired: true, avgProcessingTime: "3-5 days" },
-    { id: "VA", name: "Veterans Affairs", type: "Government", authRequired: true, avgProcessingTime: "7-10 days" }
-  ];
+  // Fetch patients, payers, and authorization requests from database
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoadingData(true);
+      try {
+        // Fetch patients
+        const { data: patientsData, error: patientsError } = await supabase
+          .from('patients' as any)
+          .select('id, patient_id, first_name, last_name, date_of_birth, phone')
+          .order('last_name', { ascending: true })
+          .limit(100);
 
-  const authRequests = [
-    {
-      id: "AUTH001",
-      patientName: "Amina Khan",
-      payerName: "Blue Cross Blue Shield",
-      serviceType: "MRI Brain",
-      status: "pending",
-      submittedDate: "2024-01-15",
-      expectedResponse: "2024-01-18",
-      urgency: "routine",
-      cptCodes: ["70551"],
-      icdCodes: ["G93.1"],
-      progress: 60
-    },
-    {
-      id: "AUTH002",
-      patientName: "Hassan Ahmed",
-      payerName: "Aetna",
-      serviceType: "Physical Therapy",
-      status: "approved",
-      submittedDate: "2024-01-10",
-      approvedDate: "2024-01-12",
-      urgency: "routine",
-      cptCodes: ["97110", "97112"],
-      icdCodes: ["M25.561"],
-      progress: 100
-    },
-    {
-      id: "AUTH003",
-      patientName: "Zainab Ali",
-      payerName: "Cigna",
-      serviceType: "Surgery - Appendectomy",
-      status: "denied",
-      submittedDate: "2024-01-08",
-      deniedDate: "2024-01-11",
-      urgency: "urgent",
-      cptCodes: ["44970"],
-      icdCodes: ["K35.9"],
-      progress: 100,
-      denialReason: "Insufficient clinical documentation"
-    }
-  ];
+        if (!patientsError && patientsData) {
+          const transformedPatients = patientsData.map((p: any) => ({
+            id: p.id,
+            name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
+            dob: p.date_of_birth || '',
+            phone: p.phone || '',
+            insurance: 'Unknown' // Would need to join with patient_insurance
+          }));
+          setPatients(transformedPatients);
+        }
+
+        // Fetch payers
+        const { data: payersData, error: payersError } = await supabase
+          .from('insurance_payers' as any)
+          .select('id, name, payer_type')
+          .eq('is_active', true)
+          .order('name', { ascending: true });
+
+        if (!payersError && payersData) {
+          const transformedPayers = payersData.map((p: any) => ({
+            id: p.id,
+            name: p.name || '',
+            type: p.payer_type || 'Commercial',
+            authRequired: true, // Default, would need payer-specific config
+            avgProcessingTime: "3-5 days" // Default
+          }));
+          setPayers(transformedPayers);
+        }
+
+        // Fetch authorization requests
+        const { data: authData, error: authError } = await supabase
+          .from('authorization_requests' as any)
+          .select(`
+            *,
+            patients:patient_id (id, first_name, last_name),
+            insurance_payers:payer_id (id, name)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (!authError && authData) {
+          const transformedAuth = authData.map((a: any) => {
+            const patient = Array.isArray(a.patients) ? a.patients[0] : a.patients;
+            const payer = Array.isArray(a.insurance_payers) ? a.insurance_payers[0] : a.insurance_payers;
+            return {
+              id: a.id,
+              patientName: patient ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim() : 'Unknown',
+              payerName: payer?.name || 'Unknown',
+              serviceType: a.service_type || a.procedure_code || '',
+              status: a.status || 'pending',
+              submittedDate: a.submitted_date || a.created_at || '',
+              expectedResponse: a.expected_response_date || '',
+              urgency: a.urgency || 'routine',
+              cptCodes: a.cpt_codes || [],
+              icdCodes: a.icd_codes || [],
+              progress: a.progress || 0
+            };
+          });
+          setAuthRequests(transformedAuth);
+        }
+      } catch (error: any) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Auth requests are now fetched from database in useEffect above
 
   const workflowSteps = [
     {

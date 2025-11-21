@@ -969,21 +969,41 @@ export function Patients() {
   const handleDocumentUpload = async (document: any) => {
     try {
       if (!selectedPatient) return;
-      await supabase.from('patient_documents' as any).insert({
+      
+      const { error } = await supabase.from('patient_documents' as any).insert({
         patient_id: selectedPatient.id,
-        document_type: 'medical_record',
+        document_type: document.documentType || 'other',
         document_name: document.documentName,
         description: document.description || null,
         file_name: document.fileName || null,
         file_size: document.fileSize || null,
         file_type: document.fileType || null,
-        file_url: null,
+        file_url: document.fileUrl || null,
         uploaded_by: document.uploadedBy || null,
         upload_date: document.uploadDate || new Date().toISOString().split('T')[0],
       });
-      toast({ title: 'Success', description: 'Document saved.' });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({ 
+        title: 'Success', 
+        description: 'Document uploaded and saved successfully.' 
+      });
+      
+      // Refresh patient data to show new document
+      if (selectedPatient) {
+        // Trigger a re-fetch by updating the patient (this will cause PatientDashboard to re-fetch documents)
+        setSelectedPatient({ ...selectedPatient });
+      }
     } catch (e: any) {
-      toast({ title: 'Error saving document', description: e.message, variant: 'destructive' });
+      console.error('Error saving document:', e);
+      toast({ 
+        title: 'Error saving document', 
+        description: e.message || 'Failed to save document. Please try again.', 
+        variant: 'destructive' 
+      });
     } finally {
       setShowDocumentUploadForm(false);
     }

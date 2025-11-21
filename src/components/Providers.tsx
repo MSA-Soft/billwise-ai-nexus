@@ -65,60 +65,7 @@ interface Provider {
   updatedAt: string;
 }
 
-// Sample providers removed - now using database
-const _sampleProviders: Provider[] = [
-  {
-    id: '1',
-    // Provider Identification
-    lastName: 'Smith',
-    firstName: 'John',
-    middleInitial: 'M',
-    credentials: 'MD',
-    providerType: 'individual',
-    npi: '1234567890',
-    taxonomySpecialty: 'Family Medicine',
-    sequenceNumber: 'NEW',
-    referenceNumber: 'REF001',
-    code: 'CODE001',
-    
-    // Billing Information
-    practiceForProvider: 'Main Street Medical',
-    billClaimsUnder: 'SELF',
-    checkEligibilityUnder: 'SELF',
-    useIdNumber: 'Employer Identification# (EIN)',
-    employerIdentificationNumber: '12-3456789',
-    billAs: 'Individual',
-    billProfessionalClaims: true,
-    billInstitutionalClaims: false,
-    
-    // Internal Use
-    submitterNumber: 'SUB001',
-    tcnPrefix: 'TCN001',
-    
-    // Contact Information
-    homePhone: '(555) 123-4567',
-    cellPhone: '(555) 123-4568',
-    faxNumber: '(555) 123-4569',
-    pagerNumber: '(555) 123-4570',
-    email: 'john.smith@example.com',
-    
-    // ID Numbers
-    specialtyLicenseNumber: 'SL12345',
-    stateLicenseNumber: 'SL67890',
-    anesthesiaLicenseNumber: 'AL12345',
-    upinNumber: 'UPIN123456',
-    blueCrossNumber: 'BC123456',
-    tricareChampusNumber: 'TC123456',
-    
-    // Claim Defaults
-    revCode: 'REV001',
-    defaultFacility: 'Main Street Medical',
-    
-    status: 'active',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  }
-];
+// All provider data is now fetched from the database
 
 const idNumberOptions = [
   'Employer Identification# (EIN)',

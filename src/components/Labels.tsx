@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +36,8 @@ interface LabelTemplate {
   updatedAt: string;
 }
 
-const sampleLabels: LabelTemplate[] = [
+// Removed mock data - now fetching from database
+const _sampleLabels: LabelTemplate[] = [
   {
     id: '1',
     name: 'Patient Address Label',
@@ -167,7 +170,9 @@ const availableFields = [
 ];
 
 export const Labels: React.FC = () => {
-  const [labels, setLabels] = useState<LabelTemplate[]>(sampleLabels);
+  const { toast } = useToast();
+  const [labels, setLabels] = useState<LabelTemplate[]>([]);
+  const [isLoadingLabels, setIsLoadingLabels] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -194,6 +199,51 @@ export const Labels: React.FC = () => {
     ],
     status: 'active'
   });
+
+  // Fetch labels from database
+  useEffect(() => {
+    const fetchLabels = async () => {
+      setIsLoadingLabels(true);
+      try {
+        const { data, error } = await supabase
+          .from('label_templates' as any)
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching label templates:', error);
+          setLabels([]);
+          return;
+        }
+
+        const transformedLabels = (data || []).map((l: any) => ({
+          id: l.id,
+          name: l.name || '',
+          labelType: l.label_type || 'Address',
+          printerType: l.printer_type || 'Dymo Single Label Printer',
+          labelSize: l.label_size || 'Single Label - 1 1/8 x 3 1/2',
+          font: l.font || 'Courier New',
+          fontSize: l.font_size || '8',
+          bold: l.bold || false,
+          italics: l.italics || false,
+          columnSpacing: l.column_spacing || 15,
+          columns: l.columns || [],
+          status: l.status || 'active',
+          createdAt: l.created_at || new Date().toISOString().split('T')[0],
+          updatedAt: l.updated_at || l.created_at || new Date().toISOString().split('T')[0]
+        }));
+
+        setLabels(transformedLabels);
+      } catch (error: any) {
+        console.error('Error fetching label templates:', error);
+        setLabels([]);
+      } finally {
+        setIsLoadingLabels(false);
+      }
+    };
+
+    fetchLabels();
+  }, []);
 
   const filteredLabels = labels.filter(label => {
     const matchesSearch = 

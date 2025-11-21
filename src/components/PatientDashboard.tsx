@@ -29,6 +29,9 @@ import {
   Award,
   Zap
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 
 interface PatientData {
   id: string;
@@ -105,13 +108,72 @@ export function PatientDashboard({
   onEditContact,
   onEditInsurance
 }: PatientDashboardProps) {
-  
+  const { toast } = useToast();
+  const [documents, setDocuments] = useState<Array<{
+    id: string;
+    name: string;
+    type: string;
+    date: string;
+    fileUrl?: string;
+    fileName?: string;
+  }>>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+
+  // Fetch documents from database
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      if (!patient?.id) return;
+      
+      setIsLoadingDocuments(true);
+      try {
+        const { data, error } = await supabase
+          .from('patient_documents' as any)
+          .select('*')
+          .eq('patient_id', patient.id)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          console.error('Error fetching documents:', error);
+          toast({
+            title: 'Error loading documents',
+            description: error.message,
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const transformedDocuments = (data || []).map((doc: any) => ({
+          id: doc.id,
+          name: doc.document_name || doc.file_name || 'Untitled Document',
+          type: doc.document_type || 'other',
+          date: doc.upload_date || doc.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          fileUrl: doc.file_url,
+          fileName: doc.file_name,
+        }));
+
+        setDocuments(transformedDocuments);
+      } catch (error: any) {
+        console.error('Error fetching documents:', error);
+        toast({
+          title: 'Error loading documents',
+          description: error.message || 'Failed to load documents',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingDocuments(false);
+      }
+    };
+
+    fetchDocuments();
+  }, [patient?.id, toast]);
+
   const upcomingAppointments = patient.appointments
     .filter(apt => new Date(apt.date) >= new Date())
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .slice(0, 3);
 
-  const recentDocuments = patient.documents
+  const recentDocuments = documents
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
@@ -692,40 +754,72 @@ export function PatientDashboard({
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
-                <div className="space-y-4">
-                  {recentDocuments.map((document, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center space-x-4">
-                        <div className="bg-blue-100 p-3 rounded-lg">
-                          <FileText className="h-5 w-5 text-blue-600" />
+                {isLoadingDocuments ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <p className="ml-2 text-gray-600">Loading documents...</p>
+                  </div>
+                ) : recentDocuments.length === 0 ? (
+                  <div className="text-center p-8">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No documents found</p>
+                    <p className="text-sm text-gray-500 mt-2">Upload a document to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {recentDocuments.map((document) => (
+                      <div key={document.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center space-x-4">
+                          <div className="bg-blue-100 p-3 rounded-lg">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{document.name}</p>
+                            <p className="text-sm text-gray-600">{document.type} • {document.date}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">{document.name}</p>
-                          <p className="text-sm text-gray-600">{document.type} • {document.date}</p>
+                        <div className="flex space-x-2">
+                          {document.fileUrl && (
+                            <>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-blue-600 hover:bg-blue-50"
+                                onClick={() => {
+                                  if (document.fileUrl) {
+                                    window.open(document.fileUrl, '_blank');
+                                  } else {
+                                    onViewDocument(document.name);
+                                  }
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-gray-600 hover:bg-gray-50"
+                                onClick={() => {
+                                  if (document.fileUrl) {
+                                    const link = document.createElement('a');
+                                    link.href = document.fileUrl;
+                                    link.download = document.fileName || document.name;
+                                    link.click();
+                                  } else {
+                                    onDownloadDocument(document.name);
+                                  }
+                                }}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div className="flex space-x-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-blue-600 hover:bg-blue-50"
-                          onClick={() => onViewDocument(document.name)}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-gray-600 hover:bg-gray-50"
-                          onClick={() => onDownloadDocument(document.name)}
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

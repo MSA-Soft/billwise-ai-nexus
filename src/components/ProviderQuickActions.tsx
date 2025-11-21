@@ -3,7 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { CodeValidationService } from '@/services/codeValidationService';
+import { EDIService } from '@/services/ediService';
+import { usePaymentPlans } from '@/hooks/usePaymentPlans';
+import { authorizationTaskService } from '@/services/authorizationTaskService';
+import { denialManagementService } from '@/services/denialManagementService';
 import { 
   Shield, 
   AlertTriangle, 
@@ -88,36 +94,80 @@ const ProviderQuickActions = () => {
 
     setIsLoading(true);
     try {
-      // Simulate eligibility check
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const mockResult = {
+      // Fetch patient insurance information
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients' as any)
+        .select(`
+          id,
+          patient_insurance (
+            id,
+            insurance_payers (
+              id,
+              name
+            ),
+            subscriber_id,
+            group_number,
+            policy_number
+          )
+        `)
+        .eq('id', patientId)
+        .single();
+
+      if (patientError || !patientData) {
+        throw new Error('Patient not found');
+      }
+
+      const insurance = Array.isArray(patientData.patient_insurance) 
+        ? patientData.patient_insurance[0] 
+        : patientData.patient_insurance;
+
+      if (!insurance) {
+        throw new Error('No insurance information found for this patient');
+      }
+
+      const payer = Array.isArray(insurance.insurance_payers) 
+        ? insurance.insurance_payers[0] 
+        : insurance.insurance_payers;
+
+      // Use EDI service for eligibility check
+      const ediService = EDIService.getInstance();
+      const eligibilityResponse = await ediService.checkEligibility({
         patientId: patientId,
-        status: Math.random() > 0.2 ? 'ACTIVE' : 'INACTIVE',
-        copay: Math.floor(Math.random() * 50) + 10,
-        deductible: Math.floor(Math.random() * 2000) + 500,
-        coverage: ['PPO', 'HMO', 'EPO'][Math.floor(Math.random() * 3)],
-        effectiveDate: '2024-01-01',
-        terminationDate: '2024-12-31',
-        benefits: [
-          { service: 'Office Visits', covered: true, copay: 25 },
-          { service: 'Lab Work', covered: true, copay: 0 },
-          { service: 'X-rays', covered: true, copay: 50 }
-        ]
+        subscriberId: insurance.subscriber_id || '',
+        payerId: payer?.id || '',
+        serviceDate: new Date().toISOString().split('T')[0],
+        serviceCodes: [],
+        diagnosisCodes: []
+      });
+
+      const result = {
+        patientId: patientId,
+        status: eligibilityResponse.isEligible ? 'ACTIVE' : 'INACTIVE',
+        copay: eligibilityResponse.coverage.copay,
+        deductible: eligibilityResponse.coverage.deductible,
+        coverage: eligibilityResponse.benefits[0]?.coverageLevel || 'Unknown',
+        effectiveDate: eligibilityResponse.effectiveDate,
+        terminationDate: eligibilityResponse.terminationDate || '',
+        benefits: eligibilityResponse.benefits.map(b => ({
+          service: b.serviceType,
+          covered: b.coverageLevel !== 'Not Covered',
+          copay: eligibilityResponse.coverage.copay
+        }))
       };
 
-      setEligibilityResult(mockResult);
+      setEligibilityResult(result);
       
       toast({
-        title: mockResult.status === 'ACTIVE' ? "✅ Coverage Active" : "❌ Coverage Inactive",
-        description: mockResult.status === 'ACTIVE' 
-          ? `Copay: $${mockResult.copay} | Deductible: $${mockResult.deductible} | Type: ${mockResult.coverage}`
+        title: result.status === 'ACTIVE' ? "✅ Coverage Active" : "❌ Coverage Inactive",
+        description: result.status === 'ACTIVE' 
+          ? `Copay: $${result.copay} | Deductible: $${result.deductible} | Type: ${result.coverage}`
           : "Patient coverage is inactive. Please verify insurance information."
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Eligibility check error:', error);
       toast({
         title: "Eligibility Check Failed",
-        description: "Unable to verify patient coverage",
+        description: error.message || "Unable to verify patient coverage",
         variant: "destructive"
       });
     } finally {
@@ -139,35 +189,42 @@ const ProviderQuickActions = () => {
 
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const mockValidation = {
+      // Use CodeValidationService
+      const codeService = CodeValidationService.getInstance();
+      const validationResult = await codeService.validateCPT(procedureCode);
+
+      // Also check if code exists in database
+      const { data: codeData, error: codeError } = await supabase
+        .from('cpt_hcpcs_codes' as any)
+        .select('code, description, default_price, modifier_required')
+        .eq('code', procedureCode.trim())
+        .eq('is_active', true)
+        .single();
+
+      const validation = {
         code: procedureCode,
-        valid: Math.random() > 0.3,
-        description: "Office visit, established patient",
-        modifier: Math.random() > 0.5 ? "25" : null,
-        priorAuth: Math.random() > 0.7,
-        fee: Math.floor(Math.random() * 200) + 100,
-        category: "Evaluation and Management",
-        requirements: [
-          "Medical decision making of low complexity",
-          "15-29 minutes of total time",
-          "Documentation of history and examination"
-        ]
+        valid: validationResult.isValid && !codeError,
+        description: codeData?.description || validationResult.description || 'Code not found',
+        modifier: codeData?.modifier_required ? 'May require modifier' : null,
+        priorAuth: false, // Would need to check payer rules
+        fee: codeData?.default_price ? parseFloat(codeData.default_price) : 0,
+        category: validationResult.category || 'Unknown',
+        requirements: validationResult.warnings || []
       };
 
-      setCodeValidationResult(mockValidation);
+      setCodeValidationResult(validation);
 
       toast({
-        title: mockValidation.valid ? "✅ Code Valid" : "❌ Code Invalid",
-        description: mockValidation.valid 
-          ? `${procedureCode}: ${mockValidation.description}${mockValidation.modifier ? ` (Modifier: ${mockValidation.modifier})` : ''}`
-          : "This procedure code is invalid or outdated. Please check and try again."
+        title: validation.valid ? "✅ Code Valid" : "❌ Code Invalid",
+        description: validation.valid 
+          ? `${procedureCode}: ${validation.description}${validation.modifier ? ` (${validation.modifier})` : ''}`
+          : validationResult.errors.join(', ') || "This procedure code is invalid or outdated. Please check and try again."
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Code validation error:', error);
       toast({
         title: "Validation Failed",
-        description: "Unable to validate procedure code",
+        description: error.message || "Unable to validate procedure code",
         variant: "destructive"
       });
     } finally {
@@ -178,20 +235,58 @@ const ProviderQuickActions = () => {
   const handlePriorAuth = async () => {
     console.log('Prior auth clicked!');
     
+    if (!patientId || !procedureCode) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter both Patient ID and Procedure Code",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     toast({
       title: "Prior Auth Generator",
-      description: "AI is creating a comprehensive PA request with all required documentation...",
+      description: "Creating authorization request with all required documentation...",
     });
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Create authorization request in database
+      const { data: authRequest, error: authError } = await supabase
+        .from('authorization_requests' as any)
+        .insert({
+          patient_id: patientId,
+          procedure_code: procedureCode,
+          status: 'pending',
+          urgency: 'routine',
+          cpt_codes: [procedureCode],
+          submitted_date: new Date().toISOString().split('T')[0]
+        })
+        .select()
+        .single();
+
+      if (authError) throw authError;
+
+      // Create authorization task
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
       
-      const mockPA = {
-        id: `PA-${Date.now()}`,
-        patientId: patientId || 'PAT-001',
-        procedure: procedureCode || '99213',
-        clinicalIndication: 'Diabetes management and monitoring',
+      const task = await authorizationTaskService.createTaskFromAuthRequest(
+        authRequest.id,
+        'submit',
+        {
+          userId: user.id,
+          priority: 'high',
+          title: `Submit Prior Authorization for ${procedureCode}`,
+          description: `Prior authorization request for patient ${patientId}`
+        }
+      );
+
+      const paResult = {
+        id: authRequest.id,
+        patientId: patientId,
+        procedure: procedureCode,
+        clinicalIndication: 'Prior authorization required',
         supportingDocs: [
           'Medical records',
           'Provider notes',
@@ -200,19 +295,21 @@ const ProviderQuickActions = () => {
         ],
         submissionDate: new Date().toISOString().split('T')[0],
         estimatedResponse: '5-7 business days',
-        status: 'Ready for submission'
+        status: 'Ready for submission',
+        taskId: task.id
       };
 
-      setPriorAuthResult(mockPA);
+      setPriorAuthResult(paResult);
       
       toast({
         title: "✅ Prior Auth Generated",
         description: "PA request created with clinical justification, supporting docs, and submission ready format",
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Prior auth error:', error);
       toast({
         title: "PA Generation Failed",
-        description: "Unable to generate prior authorization request",
+        description: error.message || "Unable to generate prior authorization request",
         variant: "destructive"
       });
     } finally {
@@ -223,42 +320,95 @@ const ProviderQuickActions = () => {
   const handleAppealGeneration = async () => {
     console.log('Appeal generation clicked!');
     
+    if (!patientId) {
+      toast({
+        title: "Patient ID Required",
+        description: "Please enter a Patient ID to generate appeal",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     toast({
       title: "Appeal Letter Generator",
-      description: "AI is analyzing the denial and creating a compelling appeal letter...",
+      description: "Analyzing denial and creating appeal letter...",
     });
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      // Find denied claims for this patient
+      const { data: deniedClaims, error: claimsError } = await supabase
+        .from('claims' as any)
+        .select(`
+          id,
+          claim_number,
+          claim_denials (
+            id,
+            denial_reason_code,
+            denial_reason
+          )
+        `)
+        .eq('patient_id', patientId)
+        .eq('status', 'denied')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (claimsError || !deniedClaims || deniedClaims.length === 0) {
+        throw new Error('No denied claims found for this patient');
+      }
+
+      const claim = deniedClaims[0];
+      const denial = Array.isArray(claim.claim_denials) 
+        ? claim.claim_denials[0] 
+        : claim.claim_denials;
+
+      // Use denial management service to generate appeal
+      const denialId = denial?.id;
+      if (!denialId) {
+        throw new Error('No denial found for this claim');
+      }
       
-      const mockAppeal = {
-        id: `APL-${Date.now()}`,
-        claimId: 'CLM-2024-001',
-        denialCode: 'CO-11',
-        denialReason: 'Diagnosis not covered',
-        appealText: `We respectfully request reconsideration of the denial for claim ${'CLM-2024-001'}. The diagnosis is medically necessary and supported by clinical documentation. The patient's condition requires this treatment for optimal health outcomes.`,
-        successProbability: 85,
-        supportingEvidence: [
+      const appealAnalysis = await denialManagementService.analyzeDenial(denialId, claim.id);
+      
+      // Generate appeal letter using createAppealWorkflow which includes letter generation
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+      
+      const appealWorkflow = await denialManagementService.createAppealWorkflow(
+        denialId,
+        claim.id,
+        appealAnalysis.appealability.appealType,
+        user.id
+      );
+
+      const appealResult = {
+        id: appealWorkflow.id || `APL-${Date.now()}`,
+        claimId: claim.claim_number || claim.id,
+        denialCode: denial?.denial_reason_code || 'Unknown',
+        denialReason: denial?.denial_reason || 'Unknown',
+        appealText: appealWorkflow.appealLetter || `We respectfully request reconsideration of the denial for claim ${claim.claim_number || claim.id}. The diagnosis is medically necessary and supported by clinical documentation.`,
+        successProbability: appealAnalysis?.appealability?.successProbability || 75,
+        supportingEvidence: appealWorkflow.supportingDocuments || [
           'Clinical notes',
           'Lab results',
           'Provider documentation',
           'Medical necessity letter'
         ],
-        submissionDate: new Date().toISOString().split('T')[0],
-        status: 'Ready for submission'
+        submissionDate: appealWorkflow.submittedAt || new Date().toISOString().split('T')[0],
+        status: appealWorkflow.status || 'Ready for submission'
       };
 
-      setAppealResult(mockAppeal);
+      setAppealResult(appealResult);
       
       toast({
         title: "✅ Appeal Letter Ready",
-        description: "Professional appeal letter generated with 85% success probability. Ready to submit!",
+        description: `Professional appeal letter generated with ${appealResult.successProbability}% success probability. Ready to submit!`,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Appeal generation error:', error);
       toast({
         title: "Appeal Generation Failed",
-        description: "Unable to generate appeal letter",
+        description: error.message || "Unable to generate appeal letter",
         variant: "destructive"
       });
     } finally {
@@ -269,39 +419,64 @@ const ProviderQuickActions = () => {
   const handlePaymentPlan = async () => {
     console.log('Payment plan clicked!');
     
+    if (!patientId) {
+      toast({
+        title: "Patient ID Required",
+        description: "Please enter a Patient ID to create payment plan",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     toast({
       title: "Payment Plan Calculator",
-      description: "Creating flexible payment options based on patient's financial situation...",
+      description: "Calculating payment options based on patient balance...",
     });
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const mockPaymentPlan = {
-        patientId: patientId || 'PAT-001',
-        totalBalance: 500,
-        options: [
-          { term: '6 months', monthlyPayment: 83, totalInterest: 0 },
-          { term: '12 months', monthlyPayment: 42, totalInterest: 0 },
-          { term: '18 months', monthlyPayment: 28, totalInterest: 0 }
-        ],
+      // Get patient's outstanding balance
+      const { data: statements, error: statementsError } = await supabase
+        .from('billing_statements' as any)
+        .select('id, amount, balance, due_date')
+        .eq('patient_id', patientId)
+        .eq('status', 'pending')
+        .order('due_date', { ascending: false });
+
+      if (statementsError) {
+        console.error('Error fetching statements:', statementsError);
+      }
+
+      const totalBalance = statements?.reduce((sum, s) => sum + parseFloat(s.balance || s.amount || 0), 0) || 500;
+
+      // Calculate payment plan options
+      const options = [
+        { term: '6 months', monthlyPayment: Math.ceil(totalBalance / 6), totalInterest: 0 },
+        { term: '12 months', monthlyPayment: Math.ceil(totalBalance / 12), totalInterest: 0 },
+        { term: '18 months', monthlyPayment: Math.ceil(totalBalance / 18), totalInterest: 0 }
+      ];
+
+      const paymentPlanResult = {
+        patientId: patientId,
+        totalBalance: totalBalance,
+        options: options,
         setupFee: 0,
         lateFee: 15,
         autoPayDiscount: 5,
         status: 'Ready for patient selection'
       };
 
-      setPaymentPlanResult(mockPaymentPlan);
+      setPaymentPlanResult(paymentPlanResult);
       
       toast({
         title: "✅ Payment Plan Created",
-        description: "6-month plan: $83/month | 12-month plan: $42/month. Patient can choose their preferred option.",
+        description: `6-month: $${options[0].monthlyPayment}/month | 12-month: $${options[1].monthlyPayment}/month | 18-month: $${options[2].monthlyPayment}/month`,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Payment plan error:', error);
       toast({
         title: "Payment Plan Failed",
-        description: "Unable to create payment plan",
+        description: error.message || "Unable to create payment plan",
         variant: "destructive"
       });
     } finally {
@@ -309,22 +484,68 @@ const ProviderQuickActions = () => {
     }
   };
 
-  const handleInsuranceCall = () => {
+  const handleInsuranceCall = async () => {
     console.log('Insurance call clicked!');
     
-    const payerContacts = [
-      { name: "Aetna", phone: "1-800-624-0756", hours: "8AM-8PM EST" },
-      { name: "BCBS", phone: "1-800-676-2583", hours: "7AM-7PM EST" },
-      { name: "Cigna", phone: "1-800-997-1654", hours: "8AM-8PM EST" },
-      { name: "UnitedHealth", phone: "1-800-842-5252", hours: "24/7" }
-    ];
-    
-    const randomPayer = payerContacts[Math.floor(Math.random() * payerContacts.length)];
-    
-    toast({
-      title: "📞 Payer Contact Info",
-      description: `${randomPayer.name}: ${randomPayer.phone} (${randomPayer.hours})`,
-    });
+    if (!patientId) {
+      toast({
+        title: "Patient ID Required",
+        description: "Please enter a Patient ID to get payer contact information",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Get patient's insurance payer
+      const { data: patientData, error: patientError } = await supabase
+        .from('patients' as any)
+        .select(`
+          id,
+          patient_insurance (
+            insurance_payers (
+              id,
+              name,
+              phone,
+              customer_service_phone,
+              hours_of_operation
+            )
+          )
+        `)
+        .eq('id', patientId)
+        .single();
+
+      if (patientError || !patientData) {
+        throw new Error('Patient not found');
+      }
+
+      const insurance = Array.isArray(patientData.patient_insurance) 
+        ? patientData.patient_insurance[0] 
+        : patientData.patient_insurance;
+
+      if (!insurance || !insurance.insurance_payers) {
+        throw new Error('No insurance information found for this patient');
+      }
+
+      const payer = Array.isArray(insurance.insurance_payers) 
+        ? insurance.insurance_payers[0] 
+        : insurance.insurance_payers;
+
+      const phone = payer.customer_service_phone || payer.phone || 'Contact information not available';
+      const hours = payer.hours_of_operation || 'Business hours';
+      
+      toast({
+        title: "📞 Payer Contact Info",
+        description: `${payer.name}: ${phone} (${hours})`,
+      });
+    } catch (error: any) {
+      console.error('Insurance call error:', error);
+      toast({
+        title: "Contact Info Unavailable",
+        description: error.message || "Unable to retrieve payer contact information",
+        variant: "destructive"
+      });
+    }
   };
 
   return (

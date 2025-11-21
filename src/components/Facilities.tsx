@@ -50,44 +50,7 @@ interface Facility {
   updatedAt: string;
 }
 
-const sampleFacilities: Facility[] = [
-  {
-    id: '1',
-    // General Information
-    name: 'Main Street Medical Center',
-    npi: '1234567890',
-    taxonomySpecialty: 'General Practice',
-    sequenceNumber: 'NEW',
-    referenceNumber: 'REF001',
-    
-    // Contact Information
-    address: '123 Main Street',
-    city: 'Los Angeles',
-    state: 'CA',
-    zipCode: '90210',
-    phone: '(555) 123-4567',
-    fax: '(555) 123-4568',
-    email: 'info@mainstreetmedical.com',
-    
-    // ID Numbers
-    taxId: '12-3456789',
-    cliaId: 'CLIA12345',
-    locationProviderId: 'LOC001',
-    siteId: 'SITE001',
-    blueCrossId: 'BC123456',
-    blueShieldId: 'BS123456',
-    medicareId: 'MC123456',
-    medicaidId: 'MD123456',
-    locatorCode: 'LOC001',
-    
-    // Claim Defaults
-    placeOfService: 'Office',
-    
-    status: 'active',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  }
-];
+// All facility data is now fetched from the database
 
 const states = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
