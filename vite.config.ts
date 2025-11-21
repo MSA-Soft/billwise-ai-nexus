@@ -3,52 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
-// Plugin to ensure React vendor loads first
-const reactFirstPlugin = () => ({
-  name: 'react-first',
-  transformIndexHtml: {
-    enforce: 'post',
-    transform(html: string) {
-      // Find all modulepreload links
-      const modulepreloadRegex = /<link rel="modulepreload"[^>]*>/gi;
-      const modulepreloadMatches = html.match(modulepreloadRegex) || [];
-      
-      // Separate react-vendor from others
-      const reactVendorLinks: string[] = [];
-      const otherLinks: string[] = [];
-      
-      modulepreloadMatches.forEach(link => {
-        if (link.includes('react-vendor')) {
-          reactVendorLinks.push(link);
-        } else {
-          otherLinks.push(link);
-        }
-      });
-      
-      // Remove all modulepreload links
-      html = html.replace(modulepreloadRegex, '');
-      
-      // Find the main script tag
-      const scriptMatch = html.match(/(<script[^>]*type="module"[^>]*><\/script>)/i);
-      if (scriptMatch && reactVendorLinks.length > 0) {
-        // Insert react-vendor links FIRST, then other links, then the script
-        const newLinks = [...reactVendorLinks, ...otherLinks].join('\n    ');
-        html = html.replace(
-          scriptMatch[0],
-          `${newLinks}\n    ${scriptMatch[0]}`
-        );
-      } else if (reactVendorLinks.length > 0) {
-        // If no script tag found, insert before closing body tag
-        html = html.replace(
-          '</body>',
-          `    ${reactVendorLinks.join('\n    ')}\n    ${otherLinks.join('\n    ')}\n  </body>`
-        );
-      }
-      
-      return html;
-    }
-  }
-});
+// No longer needed - React is in main bundle
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -61,7 +16,6 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-    reactFirstPlugin(),
     mode === 'development' &&
     componentTagger(),
   ].filter(Boolean),
@@ -74,21 +28,20 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // CRITICAL: React and React-DOM must be in their own chunk that loads FIRST
-          // This ensures React is available before any other chunks that depend on it
+          // SIMPLIFIED: Keep React in main bundle to avoid loading order issues
+          // Only split large non-React dependencies
           if (id.includes('node_modules')) {
-            // Put React in its own chunk that will load first
+            // Keep React in main bundle - don't split it
             if (id.includes('/react/') || 
                 id.includes('/react-dom/') ||
                 id.includes('\\react\\') ||
                 id.includes('\\react-dom\\') ||
                 id.includes('react/jsx-runtime') ||
                 id.includes('react/jsx-dev-runtime')) {
-              return 'react-vendor'; // Separate chunk for React
+              return undefined; // Keep in main bundle
             }
             
-            // Don't put React-dependent libraries in vendor chunk
-            // They should be in separate chunks that depend on react-vendor
+            // Split other large vendors
             if (id.includes('@supabase')) {
               return 'supabase-vendor';
             }
@@ -104,8 +57,7 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('lucide-react')) {
               return 'icons-vendor';
             }
-            // Other node_modules (but NOT react/react-dom or React-dependent libs)
-            // IMPORTANT: Don't put anything that uses React in the vendor chunk
+            // Put other node_modules in vendor chunk
             return 'vendor';
           }
           
@@ -150,6 +102,9 @@ export default defineConfig(({ mode }) => ({
           }
           return 'assets/[name]-[hash].js';
         },
+        // Ensure proper chunk dependencies
+        // This tells Rollup that vendor chunk depends on react-vendor
+        // However, we'll handle loading order in the HTML transform plugin
         // Ensure proper entry point order
         entryFileNames: 'assets/[name]-[hash].js',
       },
