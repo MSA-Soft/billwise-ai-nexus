@@ -120,6 +120,8 @@ export default defineConfig(({ mode }) => ({
           }
           return 'assets/[name]-[hash].js';
         },
+        // Ensure proper entry point order
+        entryFileNames: 'assets/[name]-[hash].js',
       },
     },
     // Enable source maps for debugging (disable in production for smaller builds)
@@ -134,6 +136,11 @@ export default defineConfig(({ mode }) => ({
     },
     // Increase chunk size warning limit
     chunkSizeWarningLimit: 1000,
+    // Ensure proper module resolution
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
   },
   // CSS optimization
   css: {
