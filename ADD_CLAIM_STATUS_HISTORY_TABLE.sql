@@ -22,7 +22,6 @@ CREATE POLICY "Allow authenticated users to read claim status history"
     TO authenticated
     USING (true);
 
--- Create policy to allow authenticated users to insert status history
 CREATE POLICY "Allow authenticated users to insert claim status history"
     ON claim_status_history
     FOR INSERT
