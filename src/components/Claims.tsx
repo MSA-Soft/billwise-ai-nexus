@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,101 +51,8 @@ import {
   X
 } from 'lucide-react';
 
-// Mock data matching the image
-const mockClaims = [
-  {
-    id: '275250928',
-    patient: 'SIMONE, JONATHAN',
-    dos: '08/22/2025',
-    totalCharges: 440.00,
-    balance: 0.00,
-    aiScore: 92,
-    cptCodes: ['99213', '87070'],
-    status: 'PAID',
-    type: 'Professional',
-    provider: 'Dr. Smith',
-    submissionDate: '08/23/2025',
-    facility: 'Main Clinic',
-    payer: 'Blue Cross Blue Shield'
-  },
-  {
-    id: '275251313',
-    patient: 'SCHAFFER, JOHN',
-    dos: '08/22/2025',
-    totalCharges: 440.00,
-    balance: 58.17,
-    aiScore: 78,
-    cptCodes: ['99214'],
-    status: 'BALANCE DUE PATIENT',
-    type: 'Professional',
-    provider: 'Dr. Johnson',
-    submissionDate: '08/23/2025',
-    facility: 'Main Clinic',
-    payer: 'Aetna'
-  },
-  {
-    id: '275250212',
-    patient: 'DELIBERO, KURT',
-    dos: '08/22/2025',
-    totalCharges: 440.00,
-    balance: 0.00,
-    aiScore: 88,
-    cptCodes: ['99396'],
-    status: 'PAID',
-    type: 'Professional',
-    provider: 'Dr. Davis',
-    submissionDate: '08/23/2025',
-    facility: 'Main Clinic',
-    payer: 'Medicare'
-  },
-  {
-    id: '270281763',
-    patient: 'ALBANI, CHRISTOPHER',
-    dos: '07/15/2025',
-    totalCharges: 350.00,
-    balance: 350.00,
-    aiScore: 61,
-    cptCodes: ['99203'],
-    status: 'CLAIM AT CONNECTICUT BLUE CROSS',
-    type: 'Professional',
-    provider: 'Dr. Wilson',
-    submissionDate: '07/16/2025',
-    facility: 'Downtown Office',
-    payer: 'Connecticut Blue Cross'
-  },
-  {
-    id: '271705112',
-    patient: 'PRUNES, ADRIAN',
-    dos: '08/04/2025',
-    totalCharges: 440.00,
-    balance: 440.00,
-    aiScore: 55,
-    cptCodes: ['93000', '85025'],
-    status: 'CLAIM AT HORIZON BLUE CROSSBLUE SHIELD OF NEW JERSEY',
-    type: 'Professional',
-    provider: 'Dr. Anderson',
-    submissionDate: '08/05/2025',
-    facility: 'Main Clinic',
-    payer: 'Horizon Blue Cross Blue Shield of New Jersey'
-  },
-  {
-    id: '271706692',
-    patient: 'RIELEY, ADAM',
-    dos: '08/08/2025',
-    totalCharges: 350.00,
-    balance: 350.00,
-    aiScore: 69,
-    cptCodes: ['99212'],
-    status: 'BALANCE DUE PATIENT',
-    type: 'Professional',
-    provider: 'Dr. Brown',
-    submissionDate: '08/09/2025',
-    facility: 'Main Clinic',
-    payer: 'UnitedHealth'
-  }
-];
-
 export function Claims() {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [exactMatchesOnly, setExactMatchesOnly] = useState(false);
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -162,6 +70,8 @@ export function Claims() {
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [patients, setPatients] = useState<Array<{ id: string; name: string; patient_id?: string }>>([]);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const [claims, setClaims] = useState<any[]>([]);
+  const [isLoadingClaims, setIsLoadingClaims] = useState(false);
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
   const [claimType, setClaimType] = useState<'professional' | 'institutional'>('professional');
@@ -246,6 +156,138 @@ export function Claims() {
     };
 
     fetchPatients();
+  }, []);
+
+  // Fetch claims from database
+  useEffect(() => {
+    const fetchClaims = async () => {
+      setIsLoadingClaims(true);
+      try {
+        const { data, error } = await supabase
+          .from('claims' as any)
+          .select(`
+            *,
+            claim_procedures (*),
+            claim_diagnoses (*),
+            patients:patient_id (
+              id,
+              patient_id,
+              first_name,
+              last_name
+            ),
+            providers:provider_id (
+              id,
+              first_name,
+              last_name,
+              title
+            ),
+            facilities:facility_id (
+              id,
+              name
+            ),
+            insurance_payers:primary_insurance_id (
+              id,
+              name
+            )
+          `)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching claims:', error);
+          toast({
+            title: 'Error loading claims',
+            description: error.message,
+            variant: 'destructive',
+          });
+          setClaims([]);
+          return;
+        }
+
+        // Transform database claims to match UI format
+        const transformedClaims = (data || []).map((claim: any) => {
+          const patient = Array.isArray(claim.patients) ? claim.patients[0] : claim.patients;
+          const provider = Array.isArray(claim.providers) ? claim.providers[0] : claim.providers;
+          const facility = Array.isArray(claim.facilities) ? claim.facilities[0] : claim.facilities;
+          const payer = Array.isArray(claim.insurance_payers) ? claim.insurance_payers[0] : claim.insurance_payers;
+          
+          const procedures = Array.isArray(claim.claim_procedures) ? claim.claim_procedures : [];
+          const diagnoses = Array.isArray(claim.claim_diagnoses) ? claim.claim_diagnoses : [];
+          
+          // Format patient name
+          const patientName = patient 
+            ? `${patient.last_name || ''}, ${patient.first_name || ''}`.trim().replace(/^,\s*|,\s*$/g, '')
+            : 'Unknown Patient';
+          
+          // Format provider name
+          const providerName = provider
+            ? `${provider.title || 'Dr.'} ${provider.first_name || ''} ${provider.last_name || ''}`.trim()
+            : 'Unknown Provider';
+          
+          // Format service date
+          const serviceDate = claim.service_date_from 
+            ? new Date(claim.service_date_from).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+            : '';
+          
+          // Format submission date
+          const submissionDate = claim.submission_date
+            ? new Date(claim.submission_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+            : claim.created_at
+            ? new Date(claim.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+            : '';
+          
+          // Get CPT codes from procedures
+          const cptCodes = procedures.map((p: any) => p.cpt_code).filter(Boolean);
+          
+          // Map status
+          let status = 'PENDING';
+          if (claim.status === 'paid') status = 'PAID';
+          else if (claim.status === 'denied') status = 'DENIED';
+          else if (claim.status === 'submitted' || claim.status === 'processing') {
+            status = payer ? `CLAIM AT ${payer.name?.toUpperCase()}` : 'CLAIM AT PAYER';
+          }
+          else if (claim.patient_responsibility > 0) status = 'BALANCE DUE PATIENT';
+          
+          // Calculate balance (patient responsibility)
+          const balance = claim.patient_responsibility || 0;
+          
+          // Calculate AI score (placeholder - would come from AI service)
+          const aiScore = Math.floor(Math.random() * 30) + 60; // Placeholder: 60-90
+          
+          return {
+            id: claim.claim_number || claim.id,
+            patient: patientName,
+            dos: serviceDate,
+            totalCharges: parseFloat(claim.total_charges || 0),
+            balance: parseFloat(balance),
+            aiScore: aiScore,
+            cptCodes: cptCodes,
+            status: status,
+            type: claim.form_type === 'UB04' ? 'Institutional' : 'Professional',
+            provider: providerName,
+            submissionDate: submissionDate,
+            facility: facility?.name || 'N/A',
+            payer: payer?.name || 'Unknown Payer',
+            // Store original data for reference
+            _original: claim
+          };
+        });
+
+        console.log(`✅ Successfully loaded ${transformedClaims.length} claims from database`);
+        setClaims(transformedClaims);
+      } catch (error: any) {
+        console.error('Error fetching claims:', error);
+        toast({
+          title: 'Error loading claims',
+          description: error.message || 'Failed to load claims from database',
+          variant: 'destructive',
+        });
+        setClaims([]);
+      } finally {
+        setIsLoadingClaims(false);
+      }
+    };
+
+    fetchClaims();
   }, []);
 
   // Column mapping to data fields
@@ -460,7 +502,7 @@ export function Claims() {
     }
   };
 
-  const filteredClaims = mockClaims.filter(claim => {
+  const filteredClaims = claims.filter(claim => {
     // unpaidOnly filter
     if (unpaidOnly && claim.balance === 0) return false;
 
@@ -620,13 +662,13 @@ export function Claims() {
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const total = mockClaims.length;
-    const paid = mockClaims.filter(c => c.status === 'PAID').length;
-    const balanceDue = mockClaims.filter(c => c.status === 'BALANCE DUE PATIENT').length;
-    const atPayer = mockClaims.filter(c => c.status.includes('CLAIM AT')).length;
-    const totalCharges = mockClaims.reduce((sum, claim) => sum + claim.totalCharges, 0);
-    const totalBalance = mockClaims.reduce((sum, claim) => sum + claim.balance, 0);
-    const paidAmount = mockClaims
+    const total = claims.length;
+    const paid = claims.filter(c => c.status === 'PAID').length;
+    const balanceDue = claims.filter(c => c.status === 'BALANCE DUE PATIENT').length;
+    const atPayer = claims.filter(c => c.status.includes('CLAIM AT')).length;
+    const totalCharges = claims.reduce((sum, claim) => sum + claim.totalCharges, 0);
+    const totalBalance = claims.reduce((sum, claim) => sum + claim.balance, 0);
+    const paidAmount = claims
       .filter(c => c.status === 'PAID')
       .reduce((sum, claim) => sum + claim.totalCharges, 0);
 
@@ -639,7 +681,7 @@ export function Claims() {
       totalBalance,
       paidAmount
     };
-  }, []);
+  }, [claims]);
 
   const getStatusColor = (status: string) => {
     if (status === 'PAID') return 'text-green-600';
@@ -1263,21 +1305,33 @@ export function Claims() {
               </div>
               
               <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-gray-200 hover:bg-gray-50">
-                      <TableHead className="text-gray-700 font-semibold w-10">
-                        <Checkbox />
-                      </TableHead>
-                      {visibleColumns.map((columnName, idx) => (
-                        <TableHead key={`${columnName}-${idx}`} className="text-gray-700 font-semibold">
-                          <span>{getColumnHeader(columnName)}</span>
+                {isLoadingClaims ? (
+                  <div className="p-8 text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading claims...</p>
+                  </div>
+                ) : sortedClaims.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">No claims found</p>
+                    <p className="text-sm text-gray-500 mt-2">Create your first claim to get started</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-gray-200 hover:bg-gray-50">
+                        <TableHead className="text-gray-700 font-semibold w-10">
+                          <Checkbox />
                         </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedClaims.map((claim) => (
+                        {visibleColumns.map((columnName, idx) => (
+                          <TableHead key={`${columnName}-${idx}`} className="text-gray-700 font-semibold">
+                            <span>{getColumnHeader(columnName)}</span>
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedClaims.map((claim) => (
                       <TableRow 
                         key={claim.id} 
                         className="border-gray-200 hover:bg-gray-50 cursor-pointer"
@@ -1328,9 +1382,10 @@ export function Claims() {
                           );
                         })}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
             </div>
           </>

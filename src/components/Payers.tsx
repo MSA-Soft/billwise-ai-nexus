@@ -49,8 +49,7 @@ interface Payer {
   updatedAt: string;
 }
 
-// Sample payers removed - now using database
-const _samplePayers: Payer[] = [];
+// All payer data is now fetched from the database
 
 const states = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',

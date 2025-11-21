@@ -18,6 +18,8 @@ import {
   Eye,
   Download
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 
 interface DocumentUploadFormProps {
   patientId: string;
@@ -28,6 +30,7 @@ interface DocumentUploadFormProps {
 }
 
 export function DocumentUploadForm({ patientId, patientName, isOpen, onClose, onUpload }: DocumentUploadFormProps) {
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -71,24 +74,60 @@ export function DocumentUploadForm({ patientId, patientName, isOpen, onClose, on
   };
 
   const handleUpload = async () => {
-    if (!validateForm()) {
+    if (!validateForm() || !file) {
       return;
     }
 
     setIsSubmitting(true);
     try {
+      // Upload file to Supabase Storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${patientId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('patient-documents')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(`File upload failed: ${uploadError.message}`);
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('patient-documents')
+        .getPublicUrl(fileName);
+
+      // Map document type to database enum
+      const documentTypeMap: Record<string, string> = {
+        'lab-report': 'lab_result',
+        'imaging': 'imaging',
+        'insurance-card': 'insurance_card',
+        'id-document': 'id',
+        'medical-record': 'medical_record',
+        'prescription': 'other',
+        'referral': 'referral',
+        'consent-form': 'other',
+        'discharge-summary': 'other',
+        'other': 'other'
+      };
+
+      const dbDocumentType = documentTypeMap[documentType] || 'other';
+
       const document = {
         patientId,
         patientName,
-        documentType,
+        documentType: dbDocumentType,
         documentName,
         description,
         uploadedBy,
         uploadDate,
-        fileName: file?.name,
-        fileSize: file?.size,
-        fileType: file?.type,
-        file: file, // In real app, this would be uploaded to storage
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        fileUrl: urlData.publicUrl,
         timestamp: new Date().toISOString()
       };
 
@@ -103,8 +142,13 @@ export function DocumentUploadForm({ patientId, patientName, isOpen, onClose, on
       setFile(null);
       setFilePreview(null);
       setErrors({});
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading document:', error);
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'Failed to upload document. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }

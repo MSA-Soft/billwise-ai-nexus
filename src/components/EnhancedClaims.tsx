@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,60 +32,118 @@ import { CMS1500Form } from '@/components/EnhancedClaims/CMS1500Form';
 import { DenialManagement } from '@/components/EnhancedClaims/DenialManagement';
 import { AIAnalysisPanel } from '@/components/EnhancedClaims/AIAnalysisPanel';
 import { LetterGenerator } from '@/components/EnhancedClaims/LetterGenerator';
-
-// Mock data for demonstration
-const mockClaims = [
-  {
-    id: '1',
-    claimNumber: 'CLM-2024-001',
-    patient: 'John Doe',
-    provider: 'Dr. Smith',
-    dateOfService: '2024-01-15',
-    amount: 250.00,
-    status: 'submitted',
-    formType: 'HCFA',
-    insuranceProvider: 'Blue Cross',
-    submissionDate: '2024-01-16',
-    cptCodes: ['99213', '36415'],
-    icdCodes: ['I10', 'E11.9']
-  },
-  {
-    id: '2',
-    claimNumber: 'CLM-2024-002',
-    patient: 'Jane Smith',
-    provider: 'Dr. Johnson',
-    dateOfService: '2024-01-14',
-    amount: 450.00,
-    status: 'denied',
-    formType: 'CMS1500',
-    insuranceProvider: 'Aetna',
-    submissionDate: '2024-01-15',
-    cptCodes: ['99214', '93000'],
-    icdCodes: ['M79.3', 'R06.02']
-  },
-  {
-    id: '3',
-    claimNumber: 'CLM-2024-003',
-    patient: 'Bob Wilson',
-    provider: 'Dr. Brown',
-    dateOfService: '2024-01-13',
-    amount: 180.00,
-    status: 'paid',
-    formType: 'HCFA',
-    insuranceProvider: 'Cigna',
-    submissionDate: '2024-01-14',
-    cptCodes: ['99212'],
-    icdCodes: ['Z00.00']
-  }
-];
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 
 export function EnhancedClaims() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('claims-list');
   const [showNewClaimForm, setShowNewClaimForm] = useState(false);
   const [showCMS1500Form, setShowCMS1500Form] = useState(false);
   const [editingClaim, setEditingClaim] = useState<string | null>(null);
   const [selectedClaim, setSelectedClaim] = useState<any>(null);
   const [showLetterGenerator, setShowLetterGenerator] = useState(false);
+  const [claims, setClaims] = useState<any[]>([]);
+  const [isLoadingClaims, setIsLoadingClaims] = useState(false);
+
+  // Fetch claims from database
+  useEffect(() => {
+    const fetchClaims = async () => {
+      setIsLoadingClaims(true);
+      try {
+        const { data, error } = await supabase
+          .from('claims' as any)
+          .select(`
+            *,
+            claim_procedures (*),
+            claim_diagnoses (*),
+            patients:patient_id (
+              id,
+              first_name,
+              last_name
+            ),
+            providers:provider_id (
+              id,
+              first_name,
+              last_name,
+              title
+            ),
+            insurance_payers:primary_insurance_id (
+              id,
+              name
+            )
+          `)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.error('Error fetching claims:', error);
+          toast({
+            title: 'Error loading claims',
+            description: error.message,
+            variant: 'destructive',
+          });
+          setClaims([]);
+          return;
+        }
+
+        // Transform database claims to match UI format
+        const transformedClaims = (data || []).map((claim: any) => {
+          const patient = Array.isArray(claim.patients) ? claim.patients[0] : claim.patients;
+          const provider = Array.isArray(claim.providers) ? claim.providers[0] : claim.providers;
+          const payer = Array.isArray(claim.insurance_payers) ? claim.insurance_payers[0] : claim.insurance_payers;
+          
+          const procedures = Array.isArray(claim.claim_procedures) ? claim.claim_procedures : [];
+          const diagnoses = Array.isArray(claim.claim_diagnoses) ? claim.claim_diagnoses : [];
+          
+          const patientName = patient 
+            ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
+            : 'Unknown Patient';
+          
+          const providerName = provider
+            ? `${provider.title || 'Dr.'} ${provider.first_name || ''} ${provider.last_name || ''}`.trim()
+            : 'Unknown Provider';
+          
+          const cptCodes = procedures.map((p: any) => p.cpt_code).filter(Boolean);
+          const icdCodes = diagnoses.map((d: any) => d.icd_code).filter(Boolean);
+          
+          let status = 'pending';
+          if (claim.status === 'paid') status = 'paid';
+          else if (claim.status === 'denied') status = 'denied';
+          else if (claim.status === 'submitted' || claim.status === 'processing') status = 'submitted';
+          
+          return {
+            id: claim.id,
+            claimNumber: claim.claim_number || claim.id,
+            patient: patientName,
+            provider: providerName,
+            dateOfService: claim.service_date_from || '',
+            amount: parseFloat(claim.total_charges || 0),
+            status: status,
+            formType: claim.form_type || 'HCFA',
+            insuranceProvider: payer?.name || 'Unknown',
+            submissionDate: claim.submission_date || claim.created_at || '',
+            cptCodes: cptCodes,
+            icdCodes: icdCodes
+          };
+        });
+
+        setClaims(transformedClaims);
+      } catch (error: any) {
+        console.error('Error fetching claims:', error);
+        toast({
+          title: 'Error loading claims',
+          description: error.message || 'Failed to load claims',
+          variant: 'destructive',
+        });
+        setClaims([]);
+      } finally {
+        setIsLoadingClaims(false);
+      }
+    };
+
+    fetchClaims();
+  }, []);
 
   const handleNewClaim = () => {
     setEditingClaim(null);
@@ -159,7 +217,7 @@ export function EnhancedClaims() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Claims</p>
-                <p className="text-2xl font-bold text-blue-600">{mockClaims.length}</p>
+                <p className="text-2xl font-bold text-blue-600">{claims.length}</p>
               </div>
               <FileText className="h-8 w-8 text-blue-500" />
             </div>
@@ -172,7 +230,7 @@ export function EnhancedClaims() {
               <div>
                 <p className="text-sm text-gray-600">Denied Claims</p>
                 <p className="text-2xl font-bold text-red-600">
-                  {mockClaims.filter(c => c.status === 'denied').length}
+                  {claims.filter(c => c.status === 'denied').length}
                 </p>
               </div>
               <AlertCircle className="h-8 w-8 text-red-500" />
@@ -186,7 +244,7 @@ export function EnhancedClaims() {
               <div>
                 <p className="text-sm text-gray-600">Paid Claims</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {mockClaims.filter(c => c.status === 'paid').length}
+                  {claims.filter(c => c.status === 'paid').length}
                 </p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-500" />
@@ -200,7 +258,7 @@ export function EnhancedClaims() {
               <div>
                 <p className="text-sm text-gray-600">Total Amount</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  ${mockClaims.reduce((sum, c) => sum + c.amount, 0).toFixed(2)}
+                  ${claims.reduce((sum, c) => sum + c.amount, 0).toFixed(2)}
                 </p>
               </div>
               <DollarSign className="h-8 w-8 text-purple-500" />
@@ -271,65 +329,81 @@ export function EnhancedClaims() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockClaims.map((claim) => (
-                        <tr key={claim.id} className="border-b hover:bg-gray-50">
-                          <td className="p-3">
-                            <span className="font-medium text-blue-600">{claim.claimNumber}</span>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex items-center">
-                              <User className="h-4 w-4 text-gray-400 mr-2" />
-                              {claim.patient}
-                            </div>
-                          </td>
-                          <td className="p-3">{claim.provider}</td>
-                          <td className="p-3">
-                            <div className="flex items-center">
-                              <Calendar className="h-4 w-4 text-gray-400 mr-2" />
-                              {new Date(claim.dateOfService).toLocaleDateString()}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex items-center">
-                              <DollarSign className="h-4 w-4 text-gray-400 mr-2" />
-                              ${claim.amount.toFixed(2)}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <Badge className={getStatusColor(claim.status)}>
-                              <span className="flex items-center">
-                                {getStatusIcon(claim.status)}
-                                <span className="ml-1">{claim.status}</span>
-                              </span>
-                            </Badge>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleViewClaim(claim)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleEditClaim(claim.id)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                      {isLoadingClaims ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center">
+                            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            <p className="mt-2 text-gray-600">Loading claims...</p>
                           </td>
                         </tr>
-                      ))}
+                      ) : claims.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center">
+                            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-600">No claims found</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        claims.map((claim) => (
+                          <tr key={claim.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3">
+                              <span className="font-medium text-blue-600">{claim.claimNumber}</span>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center">
+                                <User className="h-4 w-4 text-gray-400 mr-2" />
+                                {claim.patient}
+                              </div>
+                            </td>
+                            <td className="p-3">{claim.provider}</td>
+                            <td className="p-3">
+                              <div className="flex items-center">
+                                <Calendar className="h-4 w-4 text-gray-400 mr-2" />
+                                {new Date(claim.dateOfService).toLocaleDateString()}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center">
+                                <DollarSign className="h-4 w-4 text-gray-400 mr-2" />
+                                ${claim.amount.toFixed(2)}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <Badge className={getStatusColor(claim.status)}>
+                                <span className="flex items-center">
+                                  {getStatusIcon(claim.status)}
+                                  <span className="ml-1">{claim.status}</span>
+                                </span>
+                              </Badge>
+                            </td>
+                            <td className="p-3">
+                              <div className="flex space-x-2">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleViewClaim(claim)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleEditClaim(claim.id)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

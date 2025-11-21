@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,63 +48,172 @@ interface PrintOptions {
 }
 
 export function EnhancedClaimList() {
-  // Mock data
-  const mockClaims = [
-    {
-      id: '1',
-      claimNumber: 'CLM-2024-001',
-      patient: 'John Doe',
-      provider: 'Dr. Smith',
-      dateOfService: '2024-01-15',
-      amount: 250.00,
-      status: 'submitted',
-      formType: 'HCFA',
-      insuranceProvider: 'Blue Cross',
-      submissionDate: '2024-01-16',
-      cptCodes: ['99213', '36415'],
-      icdCodes: ['I10', 'E11.9']
-    },
-    {
-      id: '2',
-      claimNumber: 'CLM-2024-002',
-      patient: 'Jane Smith',
-      provider: 'Dr. Johnson',
-      dateOfService: '2024-01-14',
-      amount: 450.00,
-      status: 'denied',
-      formType: 'CMS1500',
-      insuranceProvider: 'Aetna',
-      submissionDate: '2024-01-15',
-      cptCodes: ['99214', '93000'],
-      icdCodes: ['M79.3', 'R06.02']
-    },
-    {
-      id: '3',
-      claimNumber: 'CLM-2024-003',
-      patient: 'Bob Wilson',
-      provider: 'Dr. Brown',
-      dateOfService: '2024-01-13',
-      amount: 180.00,
-      status: 'paid',
-      formType: 'HCFA',
-      insuranceProvider: 'Cigna',
-      submissionDate: '2024-01-14',
-      cptCodes: ['99212'],
-      icdCodes: ['Z00.00']
-    }
-  ];
+  const [claims, setClaims] = useState<any[]>([]);
+  const [facilities, setFacilities] = useState<any[]>([]);
+  const [isLoadingClaims, setIsLoadingClaims] = useState(false);
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
 
-  const mockFacilities = [
-    { id: '1', name: 'Main Clinic' },
-    { id: '2', name: 'Downtown Office' },
-    { id: '3', name: 'Urgent Care Center' }
-  ];
+  // Fetch claims from database
+  useEffect(() => {
+    const fetchClaims = async () => {
+      setIsLoadingClaims(true);
+      try {
+        const { data, error } = await supabase
+          .from('claims' as any)
+          .select(`
+            *,
+            claim_procedures (*),
+            claim_diagnoses (*),
+            patients:patient_id (
+              id,
+              first_name,
+              last_name
+            ),
+            providers:provider_id (
+              id,
+              first_name,
+              last_name,
+              title
+            ),
+            facilities:facility_id (
+              id,
+              name
+            ),
+            insurance_payers:primary_insurance_id (
+              id,
+              name
+            )
+          `)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          console.error('Error fetching claims:', error);
+          setClaims([]);
+          return;
+        }
+
+        // Transform database claims
+        const transformedClaims = (data || []).map((claim: any) => {
+          const patient = Array.isArray(claim.patients) ? claim.patients[0] : claim.patients;
+          const provider = Array.isArray(claim.providers) ? claim.providers[0] : claim.providers;
+          const facility = Array.isArray(claim.facilities) ? claim.facilities[0] : claim.facilities;
+          const payer = Array.isArray(claim.insurance_payers) ? claim.insurance_payers[0] : claim.insurance_payers;
+          
+          const procedures = Array.isArray(claim.claim_procedures) ? claim.claim_procedures : [];
+          const diagnoses = Array.isArray(claim.claim_diagnoses) ? claim.claim_diagnoses : [];
+          
+          const patientName = patient 
+            ? `${patient.first_name || ''} ${patient.last_name || ''}`.trim()
+            : 'Unknown Patient';
+          
+          const providerName = provider
+            ? `${provider.title || 'Dr.'} ${provider.first_name || ''} ${provider.last_name || ''}`.trim()
+            : 'Unknown Provider';
+          
+          const cptCodes = procedures.map((p: any) => p.cpt_code).filter(Boolean);
+          const icdCodes = diagnoses.map((d: any) => d.icd_code).filter(Boolean);
+          
+          let status = 'pending';
+          if (claim.status === 'paid') status = 'paid';
+          else if (claim.status === 'denied') status = 'denied';
+          else if (claim.status === 'submitted' || claim.status === 'processing') status = 'submitted';
+          
+          return {
+            id: claim.id,
+            claimNumber: claim.claim_number || claim.id,
+            patient: patientName,
+            provider: providerName,
+            dateOfService: claim.service_date_from || '',
+            amount: parseFloat(claim.total_charges || 0),
+            status: status,
+            formType: claim.form_type || 'HCFA',
+            insuranceProvider: payer?.name || 'Unknown',
+            submissionDate: claim.submission_date || claim.created_at || '',
+            cptCodes: cptCodes,
+            icdCodes: icdCodes,
+            facility: facility?.name || 'N/A'
+          };
+        });
+
+        setClaims(transformedClaims);
+      } catch (error: any) {
+        console.error('Error fetching claims:', error);
+        setClaims([]);
+      } finally {
+        setIsLoadingClaims(false);
+      }
+    };
+
+    fetchClaims();
+  }, []);
+
+  // Fetch facilities from database
+  useEffect(() => {
+    const fetchFacilities = async () => {
+      setIsLoadingFacilities(true);
+      try {
+        const { data, error } = await supabase
+          .from('facilities' as any)
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching facilities:', error);
+          setFacilities([]);
+          return;
+        }
+
+        setFacilities((data || []).map((f: any) => ({
+          id: f.id,
+          name: f.name || ''
+        })));
+      } catch (error: any) {
+        console.error('Error fetching facilities:', error);
+        setFacilities([]);
+      } finally {
+        setIsLoadingFacilities(false);
+      }
+    };
+
+    fetchFacilities();
+  }, []);
 
   // State
-  const [filteredClaims, setFilteredClaims] = useState<any[]>(mockClaims);
+  const [filteredClaims, setFilteredClaims] = useState<any[]>([]);
   const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
   const [showNewClaimForm, setShowNewClaimForm] = useState(false);
   const [editingClaim, setEditingClaim] = useState<string | null>(null);
+  
+  // Update filtered claims when claims or filters change
+  useEffect(() => {
+    let filtered = [...claims];
+    
+    // Apply filters
+    if (filters.status !== '-- All --') {
+      filtered = filtered.filter(c => c.status === filters.status.toLowerCase());
+    }
+    if (filters.formType !== '-- All --') {
+      filtered = filtered.filter(c => c.formType === filters.formType);
+    }
+    if (filters.facility !== '-- All --') {
+      filtered = filtered.filter(c => c.facility === filters.facility);
+    }
+    if (filters.searchValue) {
+      const searchLower = filters.searchValue.toLowerCase();
+      filtered = filtered.filter(c => {
+        if (filters.searchField === 'Patient Last Name') {
+          return c.patient.toLowerCase().includes(searchLower);
+        } else if (filters.searchField === 'Claim Number') {
+          return c.claimNumber.toLowerCase().includes(searchLower);
+        }
+        return true;
+      });
+    }
+    
+    setFilteredClaims(filtered);
+  }, [claims, filters]);
   
   // Filters
   const [filters, setFilters] = useState<ClaimFilters>({
@@ -170,7 +280,7 @@ export function EnhancedClaimList() {
 
   const handleSubmitClaim = (claimId: string) => {
     if (window.confirm('Are you sure you want to submit this claim?')) {
-      setFilteredClaims(prev => prev.map(claim => 
+      setClaims(prev => prev.map(claim => 
         claim.id === claimId 
           ? { ...claim, status: 'submitted', submissionDate: new Date().toISOString().split('T')[0] }
           : claim
@@ -386,9 +496,10 @@ export function EnhancedClaimList() {
                         </Button>
                       </div>
                     </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
+                    </TableRow>
+                  ))
+                )}
+                </TableBody>
             </Table>
           </div>
         </CardContent>

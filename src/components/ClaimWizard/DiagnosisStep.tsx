@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -14,34 +16,80 @@ import {
   Circle
 } from 'lucide-react';
 
-const mockIcdCodes = [
-  { code: 'I10', description: 'Essential hypertension' },
-  { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications' },
-  { code: 'Z00.00', description: 'Encounter for general adult medical examination' },
-  { code: 'M79.3', description: 'Panniculitis, unspecified' },
-  { code: 'I25.10', description: 'Atherosclerotic heart disease of native coronary artery without angina pectoris' },
-  { code: 'J06.9', description: 'Acute upper respiratory infection, unspecified' },
-  { code: 'K21.9', description: 'Gastro-esophageal reflux disease without esophagitis' },
-  { code: 'M25.561', description: 'Pain in right knee' }
-];
-
 interface DiagnosisStepProps {
   data: any;
   onUpdate: (data: any) => void;
 }
 
 export function DiagnosisStep({ data, onUpdate }: DiagnosisStepProps) {
+  const { toast } = useToast();
   const [diagnoses, setDiagnoses] = useState(data.diagnoses || []);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredIcdCodes, setFilteredIcdCodes] = useState(mockIcdCodes);
+  const [icdCodes, setIcdCodes] = useState<Array<{ code: string; description: string }>>([]);
+  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
+  const [filteredIcdCodes, setFilteredIcdCodes] = useState<Array<{ code: string; description: string }>>([]);
 
+  // Fetch ICD codes from database
   useEffect(() => {
-    const filtered = mockIcdCodes.filter(icd =>
+    const fetchIcdCodes = async () => {
+      setIsLoadingCodes(true);
+      try {
+        const { data: codesData, error } = await supabase
+          .from('diagnosis_codes' as any)
+          .select('code, description')
+          .eq('is_active', true)
+          .order('code', { ascending: true })
+          .limit(1000); // Limit to 1000 most common codes
+
+        if (error) {
+          console.error('Error fetching ICD codes:', error);
+          toast({
+            title: 'Error loading ICD codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+          // Fallback to empty array
+          setIcdCodes([]);
+          return;
+        }
+
+        // Transform database records to match expected format
+        const transformedCodes = (codesData || []).map((dbCode: any) => ({
+          code: dbCode.code || '',
+          description: dbCode.description || ''
+        }));
+
+        setIcdCodes(transformedCodes);
+        console.log(`✅ Loaded ${transformedCodes.length} ICD codes from database`);
+      } catch (error: any) {
+        console.error('Error fetching ICD codes:', error);
+        toast({
+          title: 'Error loading ICD codes',
+          description: error.message || 'Failed to load ICD codes',
+          variant: 'destructive',
+        });
+        setIcdCodes([]);
+      } finally {
+        setIsLoadingCodes(false);
+      }
+    };
+
+    fetchIcdCodes();
+  }, []);
+
+  // Filter ICD codes based on search term
+  useEffect(() => {
+    if (!searchTerm) {
+      setFilteredIcdCodes(icdCodes);
+      return;
+    }
+
+    const filtered = icdCodes.filter(icd =>
       icd.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       icd.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredIcdCodes(filtered);
-  }, [searchTerm]);
+  }, [searchTerm, icdCodes]);
 
   const addDiagnosis = (icdCode: any) => {
     const newDiagnosis = {
@@ -94,9 +142,22 @@ export function DiagnosisStep({ data, onUpdate }: DiagnosisStepProps) {
       <div className="space-y-3">
         <h3 className="font-medium text-gray-900">
           Available ICD-10 Codes ({filteredIcdCodes.length})
+          {isLoadingCodes && <span className="text-sm text-gray-500 ml-2">(Loading...)</span>}
         </h3>
-        <div className="max-h-40 overflow-y-auto space-y-2">
-          {filteredIcdCodes.map((icd) => (
+        {isLoadingCodes ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+            <p className="mt-2 text-sm text-gray-600">Loading ICD codes...</p>
+          </div>
+        ) : filteredIcdCodes.length === 0 ? (
+          <div className="text-center py-8">
+            <Code className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-600">No ICD codes found</p>
+            {searchTerm && <p className="text-xs text-gray-500 mt-1">Try a different search term</p>}
+          </div>
+        ) : (
+          <div className="max-h-40 overflow-y-auto space-y-2">
+            {filteredIcdCodes.map((icd) => (
             <Card key={icd.code} className="border-gray-200 hover:border-green-300 transition-colors">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
@@ -120,8 +181,9 @@ export function DiagnosisStep({ data, onUpdate }: DiagnosisStepProps) {
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Selected Diagnoses */}

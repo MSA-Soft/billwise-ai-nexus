@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,42 +25,6 @@ interface StatementTemplate {
   updatedAt: string;
 }
 
-const sampleTemplates: StatementTemplate[] = [
-  {
-    id: '1',
-    name: 'Enhanced User Print Format',
-    type: 'user-print',
-    format: 'enhanced',
-    status: 'disabled',
-    description: 'Enhanced User Print Statements are not enabled for your account. Please contact an Admin or Authorized Representative on your account about enabling this feature.',
-    templateContent: '',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: 'Plain Text User Print Format',
-    type: 'user-print',
-    format: 'plain-text',
-    status: 'enabled',
-    description: 'Standard plain text format for user print statements',
-    templateContent: 'Dear {{patient_name}},\n\nYour statement for {{statement_date}} shows a balance of {{balance_amount}}.\n\nPlease remit payment at your earliest convenience.\n\nThank you.',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  },
-  {
-    id: '3',
-    name: 'Electronic Statement Format',
-    type: 'user-print',
-    format: 'electronic',
-    status: 'disabled',
-    description: 'Manual Electronic Statements are not enabled for your account. Please contact an Admin or Authorized Representative on your account about enabling this feature.',
-    templateContent: '',
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-15'
-  }
-];
-
 const statementTypes = [
   'Automatic Statement Generation',
   'User Print Statements',
@@ -72,7 +38,50 @@ const formatTypes = [
 ];
 
 export const Statements: React.FC = () => {
-  const [templates, setTemplates] = useState<StatementTemplate[]>(sampleTemplates);
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<StatementTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+
+  // Fetch templates from database
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      setIsLoadingTemplates(true);
+      try {
+        const { data, error } = await supabase
+          .from('statement_templates' as any)
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching statement templates:', error);
+          // If table doesn't exist, use empty array
+          setTemplates([]);
+          return;
+        }
+
+        const transformedTemplates = (data || []).map((t: any) => ({
+          id: t.id,
+          name: t.name || '',
+          type: t.type || 'user-print',
+          format: t.format || 'plain-text',
+          status: t.status || 'enabled',
+          description: t.description || '',
+          templateContent: t.template_content || t.templateContent || '',
+          createdAt: t.created_at || new Date().toISOString().split('T')[0],
+          updatedAt: t.updated_at || t.created_at || new Date().toISOString().split('T')[0]
+        }));
+
+        setTemplates(transformedTemplates);
+      } catch (error: any) {
+        console.error('Error fetching statement templates:', error);
+        setTemplates([]);
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    };
+
+    fetchTemplates();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -104,21 +113,67 @@ export const Statements: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateTemplate = () => {
+  const handleUpdateTemplate = async () => {
     if (!editingTemplate) return;
 
-    setTemplates(templates.map(t => 
-      t.id === editingTemplate.id 
-        ? { ...editingTemplate, updatedAt: new Date().toISOString().split('T')[0] }
-        : t
-    ));
-    setIsEditDialogOpen(false);
-    setEditingTemplate(null);
+    try {
+      const { error } = await supabase
+        .from('statement_templates' as any)
+        .update({
+          name: editingTemplate.name,
+          type: editingTemplate.type,
+          format: editingTemplate.format,
+          status: editingTemplate.status,
+          description: editingTemplate.description,
+          template_content: editingTemplate.templateContent,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingTemplate.id);
+
+      if (error) throw error;
+
+      setTemplates(templates.map(t => 
+        t.id === editingTemplate.id 
+          ? { ...editingTemplate, updatedAt: new Date().toISOString().split('T')[0] }
+          : t
+      ));
+      setIsEditDialogOpen(false);
+      setEditingTemplate(null);
+      toast({
+        title: 'Template updated',
+        description: 'Statement template has been updated successfully.',
+      });
+    } catch (error: any) {
+      console.error('Error updating template:', error);
+      toast({
+        title: 'Error updating template',
+        description: error.message || 'Failed to update template',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleDeleteTemplate = (id: string) => {
-    if (confirm('Are you sure you want to delete this template?')) {
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('statement_templates' as any)
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       setTemplates(templates.filter(t => t.id !== id));
+      toast({
+        title: 'Template deleted',
+        description: 'Statement template has been deleted successfully.',
+      });
+    } catch (error: any) {
+      console.error('Error deleting template:', error);
+      toast({
+        title: 'Error deleting template',
+        description: error.message || 'Failed to delete template',
+        variant: 'destructive',
+      });
     }
   };
 

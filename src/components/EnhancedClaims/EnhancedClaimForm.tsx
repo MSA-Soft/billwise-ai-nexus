@@ -23,7 +23,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 
 interface EnhancedClaimFormProps {
   claimId?: string;
@@ -98,6 +98,9 @@ export function EnhancedClaimForm({
   const [practices, setPractices] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [cptCodes, setCptCodes] = useState<Array<{ code: string; description: string }>>([]);
+  const [icdCodes, setIcdCodes] = useState<Array<{ code: string; description: string }>>([]);
+  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
   const [isLoadingPayers, setIsLoadingPayers] = useState(false);
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
@@ -288,26 +291,83 @@ export function EnhancedClaimForm({
     }
   };
 
-  const mockPlaceOfServiceCodes = [
+  // Place of Service codes (standard CMS codes)
+  const placeOfServiceCodes = [
     { code: '11', description: 'Office' },
     { code: '21', description: 'Inpatient Hospital' },
     { code: '22', description: 'Outpatient Hospital' },
-    { code: '23', description: 'Emergency Room' }
+    { code: '23', description: 'Emergency Room - Hospital' },
+    { code: '24', description: 'Ambulatory Surgical Center' },
+    { code: '25', description: 'Birthing Center' },
+    { code: '26', description: 'Military Treatment Facility' },
+    { code: '31', description: 'Skilled Nursing Facility' },
+    { code: '32', description: 'Nursing Facility' },
+    { code: '33', description: 'Custodial Care Facility' },
+    { code: '34', description: 'Hospice' },
+    { code: '41', description: 'Ambulance - Land' },
+    { code: '42', description: 'Ambulance - Air or Water' },
+    { code: '49', description: 'Independent Clinic' },
+    { code: '50', description: 'Federally Qualified Health Center' },
+    { code: '71', description: 'State or Local Public Health Clinic' },
+    { code: '72', description: 'Rural Health Clinic' },
+    { code: '81', description: 'Independent Laboratory' },
+    { code: '99', description: 'Other Place of Service' }
   ];
 
-  const mockCptCodes = [
-    { code: '99213', description: 'Office visit, established patient, expanded' },
-    { code: '99214', description: 'Office visit, established patient, detailed' },
-    { code: '36415', description: 'Collection of venous blood by venipuncture' },
-    { code: '93000', description: 'Electrocardiogram, routine ECG' }
-  ];
+  // Fetch CPT and ICD codes from database
+  useEffect(() => {
+    const fetchCodes = async () => {
+      setIsLoadingCodes(true);
+      try {
+        // Fetch CPT codes
+        const { data: cptData, error: cptError } = await supabase
+          .from('cpt_hcpcs_codes' as any)
+          .select('code, description, superbill_description')
+          .eq('is_active', true)
+          .order('code', { ascending: true })
+          .limit(500);
 
-  const mockIcdCodes = [
-    { code: 'I10', description: 'Essential hypertension' },
-    { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications' },
-    { code: 'M79.3', description: 'Panniculitis, unspecified' },
-    { code: 'R06.02', description: 'Shortness of breath' }
-  ];
+        if (cptError) {
+          console.error('Error fetching CPT codes:', cptError);
+        } else {
+          const transformedCpt = (cptData || []).map((c: any) => ({
+            code: c.code || '',
+            description: c.description || c.superbill_description || ''
+          }));
+          setCptCodes(transformedCpt);
+        }
+
+        // Fetch ICD codes
+        const { data: icdData, error: icdError } = await supabase
+          .from('diagnosis_codes' as any)
+          .select('code, description')
+          .eq('is_active', true)
+          .order('code', { ascending: true })
+          .limit(500);
+
+        if (icdError) {
+          console.error('Error fetching ICD codes:', icdError);
+        } else {
+          const transformedIcd = (icdData || []).map((d: any) => ({
+            code: d.code || '',
+            description: d.description || ''
+          }));
+          setIcdCodes(transformedIcd);
+        }
+      } catch (error: any) {
+        console.error('Error fetching codes:', error);
+        toast({
+          title: 'Error loading codes',
+          description: error.message || 'Failed to load codes',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingCodes(false);
+      }
+    };
+
+    fetchCodes();
+  }, []);
 
   const generateClaimNumber = () => {
     const now = new Date();
@@ -592,7 +652,7 @@ export function EnhancedClaimForm({
                       <SelectValue placeholder="Select place of service" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockPlaceOfServiceCodes.map(pos => (
+                      {placeOfServiceCodes.map(pos => (
                         <SelectItem key={pos.code} value={pos.code}>
                           {pos.code} - {pos.description}
                         </SelectItem>
@@ -644,7 +704,7 @@ export function EnhancedClaimForm({
                               <SelectValue placeholder="Select CPT code" />
                             </SelectTrigger>
                             <SelectContent>
-                              {mockCptCodes.map(cpt => (
+                              {cptCodes.map(cpt => (
                                 <SelectItem key={cpt.code} value={cpt.code}>
                                   {cpt.code} - {cpt.description}
                                 </SelectItem>
@@ -734,7 +794,7 @@ export function EnhancedClaimForm({
                               <SelectValue placeholder="Select ICD code" />
                             </SelectTrigger>
                             <SelectContent>
-                              {mockIcdCodes.map(icd => (
+                              {icdCodes.map(icd => (
                                 <SelectItem key={icd.code} value={icd.code}>
                                   {icd.code} - {icd.description}
                                 </SelectItem>

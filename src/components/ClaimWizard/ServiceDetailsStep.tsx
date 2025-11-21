@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -14,35 +16,82 @@ import {
   Search
 } from 'lucide-react';
 
-const mockCptCodes = [
-  { code: '99213', description: 'Office visit, established patient', amount: 200.00 },
-  { code: '99214', description: 'Office visit, established patient', amount: 320.00 },
-  { code: '99215', description: 'Office visit, established patient', amount: 500.00 },
-  { code: '36415', description: 'Blood draw', amount: 250.00 },
-  { code: '93000', description: 'Electrocardiogram', amount: 250.00 },
-  { code: '80053', description: 'Comprehensive metabolic panel', amount: 150.00 },
-  { code: '85025', description: 'Complete blood count', amount: 100.00 },
-  { code: '99212', description: 'Office visit, established patient', amount: 180.00 }
-];
-
 interface ServiceDetailsStepProps {
   data: any;
   onUpdate: (data: any) => void;
 }
 
 export function ServiceDetailsStep({ data, onUpdate }: ServiceDetailsStepProps) {
+  const { toast } = useToast();
   const [serviceDate, setServiceDate] = useState(data.serviceDate || new Date().toISOString().split('T')[0]);
   const [procedures, setProcedures] = useState(data.procedures || []);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredCptCodes, setFilteredCptCodes] = useState(mockCptCodes);
+  const [cptCodes, setCptCodes] = useState<Array<{ code: string; description: string; amount: number }>>([]);
+  const [isLoadingCodes, setIsLoadingCodes] = useState(false);
+  const [filteredCptCodes, setFilteredCptCodes] = useState<Array<{ code: string; description: string; amount: number }>>([]);
 
+  // Fetch CPT codes from database
   useEffect(() => {
-    const filtered = mockCptCodes.filter(cpt =>
+    const fetchCptCodes = async () => {
+      setIsLoadingCodes(true);
+      try {
+        const { data: codesData, error } = await supabase
+          .from('cpt_hcpcs_codes' as any)
+          .select('code, description, default_price, superbill_description')
+          .eq('is_active', true)
+          .order('code', { ascending: true })
+          .limit(1000); // Limit to 1000 most common codes
+
+        if (error) {
+          console.error('Error fetching CPT codes:', error);
+          toast({
+            title: 'Error loading CPT codes',
+            description: error.message,
+            variant: 'destructive',
+          });
+          // Fallback to empty array
+          setCptCodes([]);
+          return;
+        }
+
+        // Transform database records to match expected format
+        const transformedCodes = (codesData || []).map((dbCode: any) => ({
+          code: dbCode.code || '',
+          description: dbCode.description || dbCode.superbill_description || '',
+          amount: dbCode.default_price ? parseFloat(dbCode.default_price) : 0.00
+        }));
+
+        setCptCodes(transformedCodes);
+        console.log(`✅ Loaded ${transformedCodes.length} CPT codes from database`);
+      } catch (error: any) {
+        console.error('Error fetching CPT codes:', error);
+        toast({
+          title: 'Error loading CPT codes',
+          description: error.message || 'Failed to load CPT codes',
+          variant: 'destructive',
+        });
+        setCptCodes([]);
+      } finally {
+        setIsLoadingCodes(false);
+      }
+    };
+
+    fetchCptCodes();
+  }, []);
+
+  // Filter CPT codes based on search term
+  useEffect(() => {
+    if (!searchTerm) {
+      setFilteredCptCodes(cptCodes);
+      return;
+    }
+
+    const filtered = cptCodes.filter(cpt =>
       cpt.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       cpt.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredCptCodes(filtered);
-  }, [searchTerm]);
+  }, [searchTerm, cptCodes]);
 
   const addProcedure = (cptCode: any) => {
     const newProcedure = {
@@ -113,9 +162,22 @@ export function ServiceDetailsStep({ data, onUpdate }: ServiceDetailsStepProps) 
       <div className="space-y-3">
         <h3 className="font-medium text-gray-900">
           Available CPT Codes ({filteredCptCodes.length})
+          {isLoadingCodes && <span className="text-sm text-gray-500 ml-2">(Loading...)</span>}
         </h3>
-        <div className="max-h-40 overflow-y-auto space-y-2">
-          {filteredCptCodes.map((cpt) => (
+        {isLoadingCodes ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <p className="mt-2 text-sm text-gray-600">Loading CPT codes...</p>
+          </div>
+        ) : filteredCptCodes.length === 0 ? (
+          <div className="text-center py-8">
+            <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-sm text-gray-600">No CPT codes found</p>
+            {searchTerm && <p className="text-xs text-gray-500 mt-1">Try a different search term</p>}
+          </div>
+        ) : (
+          <div className="max-h-40 overflow-y-auto space-y-2">
+            {filteredCptCodes.map((cpt) => (
             <Card key={cpt.code} className="border-gray-200 hover:border-blue-300 transition-colors">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
@@ -142,8 +204,9 @@ export function ServiceDetailsStep({ data, onUpdate }: ServiceDetailsStepProps) 
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Selected Procedures */}
