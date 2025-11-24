@@ -50,47 +50,71 @@ export function EnhancedClaims() {
     const fetchClaims = async () => {
       setIsLoadingClaims(true);
       try {
-        const { data, error } = await supabase
+        // First, fetch claims with nested relations that should work
+        const { data: claimsData, error: claimsError } = await supabase
           .from('claims' as any)
           .select(`
             *,
             claim_procedures (*),
-            claim_diagnoses (*),
-            patients:patient_id (
-              id,
-              first_name,
-              last_name
-            ),
-            providers:provider_id (
-              id,
-              first_name,
-              last_name,
-              title
-            ),
-            insurance_payers:primary_insurance_id (
-              id,
-              name
-            )
+            claim_diagnoses (*)
           `)
           .order('created_at', { ascending: false })
           .limit(100);
 
-        if (error) {
-          console.error('Error fetching claims:', error);
+        if (claimsError) {
+          console.error('Error fetching claims:', claimsError);
           toast({
             title: 'Error loading claims',
-            description: error.message,
+            description: claimsError.message,
             variant: 'destructive',
           });
           setClaims([]);
           return;
         }
 
+        if (!claimsData || claimsData.length === 0) {
+          setClaims([]);
+          setIsLoadingClaims(false);
+          return;
+        }
+
+        // Get unique IDs for related data
+        const patientIds = [...new Set(claimsData.map((c: any) => c.patient_id).filter(Boolean))];
+        const providerIds = [...new Set(claimsData.map((c: any) => c.provider_id).filter(Boolean))];
+        const payerIds = [...new Set(claimsData.map((c: any) => c.primary_insurance_id).filter(Boolean))];
+
+        // Fetch related data separately
+        const [patientsResult, providersResult, payersResult] = await Promise.all([
+          patientIds.length > 0 
+            ? supabase.from('patients').select('id, first_name, last_name').in('id', patientIds)
+            : Promise.resolve({ data: [], error: null }),
+          providerIds.length > 0
+            ? supabase.from('providers').select('id, first_name, last_name, title').in('id', providerIds)
+            : Promise.resolve({ data: [], error: null }),
+          payerIds.length > 0
+            ? supabase.from('insurance_payers').select('id, name').in('id', payerIds)
+            : Promise.resolve({ data: [], error: null })
+        ]);
+
+        // Create lookup maps
+        const patientsMap = new Map((patientsResult.data || []).map((p: any) => [p.id, p]));
+        const providersMap = new Map((providersResult.data || []).map((p: any) => [p.id, p]));
+        const payersMap = new Map((payersResult.data || []).map((p: any) => [p.id, p]));
+
+        // Combine the data
+        const data = claimsData.map((claim: any) => ({
+          ...claim,
+          patients: claim.patient_id ? patientsMap.get(claim.patient_id) : null,
+          providers: claim.provider_id ? providersMap.get(claim.provider_id) : null,
+          insurance_payers: claim.primary_insurance_id ? payersMap.get(claim.primary_insurance_id) : null
+        }));
+
         // Transform database claims to match UI format
-        const transformedClaims = (data || []).map((claim: any) => {
-          const patient = Array.isArray(claim.patients) ? claim.patients[0] : claim.patients;
-          const provider = Array.isArray(claim.providers) ? claim.providers[0] : claim.providers;
-          const payer = Array.isArray(claim.insurance_payers) ? claim.insurance_payers[0] : claim.insurance_payers;
+        const transformedClaims = data.map((claim: any) => {
+          // Related data is now single objects, not arrays
+          const patient = claim.patients || null;
+          const provider = claim.providers || null;
+          const payer = claim.insurance_payers || null;
           
           const procedures = Array.isArray(claim.claim_procedures) ? claim.claim_procedures : [];
           const diagnoses = Array.isArray(claim.claim_diagnoses) ? claim.claim_diagnoses : [];
