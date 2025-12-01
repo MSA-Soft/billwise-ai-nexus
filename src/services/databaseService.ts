@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import { withCompanyFilter, ensureCompanyId } from '@/utils/companyContext';
 
 // Type definitions for better type safety
 type Tables = Database['public']['Tables'];
@@ -38,10 +39,14 @@ export class DatabaseService {
   // COLLECTIONS ACCOUNTS CRUD
   async getCollectionsAccounts(): Promise<CollectionAccount[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('collections_accounts')
         .select('*')
         .order('created_at', { ascending: false });
+      
+      query = await withCompanyFilter(query);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
@@ -67,9 +72,11 @@ export class DatabaseService {
 
   async createCollectionAccount(accountData: Partial<CollectionAccount>): Promise<CollectionAccount> {
     try {
+      const dataWithCompany = await ensureCompanyId(accountData as any);
+      
       const { data, error } = await supabase
         .from('collections_accounts')
-        .insert([accountData as any])
+        .insert([dataWithCompany])
         .select()
         .single();
 
@@ -186,10 +193,14 @@ export class DatabaseService {
   // BILLING STATEMENTS CRUD
   async getBillingStatements(): Promise<BillingStatement[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('billing_statements')
         .select('*')
         .order('statement_date', { ascending: false });
+      
+      query = await withCompanyFilter(query);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
@@ -215,9 +226,11 @@ export class DatabaseService {
 
   async createBillingStatement(statementData: Partial<BillingStatement>): Promise<BillingStatement> {
     try {
+      const dataWithCompany = await ensureCompanyId(statementData as any);
+      
       const { data, error } = await supabase
         .from('billing_statements')
-        .insert([statementData as any])
+        .insert([dataWithCompany])
         .select()
         .single();
 
@@ -283,10 +296,14 @@ export class DatabaseService {
   // AUTHORIZATION REQUESTS CRUD
   async getAuthorizationRequests(): Promise<AuthorizationRequest[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('authorization_requests')
         .select('*')
         .order('created_at', { ascending: false });
+      
+      query = await withCompanyFilter(query);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data || [];
@@ -297,9 +314,11 @@ export class DatabaseService {
 
   async createAuthorizationRequest(requestData: Partial<AuthorizationRequest>): Promise<AuthorizationRequest> {
     try {
+      const dataWithCompany = await ensureCompanyId(requestData as any);
+      
       const { data, error } = await supabase
         .from('authorization_requests')
-        .insert([requestData as any])
+        .insert([dataWithCompany])
         .select()
         .single();
 

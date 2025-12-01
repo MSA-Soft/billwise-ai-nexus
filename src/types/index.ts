@@ -16,9 +16,54 @@ export interface AuthState {
   loading: boolean;
 }
 
+// Company and Multi-Tenancy Types
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  domain?: string;
+  logo_url?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  subscription_tier?: string;
+  subscription_status?: string;
+  subscription_start_date?: string;
+  subscription_end_date?: string;
+  settings?: Record<string, any>;
+  features?: Record<string, any>;
+  is_active?: boolean;
+  is_trial?: boolean;
+  trial_end_date?: string;
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+}
+
+export interface CompanyUser {
+  id: string;
+  company_id: string;
+  user_id: string;
+  role: 'admin' | 'manager' | 'user' | 'viewer';
+  is_primary: boolean;
+  permissions?: Record<string, any>;
+  is_active: boolean;
+  invited_by?: string;
+  invited_at?: string;
+  joined_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  company?: Company;
+}
+
 // Patient Types
 export interface Patient {
   id: string;
+  company_id?: string; // Multi-tenant support
   first_name: string;
   last_name: string;
   date_of_birth: string;
@@ -34,6 +79,7 @@ export interface Patient {
 // Billing Types
 export interface BillingStatement {
   id: string;
+  company_id?: string; // Multi-tenant support
   patient_id: string;
   amount: number;
   due_date: string;
@@ -68,6 +114,7 @@ export interface CollectionActivity {
 // Authorization Types
 export interface AuthorizationRequest {
   id: string;
+  company_id?: string; // Multi-tenant support
   patient_id: string;
   procedure_code: string;
   description: string;

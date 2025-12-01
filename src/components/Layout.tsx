@@ -5,6 +5,7 @@ import { Bell, Settings, User, LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useMobile } from '@/hooks/use-mobile';
+import { CompanySelector } from './CompanySelector';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -84,6 +85,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
               </h1>
             </div>
             <div className="flex items-center space-x-2 lg:space-x-4">
+              {/* Company Selector */}
+              {user && (
+                <div className="hidden sm:block">
+                  <CompanySelector />
+                </div>
+              )}
               <Button variant="ghost" size="sm" className="hidden sm:flex">
                 <Bell className="h-5 w-5" />
               </Button>

@@ -32,6 +32,9 @@ import FinancialReportsPage from "./pages/FinancialReportsPage";
 import PerformanceMetricsPage from "./pages/PerformanceMetricsPage";
 import AuditTrailPage from "./pages/AuditTrailPage";
 import PriorAuthorizationPage from "./pages/PriorAuthorizationPage";
+import CompaniesPage from "./pages/CompaniesPage";
+import CompanySelectionPage from "./pages/CompanySelectionPage";
+import SuperAdminPage from "./pages/SuperAdminPage";
 
 const queryClient = new QueryClient();
 
@@ -45,6 +48,15 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/auth" element={<Auth />} />
+              {/* Company Selection (public route but requires auth) */}
+              <Route 
+                path="/select-company" 
+                element={
+                  <ProtectedRoute>
+                    <CompanySelectionPage />
+                  </ProtectedRoute>
+                } 
+              />
               {/* Main Dashboard */}
               <Route 
                 path="/" 
@@ -191,6 +203,24 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <PriorAuthorizationPage />
+                  </ProtectedRoute>
+                } 
+              />
+              {/* Company Management (Admin Only) */}
+              <Route 
+                path="/companies" 
+                element={
+                  <ProtectedRoute>
+                    <CompaniesPage />
+                  </ProtectedRoute>
+                } 
+              />
+              {/* Super Admin Dashboard */}
+              <Route 
+                path="/super-admin" 
+                element={
+                  <ProtectedRoute>
+                    <SuperAdminPage />
                   </ProtectedRoute>
                 } 
               />
