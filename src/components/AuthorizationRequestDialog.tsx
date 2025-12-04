@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { authorizationAuditService } from "@/services/authorizationAuditService";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface AuthorizationRequestDialogProps {
   open: boolean;
@@ -31,6 +32,7 @@ interface AuthorizationRequestDialogProps {
 }
 
 const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizationId, patientId, patientData }: AuthorizationRequestDialogProps) => {
+  const { currentCompany } = useAuth();
   const [loading, setLoading] = useState(false);
   const [payers, setPayers] = useState<any[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
@@ -329,24 +331,62 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         let insuranceData: any = null;
         
         // Method 1: Try patient_insurance table
-        const { data: piData, error: piError } = await supabase
-          .from('patient_insurance' as any)
-          .select('member_id, group_number, policy_number, insurance_id, payer_id')
-          .eq('patient_id', id)
-          .limit(1)
-          .maybeSingle();
+        try {
+          // Build query step by step
+          let query = supabase
+            .from('patient_insurance' as any)
+            .select('primary_insurance_id, primary_group_number, primary_insurance_company, primary_policy_holder_name')
+            .eq('patient_id', id);
+          
+          // Add company_id filter if available (for multi-tenant RLS)
+          // Only add if we have a company - if company_id column doesn't exist, this will be ignored by RLS
+          if (currentCompany?.id) {
+            query = query.eq('company_id', currentCompany.id);
+          }
+          
+          const { data: piData, error: piError } = await query
+            .limit(1)
+            .maybeSingle();
 
-        if (!piError && piData) {
-          insuranceData = piData;
-        } else {
-          // Method 2: Try to get from patients table if it has insurance fields
-          // Some schemas store insurance_id directly in patients table
-          if (basicData && (basicData as any).primary_insurance_id) {
+          // Check for specific error codes
+          if (piError) {
+            // 400 Bad Request could mean:
+            // - Table doesn't exist
+            // - Column doesn't exist
+            // - RLS policy is blocking
+            // - Invalid query syntax
+            if (piError.code === 'PGRST116' || piError.message?.includes('does not exist')) {
+              console.log('ℹ️ patient_insurance table or column does not exist (this is okay)');
+            } else if (piError.code === '42501' || piError.message?.includes('permission denied')) {
+              console.log('ℹ️ RLS policy blocking patient_insurance access (this is okay)');
+            } else {
+              console.log('ℹ️ Error fetching from patient_insurance table:', piError.message, piError.code);
+            }
+          } else if (piData) {
+            // Only use the data if there's no error and data exists
+            // Map the data to match expected format
             insuranceData = {
-              insurance_id: (basicData as any).primary_insurance_id,
-              member_id: (basicData as any).insurance_member_id || null,
+              insurance_id: piData.primary_insurance_id,
+              payer_id: piData.primary_insurance_id, // Use primary_insurance_id as payer_id
+              group_number: piData.primary_group_number,
+              policy_number: piData.primary_policy_holder_name, // Map policy holder name as policy number
+              member_id: null, // Not available in patient_insurance table
+              insurance_company: piData.primary_insurance_company,
             };
           }
+        } catch (tableError: any) {
+          // Table might not exist or RLS is blocking - this is okay
+          console.log('ℹ️ patient_insurance table query failed (this is okay):', tableError.message);
+        }
+        
+        // Method 2: Try to get from patients table if it has insurance fields
+        // Some schemas store insurance_id directly in patients table
+        if (!insuranceData && basicData && (basicData as any).primary_insurance_id) {
+          insuranceData = {
+            insurance_id: (basicData as any).primary_insurance_id,
+            payer_id: (basicData as any).primary_insurance_id,
+            member_id: (basicData as any).insurance_member_id || null,
+          };
         }
 
         if (insuranceData) {

@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronUp, ChevronRight, FileText, Hash, DollarSign, Syringe, UserPlus, Circle, Building, MessageSquare, Minus, Package, List, DollarSign as DollarIcon, FilePen, Cloud, Eye, Calendar, Info, X, Check, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Code {
   id: string;
@@ -138,6 +139,7 @@ const modifiers = [
 
 export const Codes: React.FC = () => {
   const { toast } = useToast();
+  const { user, isSuperAdmin, currentCompany } = useAuth();
   const [selectedMenuItem, setSelectedMenuItem] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -2480,7 +2482,32 @@ export const Codes: React.FC = () => {
 
       {/* Codes Menu */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {codeMenuItems.map((item) => {
+        {codeMenuItems
+          .filter((item) => {
+            // Super admin sees everything
+            if (isSuperAdmin) return true;
+
+            // CRITICAL: For zar@gmail.com, ONLY show: diagnosis, procedure, fee-schedules
+            const userEmail = user?.email?.toLowerCase()?.trim();
+            const isZarEmail = userEmail === "zar@gmail.com";
+            const isZarCompany = currentCompany && (
+              currentCompany.slug === "zar" ||
+              currentCompany.name?.toLowerCase()?.trim() === "zarsolution"
+            );
+
+            if (isZarEmail || isZarCompany) {
+              const zarAllowedCodeIds = new Set(['diagnosis', 'procedure', 'fee-schedules']);
+              const allowed = zarAllowedCodeIds.has(item.id);
+              if (!allowed) {
+                console.log(`🚫 Filtering out code menu item ${item.id} for zar limited user`);
+              }
+              return allowed;
+            }
+
+            // For other users, show all code menu items
+            return true;
+          })
+          .map((item) => {
           const IconComponent = item.icon;
           return (
             <Card 

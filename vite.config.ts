@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  preview: {
+    host: "::",
+    port: 4173,
+    strictPort: false,
+  },
   plugins: [
     react(),
     mode === 'development' &&

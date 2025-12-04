@@ -107,14 +107,29 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
 
   // Detect ZarSolution limited access (manual restriction)
   // We treat either the ZarSolution company OR the zar@gmail.com user as limited.
-  const isZarLimited =
-    !isSuperAdmin &&
-    (
-      user?.email?.toLowerCase() === "zar@gmail.com" ||
-      (currentCompany &&
-        (currentCompany.slug === "zar" ||
-          currentCompany.name?.toLowerCase() === "zarsolution"))
-    );
+  const userEmail = user?.email?.toLowerCase()?.trim();
+  const isZarEmail = userEmail === "zar@gmail.com";
+  const isZarCompany = currentCompany && (
+    currentCompany.slug === "zar" ||
+    currentCompany.name?.toLowerCase()?.trim() === "zarsolution"
+  );
+  
+  const isZarLimited = !isSuperAdmin && (isZarEmail || isZarCompany);
+
+  // Debug logging - always log to help diagnose
+  useEffect(() => {
+    console.log('🔍 Sidebar Debug:', {
+      userEmail: user?.email,
+      userEmailLower: userEmail,
+      isZarEmail,
+      isSuperAdmin,
+      isZarLimited,
+      currentCompany: currentCompany?.name,
+      currentCompanySlug: currentCompany?.slug,
+      isZarCompany,
+      routeAccessMapSize: routeAccessMap.size,
+    });
+  }, [user, userEmail, isZarEmail, isSuperAdmin, isZarLimited, currentCompany, isZarCompany, routeAccessMap.size]);
 
   // Auto-collapse on mobile
   useEffect(() => {
@@ -586,14 +601,23 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
             <div className="space-y-1">
               {navigationItems
                 .filter((item) => {
-                  // Super admin sees everything
+                  // CRITICAL: Super admin sees everything
                   if (isSuperAdmin) return true;
 
-                  // Manual restriction for ZarSolution limited access
-                  if (isZarLimited && !zarAllowedMainNavIds.has(item.id)) {
-                    return false;
+                  // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list (bypass all other checks)
+                  if (isZarEmail) {
+                    const allowed = zarAllowedMainNavIds.has(item.id);
+                    console.log(`🔒 zar@gmail.com check: ${item.id} = ${allowed ? 'ALLOWED' : 'DENIED'}`);
+                    return allowed;
                   }
 
+                  // For ZarSolution company (but not zar@gmail.com user), also enforce allow-list
+                  if (isZarCompany && !isZarEmail) {
+                    const allowed = zarAllowedMainNavIds.has(item.id);
+                    return allowed;
+                  }
+
+                  // For other users, check database access
                   const route = routeMap[item.id];
                   if (!route) {
                     return true; // Allow if route not mapped
@@ -641,12 +665,18 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
                           {patientsSubmenuItems
                             .filter((subItem) => {
                               if (isSuperAdmin) return true;
-                              if (
-                                isZarLimited &&
-                                !zarAllowedPatientSubmenuIds.has(subItem.id)
-                              ) {
-                                return false;
+                              
+                              // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list
+                              if (isZarEmail) {
+                                return zarAllowedPatientSubmenuIds.has(subItem.id);
                               }
+                              
+                              // For ZarSolution company, also enforce allow-list
+                              if (isZarCompany) {
+                                return zarAllowedPatientSubmenuIds.has(subItem.id);
+                              }
+                              
+                              // For other users, allow all patient submenu items
                               return true;
                             })
                             .map((subItem) => {
@@ -861,12 +891,18 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
                 {customerSetupItems
                   .filter((item) => {
                     if (isSuperAdmin) return true;
-                    if (
-                      isZarLimited &&
-                      !zarAllowedCustomerSetupIds.has(item.id)
-                    ) {
-                      return false;
+                    
+                    // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list
+                    if (isZarEmail) {
+                      return zarAllowedCustomerSetupIds.has(item.id);
                     }
+                    
+                    // For ZarSolution company, also enforce allow-list
+                    if (isZarCompany) {
+                      return zarAllowedCustomerSetupIds.has(item.id);
+                    }
+                    
+                    // For other users, allow all customer setup items
                     return true;
                   })
                   .map((item) => {
