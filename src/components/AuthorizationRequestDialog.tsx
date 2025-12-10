@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, X, Plus, Trash2, FileText, Eye, Download } from "lucide-react";
 import { authorizationAuditService } from "@/services/authorizationAuditService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -45,62 +46,74 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   const [isSearchingPatients, setIsSearchingPatients] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [facilities, setFacilities] = useState<any[]>([]);
+  const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
+  const [uploadedDocuments, setUploadedDocuments] = useState<Array<{ id: string; name: string; type: string; url: string; size: number }>>([]);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [comments, setComments] = useState<Array<{ id: string; comment: string; is_internal: boolean; comment_type: string; user_id: string; created_at: string; user_name?: string }>>([]);
+  const [newComment, setNewComment] = useState("");
+  const [newCommentType, setNewCommentType] = useState("general");
+  const [isCommentInternal, setIsCommentInternal] = useState(false);
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [formData, setFormData] = useState({
-    patient_name: "",
-    patient_dob: "",
-    patient_member_id: "",
-    provider_id: "",
-    provider_npi: "",
-    requesting_physician: "",
+    // Simplified fields as per requirements
+    serial_no: "", // S.No
+    scheduled_location: "", // Scheduled Location
+    order_date: "", // Order Date
+    type_of_visit: "", // Type of Visit
+    patient_name: "", // Patient Name
+    primary_insurance: "", // Primary Insurance (payer_name)
+    primary_insurance_id: "", // Primary Insurance ID
+    description: "", // Description
+    prior_auth_required: false, // Prior Auth Required (checkbox)
+    prior_authorization_status: "pending", // Prior Authorization Status
+    remarks: "", // Remarks
+    secondary_insurance: "", // Secondary Insurance
+    secondary_insurance_id: "", // Secondary Insurance ID
+    secondary_prior_auth_required: false, // Prior Auth Required (secondary) (checkbox)
+    secondary_prior_authorization_status: "pending", // Prior Authorization Status (secondary)
+    // Hidden fields for database compatibility (mapped from simplified fields)
     payer_id: "",
     payer_name: "",
-    procedure_code: "",
-    procedure_description: "",
-    diagnosis_codes: "",
-    clinical_indication: "",
-    urgency: "routine",
-    requested_start_date: "",
-    requested_end_date: "",
-    units_requested: 1,
-    // New fields for expiration and visit management (X12 278 compliant)
-    authorization_expiration_date: "", // When the authorization expires (required for approved auths)
-    visits_authorized: 0, // Number of visits authorized (separate from units_requested)
-    service_end_date: "" // Service end date (can be different from expiration date)
+    secondary_payer_id: "",
+    secondary_payer_name: "",
+    status: "pending",
+    service_type: "",
+    facility_id: "",
+    facility_name: "",
   });
   const { toast } = useToast();
 
   useEffect(() => {
     if (open) {
       fetchPayers();
-      fetchProviders();
       fetchPatients();
+      fetchFacilities();
       if (authorizationId) {
         setIsEditMode(true);
         loadAuthorizationData(authorizationId);
+        loadComments(authorizationId);
       } else {
         setIsEditMode(false);
-        setSelectedPatientId(null); // Reset selection
+        setSelectedPatientId(null);
         // Pre-populate from patientData if provided
         if (patientData) {
+          const timestamp = Date.now();
+          const serialNo = `AUTH-${timestamp.toString().slice(-8)}`;
           setFormData(prev => ({
             ...prev,
+            serial_no: serialNo,
             patient_name: patientData.name || prev.patient_name,
-            patient_dob: patientData.dob || prev.patient_dob,
-            patient_member_id: patientData.memberId || prev.patient_member_id,
+            primary_insurance: patientData.payerName || prev.primary_insurance,
+            primary_insurance_id: patientData.payerId || prev.primary_insurance_id,
             payer_id: patientData.payerId || prev.payer_id,
             payer_name: patientData.payerName || prev.payer_name,
-            provider_id: patientData.providerId || prev.provider_id,
-            provider_npi: patientData.providerNpi || prev.provider_npi,
-            procedure_code: patientData.cptCodes?.[0] || prev.procedure_code,
-            diagnosis_codes: patientData.icdCodes?.join(', ') || prev.diagnosis_codes,
-            requested_end_date: prev.requested_end_date, // Preserve existing value
           }));
           if (patientData.name) {
             setPatientSearchTerm(patientData.name);
             setSelectedPatientId(patientId || 'pre-filled');
           }
         } else if (patientId) {
-          // Load patient data from database
           setSelectedPatientId(patientId);
           loadPatientData(patientId);
         } else {
@@ -122,27 +135,34 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
       if (data) {
         const authData = data as any;
-        setFormData({
+        // Map database fields to simplified form fields
+        setFormData(prev => ({
+          ...prev,
+          serial_no: authData.id ? authData.id.substring(0, 8).toUpperCase() : `AUTH-${Date.now().toString().slice(-8)}`,
+          scheduled_location: authData.facility_name || "",
+          order_date: authData.service_start_date || authData.created_at ? new Date(authData.service_start_date || authData.created_at).toISOString().split('T')[0] : "",
+          type_of_visit: authData.service_type || "",
           patient_name: authData.patient_name || "",
-          patient_dob: authData.patient_dob || "",
-          patient_member_id: authData.patient_member_id || "",
-          provider_id: authData.provider_id || "",
-          provider_npi: authData.provider_npi_custom || "",
-          requesting_physician: authData.provider_name_custom || "",
+          primary_insurance: authData.payer_name_custom || "",
+          primary_insurance_id: authData.payer_id || "",
+          description: authData.service_type || authData.procedure_description || "",
+          prior_auth_required: authData.status && authData.status !== "draft" ? true : false,
+          prior_authorization_status: authData.status || "pending",
+          remarks: authData.internal_notes || "",
+          secondary_insurance: authData.secondary_payer_name || "",
+          secondary_insurance_id: authData.secondary_payer_id || "",
+          secondary_prior_auth_required: authData.secondary_payer_id ? true : false,
+          secondary_prior_authorization_status: authData.status || "pending",
+          // Keep mapping for database compatibility
           payer_id: authData.payer_id || "",
           payer_name: authData.payer_name_custom || "",
-          procedure_code: authData.procedure_codes?.[0] || "",
-          procedure_description: authData.service_type || "",
-          diagnosis_codes: (authData.diagnosis_codes || []).join(', '),
-          clinical_indication: authData.clinical_indication || "",
-          urgency: authData.urgency_level || "routine",
-          requested_start_date: authData.service_start_date || "",
-          requested_end_date: authData.service_end_date || "",
-          service_end_date: authData.service_end_date || "",
-          units_requested: authData.units_requested || 1,
-          authorization_expiration_date: authData.authorization_expiration_date || "",
-          visits_authorized: authData.visits_authorized || authData.units_requested || 0,
-        });
+          secondary_payer_id: authData.secondary_payer_id || "",
+          secondary_payer_name: authData.secondary_payer_name || "",
+          status: authData.status || "pending",
+          service_type: authData.service_type || "",
+          facility_id: authData.facility_id || "",
+          facility_name: authData.facility_name || "",
+        }));
       }
     } catch (error: any) {
       toast({
@@ -154,27 +174,41 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   };
 
   const resetForm = () => {
+    // Generate serial number
+    const timestamp = Date.now();
+    const serialNo = `AUTH-${timestamp.toString().slice(-8)}`;
+    
     setFormData({
+      serial_no: serialNo,
+      scheduled_location: "",
+      order_date: "",
+      type_of_visit: "",
       patient_name: "",
-      patient_dob: "",
-      patient_member_id: "",
-      provider_id: "",
-      provider_npi: "",
-      requesting_physician: "",
+      primary_insurance: "",
+      primary_insurance_id: "",
+      description: "",
+      prior_auth_required: false,
+      prior_authorization_status: "pending",
+      remarks: "",
+      secondary_insurance: "",
+      secondary_insurance_id: "",
+      secondary_prior_auth_required: false,
+      secondary_prior_authorization_status: "pending",
       payer_id: "",
       payer_name: "",
-      procedure_code: "",
-      procedure_description: "",
-      diagnosis_codes: "",
-      clinical_indication: "",
-      urgency: "routine",
-      requested_start_date: "",
-      requested_end_date: "",
-      service_end_date: "",
-      units_requested: 1,
-      authorization_expiration_date: "",
-      visits_authorized: 0,
+      secondary_payer_id: "",
+      secondary_payer_name: "",
+      status: "pending",
+      service_type: "",
+      facility_id: "",
+      facility_name: "",
     });
+    setUploadedDocuments([]);
+    setSelectedPatientId(null);
+    setComments([]);
+    setNewComment("");
+    setNewCommentType("general");
+    setIsCommentInternal(false);
   };
 
   const fetchPayers = async () => {
@@ -240,6 +274,132 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       });
     } finally {
       setIsLoadingProviders(false);
+    }
+  };
+
+  const fetchFacilities = async () => {
+    try {
+      setIsLoadingFacilities(true);
+      const { data, error } = await supabase
+        .from('facilities' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching facilities:', error);
+        return; // Don't show error toast, facilities are optional
+      }
+
+      setFacilities(data || []);
+    } catch (error: any) {
+      console.error('Error fetching facilities:', error);
+    } finally {
+      setIsLoadingFacilities(false);
+    }
+  };
+
+  const loadComments = async (authId: string) => {
+    try {
+      setIsLoadingComments(true);
+      const { data, error } = await supabase
+        .from('authorization_request_comments' as any)
+        .select(`
+          *,
+          user:user_id (
+            id,
+            email,
+            raw_user_meta_data
+          )
+        `)
+        .eq('authorization_request_id', authId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading comments:', error);
+        return;
+      }
+
+      const formattedComments = (data || []).map((comment: any) => ({
+        id: comment.id,
+        comment: comment.comment,
+        is_internal: comment.is_internal,
+        comment_type: comment.comment_type || 'general',
+        user_id: comment.user_id,
+        created_at: comment.created_at,
+        user_name: comment.user?.raw_user_meta_data?.full_name || comment.user?.email || 'Unknown User',
+      }));
+
+      setComments(formattedComments);
+    } catch (error: any) {
+      console.error('Error loading comments:', error);
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    // For new requests, we need to create the authorization first
+    if (!newComment.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a comment",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // If no authorizationId yet (new request), save the comment for later or show error
+    if (!authorizationId && !isEditMode) {
+      toast({
+        title: "Error",
+        description: "Please save the authorization request first before adding comments",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('You must be logged in to add comments');
+      }
+
+      const { data, error } = await supabase
+        .from('authorization_request_comments' as any)
+        .insert({
+          authorization_request_id: authorizationId,
+          user_id: user.id,
+          comment: newComment.trim(),
+          is_internal: isCommentInternal,
+          comment_type: newCommentType,
+          company_id: currentCompany?.id || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Refresh comments if authorizationId exists
+      if (authorizationId) {
+        await loadComments(authorizationId);
+      }
+      
+      // Clear comment input
+      setNewComment("");
+      setIsCommentInternal(false);
+      setNewCommentType("general");
+
+      toast({
+        title: "Comment Added",
+        description: "Your comment has been added successfully."
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add comment",
+        variant: "destructive"
+      });
     }
   };
 
@@ -316,8 +476,9 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         setFormData(prev => ({
           ...prev,
           patient_name: fullName,
-          patient_dob: patientData.date_of_birth || prev.patient_dob,
-          requested_end_date: prev.requested_end_date, // Preserve existing value
+          // Auto-fill order date to today if not already set
+          order_date: prev.order_date || new Date().toISOString().split('T')[0],
+          // Note: patient_dob and requested_end_date don't exist in simplified form
         }));
         
         // Update search term to show selected patient
@@ -330,21 +491,21 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         // Try multiple ways to get insurance data
         let insuranceData: any = null;
         
-        // Method 1: Try patient_insurance table
+          // Method 1: Try patient_insurance table
         try {
           // Build query step by step
           let query = supabase
             .from('patient_insurance' as any)
-            .select('primary_insurance_id, primary_group_number, primary_insurance_company, primary_policy_holder_name')
+            .select('insurance_company_id, is_primary, member_id, group_number')
             .eq('patient_id', id);
           
           // Add company_id filter if available (for multi-tenant RLS)
-          // Only add if we have a company - if company_id column doesn't exist, this will be ignored by RLS
           if (currentCompany?.id) {
             query = query.eq('company_id', currentCompany.id);
           }
           
           const { data: piData, error: piError } = await query
+            .order('is_primary', { ascending: false })
             .limit(1)
             .maybeSingle();
 
@@ -363,15 +524,16 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
               console.log('ℹ️ Error fetching from patient_insurance table:', piError.message, piError.code);
             }
           } else if (piData) {
+            const pi = piData as any;
             // Only use the data if there's no error and data exists
             // Map the data to match expected format
             insuranceData = {
-              insurance_id: piData.primary_insurance_id,
-              payer_id: piData.primary_insurance_id, // Use primary_insurance_id as payer_id
-              group_number: piData.primary_group_number,
-              policy_number: piData.primary_policy_holder_name, // Map policy holder name as policy number
-              member_id: null, // Not available in patient_insurance table
-              insurance_company: piData.primary_insurance_company,
+              insurance_id: pi.insurance_company_id,
+              payer_id: pi.insurance_company_id, // Use insurance_company_id as payer_id
+              group_number: pi.group_number,
+              policy_number: null, // Not available in patient_insurance table
+              member_id: pi.member_id,
+              insurance_company: null, // Will fetch from insurance_payers table
             };
           }
         } catch (tableError: any) {
@@ -395,7 +557,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           
           setFormData(prev => ({
             ...prev,
-            patient_member_id: insurance.member_id || prev.patient_member_id,
+            // Note: patient_member_id doesn't exist in simplified form, but keeping for compatibility
           }));
 
           // Try to get payer info
@@ -414,11 +576,50 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                 ...prev,
                 payer_id: payer.id || prev.payer_id,
                 payer_name: payer.name || prev.payer_name,
+                // Populate the simplified form fields that are actually displayed
+                primary_insurance: payer.name || prev.primary_insurance,
+                primary_insurance_id: payer.id || prev.primary_insurance_id,
               }));
             }
           }
         } else {
           console.log('ℹ️ No insurance data found for this patient');
+        }
+
+        // Try to load secondary insurance if available
+        try {
+          const { data: secondaryInsuranceData, error: secondaryError } = await supabase
+            .from('patient_insurance' as any)
+            .select('insurance_company_id, is_primary, member_id, group_number')
+            .eq('patient_id', id)
+            .eq('is_primary', false)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (!secondaryError && secondaryInsuranceData) {
+            const secInsurance = secondaryInsuranceData as any;
+            const { data: secPayerData, error: secPayerError } = await supabase
+              .from('insurance_payers' as any)
+              .select('id, name')
+              .eq('id', secInsurance.insurance_company_id)
+              .maybeSingle();
+
+            if (!secPayerError && secPayerData) {
+              const secPayer = secPayerData as any;
+              console.log('✅ Secondary payer data found:', secPayer);
+              setFormData(prev => ({
+                ...prev,
+                secondary_insurance: secPayer.name || prev.secondary_insurance,
+                secondary_insurance_id: secPayer.id || prev.secondary_insurance_id,
+                secondary_payer_id: secPayer.id || prev.secondary_payer_id,
+                secondary_payer_name: secPayer.name || prev.secondary_payer_name,
+                secondary_prior_auth_required: secPayer.id ? true : prev.secondary_prior_auth_required,
+              }));
+            }
+          }
+        } catch (secErr: any) {
+          console.log('ℹ️ Secondary insurance data not available (this is okay):', secErr.message);
         }
       } catch (insuranceErr: any) {
         // Insurance data is optional, just log and continue
@@ -449,9 +650,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       const updated = {
         ...prev,
         patient_name: patient.patient_name,
-        patient_dob: patient.dob || prev.patient_dob,
-        patient_member_id: patient.member_id || prev.patient_member_id,
-        requested_end_date: prev.requested_end_date, // Preserve existing value
+        // Note: patient_dob and patient_member_id don't exist in simplified form
+        // Keep only fields that exist in simplified form
       };
       console.log('📝 Form data updated:', updated);
       return updated;
@@ -609,29 +809,62 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         throw new Error('You must be logged in to create an authorization');
       }
 
-      const selectedPayer = payers.find(p => p.id === formData.payer_id);
+      const selectedPayer = payers.find(p => p.id === formData.primary_insurance_id || p.id === formData.payer_id);
       
-      // Prepare data object with all fields including expiration and visits
+      // Validate required fields for simplified form
+      if (!formData.patient_name || !formData.patient_name.trim()) {
+        toast({
+          title: "Validation Error",
+          description: "Patient name is required",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.order_date) {
+        toast({
+          title: "Validation Error",
+          description: "Order date is required",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.description || !formData.description.trim()) {
+        toast({
+          title: "Validation Error",
+          description: "Description is required",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
+      
+      // Prepare data object with simplified fields
       const authData: any = {
         user_id: user.id,
+        company_id: currentCompany?.id || null,
+        // Patient Information
         patient_name: formData.patient_name,
-        patient_dob: formData.patient_dob || null,
-        patient_member_id: formData.patient_member_id,
-        payer_id: formData.payer_id || null,
-        payer_name_custom: selectedPayer ? selectedPayer.name : (formData.payer_name || null),
-        provider_name_custom: formData.requesting_physician,
-        provider_npi_custom: formData.provider_npi,
-        service_type: formData.procedure_description,
-        units_requested: formData.units_requested,
-        service_start_date: formData.requested_start_date || null,
-        service_end_date: formData.service_end_date || null,
-        urgency_level: formData.urgency,
-        diagnosis_codes: formData.diagnosis_codes.split(',').map(c => c.trim()).filter(c => c),
-        procedure_codes: formData.procedure_code ? [formData.procedure_code] : [],
-        clinical_indication: formData.clinical_indication,
-        // X12 278 Compliant: Authorization expiration and visit management
-        authorization_expiration_date: formData.authorization_expiration_date || null,
-        visits_authorized: formData.visits_authorized || formData.units_requested || 0,
+        // Payer Information
+        payer_id: formData.primary_insurance_id || formData.payer_id || null,
+        payer_name_custom: formData.primary_insurance || (selectedPayer ? selectedPayer.name : null),
+        // Facility Information
+        facility_id: formData.facility_id || null,
+        facility_name: formData.scheduled_location || formData.facility_name || null,
+        // Service Information
+        service_type: formData.description || formData.type_of_visit || null,
+        service_start_date: formData.order_date || null,
+        // Secondary Insurance
+        secondary_payer_id: formData.secondary_insurance_id || formData.secondary_payer_id || null,
+        secondary_payer_name: formData.secondary_insurance || null,
+        // Status and workflow
+        status: formData.prior_authorization_status || formData.status || 'pending',
+        authorization_type: 'prior',
+        // Internal notes/remarks
+        internal_notes: formData.remarks || null,
       };
 
       if (isEditMode && authorizationId) {
@@ -690,10 +923,14 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
               patient_name: authData.patient_name,
               payer_name: authData.payer_name_custom,
               service_type: authData.service_type,
-              procedure_codes: authData.procedure_codes,
             },
-            'Authorization created via form'
+            'Authorization created via simplified form'
           );
+          
+          // If there are comments and this is a new request, reload comments after creation
+          if (authorizationId) {
+            await loadComments(authRecord.id);
+          }
         }
 
         toast({
@@ -719,7 +956,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Authorization Request' : 'New Prior Authorization Request'}</DialogTitle>
           <DialogDescription>
@@ -730,9 +967,9 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Patient Information */}
+          {/* Simplified Prior Authorization Form */}
           <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Patient Information</h3>
+            <h3 className="font-semibold text-lg">Prior Authorization Request</h3>
               <div>
                 <Label htmlFor="patient_search">Search and Select Patient *</Label>
                 <div className="relative">
@@ -810,318 +1047,336 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            
+            {/* Simplified Form Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               <div>
-                <Label htmlFor="patient_name">Patient Name *</Label>
+                <Label htmlFor="serial_no">S.No</Label>
                 <Input
-                  id="patient_name"
-                  value={formData.patient_name}
-                  onChange={(e) => {
-                    setFormData({ ...formData, patient_name: e.target.value });
-                    setPatientSearchTerm(e.target.value);
-                  }}
-                  required
-                  placeholder="Auto-filled from search above"
-                  className={formData.patient_name ? "bg-blue-50" : ""}
+                  id="serial_no"
+                  value={formData.serial_no}
+                  readOnly
+                  className="bg-gray-50"
                 />
               </div>
               <div>
-                <Label htmlFor="patient_dob">Date of Birth *</Label>
-                <Input
-                  id="patient_dob"
-                  type="date"
-                  value={formData.patient_dob}
-                  onChange={(e) => setFormData({ ...formData, patient_dob: e.target.value })}
-                  required
-                  className={formData.patient_dob ? "bg-blue-50" : ""}
-                />
-              </div>
-              <div>
-                <Label htmlFor="patient_member_id">Member ID *</Label>
-                <Input
-                  id="patient_member_id"
-                  value={formData.patient_member_id}
-                  onChange={(e) => setFormData({ ...formData, patient_member_id: e.target.value })}
-                  required
-                  placeholder="Auto-filled from patient selection"
-                  className={formData.patient_member_id ? "bg-blue-50" : ""}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Provider Information */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Provider Information</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="provider_id">Select Provider *</Label>
+                <Label htmlFor="scheduled_location">Scheduled Location *</Label>
                 <Select
-                  value={formData.provider_id}
+                  value={formData.facility_id || "__none__"}
                   onValueChange={(value) => {
-                    const provider = providers.find(p => p.id === value);
-                    setFormData({ 
-                      ...formData, 
-                      provider_id: value,
-                      requesting_physician: provider ? `${provider.first_name || ''} ${provider.last_name || ''}`.trim() : '',
-                      provider_npi: provider?.npi || ''
-                    });
+                    if (value === "__none__") {
+                      setFormData({ ...formData, facility_id: "", facility_name: "", scheduled_location: "" });
+                    } else {
+                      const facility = facilities.find(f => f.id === value);
+                      setFormData({ 
+                        ...formData, 
+                        facility_id: value,
+                        facility_name: facility?.name || '',
+                        scheduled_location: facility?.name || ''
+                      });
+                    }
                   }}
-                  disabled={isLoadingProviders}
+                  disabled={isLoadingFacilities}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select provider"} />
+                    <SelectValue placeholder={isLoadingFacilities ? "Loading..." : "Select location"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {providers.length === 0 && !isLoadingProviders ? (
-                      <SelectItem value="none" disabled>No providers found. Please add providers in Customer Setup.</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {facilities.map((facility) => (
+                      <SelectItem key={facility.id} value={facility.id}>
+                        {facility.name || facility.facility_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="order_date">Order Date *</Label>
+                <Input
+                  id="order_date"
+                  type="date"
+                  value={formData.order_date}
+                  onChange={(e) => setFormData({ ...formData, order_date: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="type_of_visit">Type of Visit *</Label>
+                <Input
+                  id="type_of_visit"
+                  value={formData.type_of_visit}
+                  onChange={(e) => setFormData({ ...formData, type_of_visit: e.target.value, service_type: e.target.value, description: e.target.value })}
+                  placeholder="e.g., Office Visit, Consultation"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="patient_name_display">Patient Name *</Label>
+                <Input
+                  id="patient_name_display"
+                  value={formData.patient_name}
+                  readOnly
+                  className="bg-gray-50"
+                />
+              </div>
+              <div>
+                <Label htmlFor="primary_insurance">Primary Insurance *</Label>
+                <Select
+                  value={formData.primary_insurance_id || formData.payer_id || ""}
+                  onValueChange={(value) => {
+                    const payer = payers.find(p => p.id === value);
+                    setFormData({ 
+                      ...formData, 
+                      payer_id: value,
+                      payer_name: payer?.name || '',
+                      primary_insurance: payer?.name || '',
+                      primary_insurance_id: value
+                    });
+                  }}
+                  disabled={isLoadingPayers}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingPayers ? "Loading..." : "Select insurance"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {payers.length === 0 && !isLoadingPayers ? (
+                      <SelectItem value="none" disabled>No payers found</SelectItem>
                     ) : (
-                      providers.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id}>
-                          {provider.first_name} {provider.last_name} {provider.credentials ? `, ${provider.credentials}` : ''} {provider.npi ? `(NPI: ${provider.npi})` : ''}
+                      payers.map((payer) => (
+                        <SelectItem key={payer.id} value={payer.id}>
+                          {payer.name}
                         </SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="provider_npi">Provider NPI *</Label>
-                <Input
-                  id="provider_npi"
-                  value={formData.provider_npi}
-                  onChange={(e) => setFormData({ ...formData, provider_npi: e.target.value })}
-                  required
-                  placeholder="Auto-filled from provider selection"
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="requesting_physician">Requesting Physician Name *</Label>
-              <Input
-                id="requesting_physician"
-                value={formData.requesting_physician}
-                onChange={(e) => setFormData({ ...formData, requesting_physician: e.target.value })}
-                required
-                placeholder="Auto-filled from provider selection"
-              />
-            </div>
-          </div>
-
-          {/* Payer Information */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Insurance Payer</h3>
-            <div>
-              <Label htmlFor="payer_id">Select Payer *</Label>
-              <Select
-                value={formData.payer_id}
-                onValueChange={(value) => {
-                  const payer = payers.find(p => p.id === value);
-                  setFormData({ 
-                    ...formData, 
-                    payer_id: value,
-                    payer_name: payer?.name || ''
-                  });
-                }}
-                disabled={isLoadingPayers}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance payer"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {payers.length === 0 && !isLoadingPayers ? (
-                    <SelectItem value="none" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
-                  ) : (
-                    payers.map((payer) => (
-                    <SelectItem key={payer.id} value={payer.id}>
-                        {payer.name} {payer.plan_name ? `- ${payer.plan_name}` : ''}
-                    </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Clinical Information */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Clinical Information</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="procedure_code">Procedure Code (CPT) *</Label>
-                <Input
-                  id="procedure_code"
-                  placeholder="e.g., 99213"
-                  value={formData.procedure_code}
-                  onChange={(e) => setFormData({ ...formData, procedure_code: e.target.value })}
+              <div className="col-span-2">
+                <Label htmlFor="description">Description *</Label>
+                <Textarea
+                  id="description"
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value, service_type: e.target.value })}
+                  placeholder="Enter procedure/service description"
                   required
                 />
               </div>
-              <div>
-                <Label htmlFor="diagnosis_codes">Diagnosis Codes (ICD-10) *</Label>
-                <Input
-                  id="diagnosis_codes"
-                  placeholder="e.g., M54.5, M51.2"
-                  value={formData.diagnosis_codes}
-                  onChange={(e) => setFormData({ ...formData, diagnosis_codes: e.target.value })}
-                  required
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="prior_auth_required"
+                  checked={formData.prior_auth_required}
+                  onCheckedChange={(checked) => setFormData({ ...formData, prior_auth_required: checked === true })}
                 />
+                <Label htmlFor="prior_auth_required" className="cursor-pointer">
+                  Prior Auth Required *
+                </Label>
               </div>
-            </div>
-            <div>
-              <Label htmlFor="procedure_description">Procedure Description *</Label>
-              <Input
-                id="procedure_description"
-                value={formData.procedure_description}
-                onChange={(e) => setFormData({ ...formData, procedure_description: e.target.value })}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="clinical_indication">Clinical Indication / Medical Necessity *</Label>
-              <Textarea
-                id="clinical_indication"
-                rows={4}
-                value={formData.clinical_indication}
-                onChange={(e) => setFormData({ ...formData, clinical_indication: e.target.value })}
-                placeholder="Provide detailed clinical justification for the requested procedure..."
-                required
-              />
-            </div>
-          </div>
-
-          {/* Service Details */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg">Service Details</h3>
-            <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="urgency">Urgency Level *</Label>
+                <Label htmlFor="prior_authorization_status">Prior Authorization Status *</Label>
                 <Select
-                  value={formData.urgency}
-                  onValueChange={(value) => setFormData({ ...formData, urgency: value })}
+                  value={formData.prior_authorization_status}
+                  onValueChange={(value) => setFormData({ ...formData, prior_authorization_status: value, status: value })}
+                  required
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="routine">Routine</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                    <SelectItem value="expedited">Expedited</SelectItem>
-                    <SelectItem value="stat">STAT</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="denied">Denied</SelectItem>
+                    <SelectItem value="under_review">Under Review</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="units_requested">Units Requested *</Label>
-                <Input
-                  id="units_requested"
-                  type="number"
-                  min="1"
-                  value={formData.units_requested}
-                  onChange={(e) => setFormData({ ...formData, units_requested: parseInt(e.target.value) || 1 })}
-                  required
-                  className="h-10"
+              <div className="col-span-2">
+                <Label htmlFor="remarks">Remarks</Label>
+                <Textarea
+                  id="remarks"
+                  rows={2}
+                  value={formData.remarks}
+                  onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                  placeholder="Enter any remarks or notes"
                 />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="requested_start_date">Service Start Date *</Label>
-                <Input
-                  id="requested_start_date"
-                  type="date"
-                  value={formData.requested_start_date}
-                  onChange={(e) => setFormData({ ...formData, requested_start_date: e.target.value })}
-                  required
-                  className="h-10"
+              
+              {/* Secondary Insurance Section */}
+              <div className="col-span-2 border-t pt-4 mt-2">
+                <h4 className="font-semibold mb-3">Secondary Insurance</h4>
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="secondary_insurance">Secondary Insurance</Label>
+                <Select
+                  value={formData.secondary_insurance_id || formData.secondary_payer_id || "__none__"}
+                  onValueChange={(value) => {
+                    if (value === "__none__") {
+                      setFormData({ 
+                        ...formData, 
+                        secondary_payer_id: "",
+                        secondary_payer_name: "",
+                        secondary_insurance: "",
+                        secondary_insurance_id: ""
+                      });
+                    } else {
+                      const payer = payers.find(p => p.id === value);
+                      setFormData({ 
+                        ...formData, 
+                        secondary_payer_id: value,
+                        secondary_payer_name: payer?.name || '',
+                        secondary_insurance: payer?.name || '',
+                        secondary_insurance_id: value
+                      });
+                    }
+                  }}
+                  disabled={isLoadingPayers}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select secondary insurance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {payers.map((payer) => (
+                      <SelectItem key={payer.id} value={payer.id}>
+                        {payer.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="secondary_prior_auth_required"
+                  checked={formData.secondary_prior_auth_required}
+                  onCheckedChange={(checked) => setFormData({ ...formData, secondary_prior_auth_required: checked === true })}
                 />
+                <Label htmlFor="secondary_prior_auth_required" className="cursor-pointer">
+                  Prior Auth Required (Secondary)
+                </Label>
               </div>
               <div>
-                <Label htmlFor="service_end_date">Service End Date</Label>
-                <Input
-                  id="service_end_date"
-                  type="date"
-                  value={formData.service_end_date}
-                  onChange={(e) => setFormData({ ...formData, service_end_date: e.target.value })}
-                  min={formData.requested_start_date || undefined}
-                  className="h-10"
-                />
+                <Label htmlFor="secondary_prior_authorization_status">Prior Authorization Status (Secondary)</Label>
+                <Select
+                  value={formData.secondary_prior_authorization_status}
+                  onValueChange={(value) => setFormData({ ...formData, secondary_prior_authorization_status: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="denied">Denied</SelectItem>
+                    <SelectItem value="under_review">Under Review</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
 
-          {/* Authorization Expiration & Visit Management (X12 278 Compliant) */}
+          {/* Comments Section - Always visible */}
           <div className="space-y-4 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-lg">Expiration & Visit Limits</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Set expiration date and visit limits for tracking and compliance</p>
-              </div>
-              <Badge variant="outline" className="text-xs">X12 278</Badge>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="authorization_expiration_date" className="text-sm font-medium">
-                    Expiration Date *
-                  </Label>
-                  {formData.service_end_date && !formData.authorization_expiration_date && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs px-2"
-                      onClick={() => setFormData({ ...formData, authorization_expiration_date: formData.service_end_date })}
-                    >
-                      Use End Date
-                    </Button>
-                  )}
-                </div>
-                <Input
-                  id="authorization_expiration_date"
-                  type="date"
-                  value={formData.authorization_expiration_date}
-                  onChange={(e) => setFormData({ ...formData, authorization_expiration_date: e.target.value })}
-                  min={formData.requested_start_date || undefined}
-                  className="h-10"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Alerts at 90, 60, 30, 14, and 7 days before expiration
-                </p>
-              </div>
+            <h3 className="font-semibold text-lg">Comments & Notes</h3>
               
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="visits_authorized" className="text-sm font-medium">
-                    Visits Authorized *
-                  </Label>
-                  {formData.units_requested > 0 && formData.visits_authorized === 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs px-2"
-                      onClick={() => setFormData({ ...formData, visits_authorized: formData.units_requested })}
+              {/* Add New Comment */}
+              <div className="space-y-3 p-4 border rounded-lg bg-gray-50">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="comment_type">Comment Type</Label>
+                    <Select
+                      value={newCommentType}
+                      onValueChange={(value) => setNewCommentType(value)}
                     >
-                      Use Units ({formData.units_requested})
-                    </Button>
-                  )}
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="general">General</SelectItem>
+                        <SelectItem value="status_update">Status Update</SelectItem>
+                        <SelectItem value="payer_communication">Payer Communication</SelectItem>
+                        <SelectItem value="clinical_note">Clinical Note</SelectItem>
+                        <SelectItem value="appeal_note">Appeal Note</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center space-x-2 pt-6">
+                    <Checkbox
+                      id="is_internal_comment"
+                      checked={isCommentInternal}
+                      onCheckedChange={(checked) => setIsCommentInternal(checked === true)}
+                    />
+                    <Label htmlFor="is_internal_comment" className="cursor-pointer">
+                      Internal Only
+                    </Label>
+                  </div>
                 </div>
-                <Input
-                  id="visits_authorized"
-                  type="number"
-                  min="1"
-                  value={formData.visits_authorized || ''}
-                  onChange={(e) => setFormData({ ...formData, visits_authorized: parseInt(e.target.value) || 0 })}
-                  placeholder="Enter number of visits"
-                  className="h-10"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Maximum visits allowed. System tracks usage automatically
-                </p>
+                <div>
+                  <Label htmlFor="new_comment">Add Comment</Label>
+                  <Textarea
+                    id="new_comment"
+                    rows={3}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Enter your comment here..."
+                  />
+                </div>
+                <Button
+                  type="button"
+                  onClick={handleAddComment}
+                  disabled={!newComment.trim()}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Comment
+                </Button>
+                {!authorizationId && !isEditMode && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Save the authorization request first to add comments
+                  </p>
+                )}
               </div>
-            </div>
+
+              {/* Existing Comments */}
+              <div className="space-y-3">
+                <Label>Comments History</Label>
+                {isLoadingComments ? (
+                  <div className="text-center py-4 text-gray-500">Loading comments...</div>
+                ) : comments.length === 0 ? (
+                  <div className="text-center py-4 text-gray-500">No comments yet</div>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {comments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        className={`p-3 border rounded-lg ${
+                          comment.is_internal ? 'bg-yellow-50 border-yellow-200' : 'bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{comment.user_name}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {comment.comment_type.replace('_', ' ')}
+                            </Badge>
+                            {comment.is_internal && (
+                              <Badge variant="outline" className="text-xs bg-yellow-100">
+                                Internal
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {new Date(comment.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {comment.comment}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">

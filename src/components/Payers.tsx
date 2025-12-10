@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Payer {
   id: string;
@@ -91,6 +92,7 @@ const clearinghouseProcessingModeOptions = [
 
 export const Payers: React.FC = () => {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const [payers, setPayers] = useState<Payer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -245,6 +247,7 @@ export const Payers: React.FC = () => {
 
       // Prepare data for database (snake_case) - consistent naming
       const insertData: any = {
+        company_id: currentCompany?.id || null, // Set to current company or null
         name: newPayer.name!.trim(),
         plan_name: newPayer.planName || null,
         network_status: newPayer.networkStatus || null,

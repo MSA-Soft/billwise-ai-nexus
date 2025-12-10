@@ -184,16 +184,13 @@ const AuthorizationTracking = () => {
   const fetchAuthorizations = async () => {
     try {
       setLoading(true);
+      // Query without join to avoid relationship ambiguity
       const { data, error } = await supabase
         .from('authorization_requests' as any)
-        .select(`
-          *,
-          insurance_payers (
-            id,
-            name
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
+      
+      // If we need payer info, fetch it separately or use payer_name_custom field
 
       if (error) {
         console.error('Error fetching authorizations:', error);

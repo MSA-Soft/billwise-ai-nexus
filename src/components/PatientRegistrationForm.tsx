@@ -515,7 +515,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name *</Label>
                     <Input
@@ -674,7 +674,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Stethoscope className="h-4 w-4 mr-2 text-blue-500" />
                     Provider & Practice Assignment
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="primaryPractice">Primary Practice</Label>
                       <Select 
@@ -738,7 +738,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number *</Label>
                     <Input
@@ -923,7 +923,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="insuranceCompany">Primary Insurance Company *</Label>
                     <Select
@@ -1018,7 +1018,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                     <Shield className="h-4 w-4 mr-2 text-blue-500" />
                     Secondary Insurance (Optional)
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="secondaryInsurance">Secondary Insurance Company</Label>
                       <Input

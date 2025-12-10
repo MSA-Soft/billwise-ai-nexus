@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Facility {
   id: string;
@@ -74,6 +75,7 @@ const placeOfServiceOptions = [
 
 export const Facilities: React.FC = () => {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -248,6 +250,7 @@ export const Facilities: React.FC = () => {
       // Prepare data for database (snake_case)
       const insertData: any = {
         user_id: session?.user?.id || null, // Set to current user or null
+        company_id: currentCompany?.id || null, // Set to current company or null
         name: newFacility.name!.trim(),
         facility_name: newFacility.name!.trim(), // Also set facility_name for compatibility
         npi: newFacility.npi || null,

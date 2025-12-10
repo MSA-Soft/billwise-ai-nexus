@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { generatePatientId } from '@/utils/patientIdGenerator';
 import { PatientDashboard } from './PatientDashboard';
 import { PatientSearchSystem } from './PatientSearchSystem';
@@ -45,6 +46,7 @@ export function Patients() {
   const [isLoading, setIsLoading] = useState(true); // Start as loading
   const isFetchingRef = useRef(false); // Use ref to prevent duplicate fetches (avoids race conditions)
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   
   // CRITICAL: Log initial state
   console.log('📊 Initial patients state length:', patients.length);
@@ -697,6 +699,10 @@ export function Patients() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         insertData.user_id = user.id;
+      }
+      // Add company_id for multi-tenant support
+      if (currentCompany?.id) {
+        insertData.company_id = currentCompany.id;
       }
 
       console.log('Inserting patient data:', insertData);

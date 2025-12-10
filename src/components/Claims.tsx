@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,6 +54,7 @@ import {
 
 export function Claims() {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [exactMatchesOnly, setExactMatchesOnly] = useState(false);
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -72,6 +74,8 @@ export function Claims() {
   const [isLoadingPatients, setIsLoadingPatients] = useState(false);
   const [claims, setClaims] = useState<any[]>([]);
   const [isLoadingClaims, setIsLoadingClaims] = useState(false);
+  const [uniquePayers, setUniquePayers] = useState<string[]>([]);
+  const [uniqueProviders, setUniqueProviders] = useState<string[]>([]);
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
   const [claimType, setClaimType] = useState<'professional' | 'institutional'>('professional');
@@ -139,9 +143,9 @@ export function Claims() {
         }
 
         // Format patients as "LAST_NAME, FIRST_NAME" to match the UI
-        const formattedPatients = (data || [])
-          .filter(p => p.first_name || p.last_name)
-          .map(p => ({
+        const formattedPatients = ((data || []) as any[])
+          .filter((p: any) => p.first_name || p.last_name)
+          .map((p: any) => ({
             id: p.id,
             patient_id: p.patient_id || `TEMP-${p.id}`,
             name: `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || `Patient ${p.patient_id || p.id}`
@@ -161,17 +165,80 @@ export function Claims() {
   // Fetch claims from database
   useEffect(() => {
     const fetchClaims = async () => {
+      // Wait for company to load
+      if (!currentCompany) {
+        console.log('⏳ Waiting for company to load...');
+        return;
+      }
+
       setIsLoadingClaims(true);
       try {
-        // First, fetch claims with nested relations that should work
-        const { data: claimsData, error: claimsError } = await supabase
+        console.log('🔍 Fetching claims for company_id:', currentCompany.id);
+        
+        // Fetch from both claims and professional_claims tables
+        // Build queries with company_id filter
+        // Include records where company_id matches OR is NULL (for backward compatibility)
+        // IMPORTANT: Include professional_claim_procedures to get CPT codes and calculate amounts
+        let professionalQuery = supabase
+          .from('professional_claims' as any)
+          .select(`
+            *,
+            professional_claim_procedures (*),
+            professional_claim_diagnoses (*)
+          `)
+          .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        // Note: claims table doesn't have company_id column, so we don't filter by it
+        let legacyQuery = supabase
           .from('claims' as any)
           .select(`
             *,
             claim_procedures (*),
             claim_diagnoses (*)
           `)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(500);
+
+        // Fetch from both tables
+        const [professionalResult, legacyResult] = await Promise.all([
+          professionalQuery,
+          legacyQuery
+        ]);
+
+        const { data: professionalClaims, error: professionalError } = professionalResult;
+        const { data: legacyClaims, error: legacyError } = legacyResult;
+
+        // Combine both results
+        const allClaims = [
+          ...(professionalClaims || []).map((c: any) => ({ ...c, source: 'professional_claims' })),
+          ...(legacyClaims || []).map((c: any) => ({ ...c, source: 'claims' }))
+        ];
+
+        const claimsData = allClaims;
+        const claimsError = professionalError || legacyError;
+
+        console.log('📋 Fetched claims:', {
+          professional: professionalClaims?.length || 0,
+          legacy: legacyClaims?.length || 0,
+          total: allClaims.length
+        });
+
+        // Debug: Check if procedures are being loaded
+        if (professionalClaims && professionalClaims.length > 0) {
+          const firstClaim = professionalClaims[0] as any;
+          console.log('🔍 Sample professional claim:', {
+            id: firstClaim.id,
+            claim_number: firstClaim.claim_number,
+            total_charges: firstClaim.total_charges,
+            has_procedures: !!firstClaim.professional_claim_procedures,
+            procedures_count: Array.isArray(firstClaim.professional_claim_procedures) 
+              ? firstClaim.professional_claim_procedures.length 
+              : 0,
+            procedures: firstClaim.professional_claim_procedures
+          });
+        }
 
         if (claimsError) {
           console.error('Error fetching claims:', claimsError);
@@ -199,16 +266,16 @@ export function Claims() {
         // Fetch related data separately
         const [patientsResult, providersResult, facilitiesResult, payersResult] = await Promise.all([
           patientIds.length > 0 
-            ? supabase.from('patients').select('id, patient_id, first_name, last_name').in('id', patientIds)
+            ? supabase.from('patients' as any).select('id, patient_id, first_name, last_name').in('id', patientIds)
             : Promise.resolve({ data: [], error: null }),
           providerIds.length > 0
-            ? supabase.from('providers').select('id, first_name, last_name, title').in('id', providerIds)
+            ? supabase.from('providers' as any).select('id, first_name, last_name, title').in('id', providerIds)
             : Promise.resolve({ data: [], error: null }),
           facilityIds.length > 0
-            ? supabase.from('facilities').select('id, name').in('id', facilityIds)
+            ? supabase.from('facilities' as any).select('id, name').in('id', facilityIds)
             : Promise.resolve({ data: [], error: null }),
           payerIds.length > 0
-            ? supabase.from('insurance_payers').select('id, name').in('id', payerIds)
+            ? supabase.from('insurance_payers' as any).select('id, name').in('id', payerIds)
             : Promise.resolve({ data: [], error: null })
         ]);
 
@@ -217,6 +284,39 @@ export function Claims() {
         const providersMap = new Map((providersResult.data || []).map((p: any) => [p.id, p]));
         const facilitiesMap = new Map((facilitiesResult.data || []).map((f: any) => [f.id, f]));
         const payersMap = new Map((payersResult.data || []).map((p: any) => [p.id, p]));
+
+        // CRITICAL: Fetch procedures separately to ensure we ALWAYS get CPT codes
+        // This is a fallback in case the join doesn't work properly
+        const professionalClaimIds = claimsData
+          .filter((c: any) => c.source === 'professional_claims')
+          .map((c: any) => c.id)
+          .filter(Boolean);
+        
+        let proceduresMap = new Map<string, any[]>();
+        if (professionalClaimIds.length > 0) {
+          try {
+            const { data: allProcedures, error: procError } = await supabase
+              .from('professional_claim_procedures' as any)
+              .select('*')
+              .in('claim_id', professionalClaimIds);
+            
+            if (!procError && allProcedures && allProcedures.length > 0) {
+              // Group procedures by claim_id
+              allProcedures.forEach((proc: any) => {
+                const claimId = proc.claim_id;
+                if (!proceduresMap.has(claimId)) {
+                  proceduresMap.set(claimId, []);
+                }
+                proceduresMap.get(claimId)!.push(proc);
+              });
+              console.log(`✅ Fetched ${allProcedures.length} procedures separately for ${professionalClaimIds.length} professional claims`);
+            } else if (procError) {
+              console.warn('⚠️ Error fetching procedures separately:', procError);
+            }
+          } catch (error) {
+            console.warn('⚠️ Exception fetching procedures separately:', error);
+          }
+        }
 
         // Combine the data
         const data = claimsData.map((claim: any) => ({
@@ -235,8 +335,41 @@ export function Claims() {
           const facility = claim.facilities || null;
           const payer = claim.insurance_payers || null;
           
-          const procedures = Array.isArray(claim.claim_procedures) ? claim.claim_procedures : [];
-          const diagnoses = Array.isArray(claim.claim_diagnoses) ? claim.claim_diagnoses : [];
+          // Handle procedures from different table structures
+          // professional_claims uses professional_claim_procedures
+          // claims table uses claim_procedures
+          let procedures: any[] = [];
+          let diagnoses: any[] = [];
+          
+          if (claim.source === 'professional_claims') {
+            // First try from nested query result
+            if (Array.isArray(claim.professional_claim_procedures)) {
+              procedures = claim.professional_claim_procedures;
+            } else if (claim.professional_claim_procedures) {
+              procedures = [claim.professional_claim_procedures];
+            }
+            
+            // FALLBACK: If not in nested result, get from separate fetch
+            if (procedures.length === 0 && claim.id && proceduresMap.has(claim.id)) {
+              procedures = proceduresMap.get(claim.id) || [];
+            }
+            
+            diagnoses = Array.isArray(claim.professional_claim_diagnoses) 
+              ? claim.professional_claim_diagnoses 
+              : (claim.professional_claim_diagnoses ? [claim.professional_claim_diagnoses] : []);
+          } else {
+            procedures = Array.isArray(claim.claim_procedures) 
+              ? claim.claim_procedures 
+              : (claim.claim_procedures ? [claim.claim_procedures] : []);
+            diagnoses = Array.isArray(claim.claim_diagnoses) 
+              ? claim.claim_diagnoses 
+              : (claim.claim_diagnoses ? [claim.claim_diagnoses] : []);
+          }
+          
+          // Debug: Log procedures found
+          if (procedures.length > 0) {
+            console.log(`✅ Claim ${claim.claim_number || claim.id}: Found ${procedures.length} procedures`, procedures.map((p: any) => p.cpt_code || p.procedure_code || 'NO_CODE'));
+          }
           
           // Format patient name
           const patientName = patient 
@@ -260,8 +393,36 @@ export function Claims() {
             ? new Date(claim.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
             : '';
           
-          // Get CPT codes from procedures
-          const cptCodes = procedures.map((p: any) => p.cpt_code).filter(Boolean);
+          // Get CPT codes from procedures - CRITICAL: Must extract CPT codes at any cost
+          // professional_claim_procedures has cpt_code field directly
+          // claim_procedures might need to join with procedure_codes table, but for now check both
+          const cptCodes = procedures
+            .map((p: any) => {
+              // professional_claim_procedures has cpt_code directly
+              if (p.cpt_code) return String(p.cpt_code).trim();
+              // claim_procedures might have it differently, check procedure_code_id or other fields
+              if (p.procedure_code) return String(p.procedure_code).trim();
+              // Try other possible fields
+              if (p.code) return String(p.code).trim();
+              if (p.cpt) return String(p.cpt).trim();
+              return null;
+            })
+            .filter((code: string | null): code is string => Boolean(code && code.length > 0));
+          
+          // Debug if no CPT codes found but procedures exist
+          if (procedures.length > 0 && cptCodes.length === 0) {
+            console.error(`❌ Claim ${claim.claim_number || claim.id}: Has ${procedures.length} procedures but NO CPT codes extracted!`, procedures[0]);
+          }
+          
+          // Calculate total charges from procedures if total_charges is 0 or missing
+          let totalCharges = parseFloat(claim.total_charges || 0);
+          if (totalCharges === 0 && procedures.length > 0) {
+            // Sum up total_price from all procedures
+            totalCharges = procedures.reduce((sum: number, p: any) => {
+              const price = parseFloat(p.total_price || p.total_charges || 0);
+              return sum + price;
+            }, 0);
+          }
           
           // Map status
           let status = 'PENDING';
@@ -282,7 +443,7 @@ export function Claims() {
             id: claim.claim_number || claim.id,
             patient: patientName,
             dos: serviceDate,
-            totalCharges: parseFloat(claim.total_charges || 0),
+            totalCharges: totalCharges,
             balance: parseFloat(balance),
             aiScore: aiScore,
             cptCodes: cptCodes,
@@ -299,6 +460,12 @@ export function Claims() {
 
         console.log(`✅ Successfully loaded ${transformedClaims.length} claims from database`);
         setClaims(transformedClaims);
+        
+        // Extract unique payers and providers for filter dropdowns
+        const payers = [...new Set(transformedClaims.map((c: any) => c.payer).filter(Boolean))].sort();
+        const providers = [...new Set(transformedClaims.map((c: any) => c.provider).filter(Boolean))].sort();
+        setUniquePayers(payers);
+        setUniqueProviders(providers);
       } catch (error: any) {
         console.error('Error fetching claims:', error);
         toast({
@@ -313,7 +480,7 @@ export function Claims() {
     };
 
     fetchClaims();
-  }, []);
+  }, [currentCompany]);
 
   // Column mapping to data fields
   const getColumnValue = (claim: any, columnName: string) => {
@@ -438,7 +605,7 @@ export function Claims() {
         break;
       case 'denied':
         // Filter for denied claims (status contains "DENIED" or similar)
-        setStatusFilter('at-payer');
+        setStatusFilter('denied');
         setActiveQuickFilter('denied');
         break;
       case 'this-week':
@@ -550,15 +717,35 @@ export function Claims() {
 
     // status filter
     if (statusFilter && statusFilter !== 'all') {
-      if (statusFilter === 'paid' && claim.status !== 'PAID') return false;
+      const claimStatusLower = claim.status?.toLowerCase() || '';
+      if (statusFilter === 'paid' && !claimStatusLower.includes('paid')) return false;
       if (statusFilter === 'balance' && !(claim.balance > 0)) return false;
-      if (statusFilter === 'at-payer' && !claim.status.toLowerCase().includes('claim at')) return false;
+      if (statusFilter === 'at-payer' && !claimStatusLower.includes('claim at') && !claimStatusLower.includes('pending') && !claimStatusLower.includes('processing')) return false;
+      if (statusFilter === 'denied' && !claimStatusLower.includes('denied')) return false;
     }
 
     // payer filter
     if (payerFilter && payerFilter !== 'all') {
       const pf = payerFilter.toLowerCase();
-      if (!claim.payer || !claim.payer.toLowerCase().includes(pf)) return false;
+      const claimPayerLower = (claim.payer || '').toLowerCase();
+      // Handle common payer name variations
+      const payerMatches: { [key: string]: string[] } = {
+        'blue': ['blue cross', 'blue shield', 'bcbs', 'bc/bs'],
+        'aetna': ['aetna'],
+        'medicare': ['medicare'],
+        'united': ['united', 'unitedhealth', 'uhc'],
+        'cigna': ['cigna'],
+        'humana': ['humana'],
+        'medicaid': ['medicaid']
+      };
+      
+      if (payerMatches[pf]) {
+        const matches = payerMatches[pf].some(match => claimPayerLower.includes(match));
+        if (!matches) return false;
+      } else {
+        // Direct match if not in the mapping
+        if (!claimPayerLower.includes(pf)) return false;
+      }
     }
 
     // provider filter
@@ -585,12 +772,24 @@ export function Claims() {
     // Service date range
     const parseDate = (d: string) => {
       if (!d) return null;
-      const parts = d.split('/');
-      if (parts.length !== 3) return null;
-      const month = parseInt(parts[0], 10) - 1;
-      const day = parseInt(parts[1], 10);
-      const year = parseInt(parts[2], 10);
-      return new Date(year, month, day);
+      // Try mm/dd/yyyy format first
+      let parts = d.split('/');
+      if (parts.length === 3) {
+        const month = parseInt(parts[0], 10) - 1;
+        const day = parseInt(parts[1], 10);
+        const year = parseInt(parts[2], 10);
+        if (!isNaN(month) && !isNaN(day) && !isNaN(year)) {
+          return new Date(year, month, day);
+        }
+      }
+      // Try yyyy-mm-dd format (ISO date)
+      if (d.includes('-')) {
+        const date = new Date(d);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      }
+      return null;
     };
     const claimDate = parseDate(claim.dos);
     const fromDate = parseDate(serviceDateFrom);
@@ -1165,6 +1364,7 @@ export function Claims() {
                             <SelectItem value="paid">Paid</SelectItem>
                             <SelectItem value="balance">Balance Due</SelectItem>
                             <SelectItem value="at-payer">At Payer</SelectItem>
+                            <SelectItem value="denied">Denied</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -1177,10 +1377,11 @@ export function Claims() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All payers</SelectItem>
-                            <SelectItem value="blue">Blue Cross</SelectItem>
-                            <SelectItem value="aetna">Aetna</SelectItem>
-                            <SelectItem value="medicare">Medicare</SelectItem>
-                            <SelectItem value="united">UnitedHealth</SelectItem>
+                            {uniquePayers.map((payer) => (
+                              <SelectItem key={payer} value={payer.toLowerCase()}>
+                                {payer}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1193,6 +1394,11 @@ export function Claims() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All providers</SelectItem>
+                            {uniqueProviders.map((provider) => (
+                              <SelectItem key={provider} value={provider.toLowerCase()}>
+                                {provider}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>

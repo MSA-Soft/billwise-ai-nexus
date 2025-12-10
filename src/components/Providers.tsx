@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Provider {
   id: string;
@@ -82,6 +83,7 @@ const billAsOptions = [
 
 export const Providers: React.FC = () => {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -265,6 +267,7 @@ export const Providers: React.FC = () => {
       // Prepare data for database (snake_case)
       const insertData: any = {
         user_id: session?.user?.id || null, // Set to current user or null
+        company_id: currentCompany?.id || null, // Set to current company or null
         npi: newProvider.npi!.trim(),
         first_name: newProvider.firstName!.trim(),
         last_name: newProvider.lastName!.trim(),

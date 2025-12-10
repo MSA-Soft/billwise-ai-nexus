@@ -68,7 +68,7 @@ const steps = [
 ];
 
 export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormWizardProps) {
-  const { user } = useAuth();
+  const { user, currentCompany } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [showValidationError, setShowValidationError] = useState(false);
   const [formData, setFormData] = useState<ClaimFormData>({
@@ -123,7 +123,7 @@ export function ClaimFormWizard({ claim, isOpen, onClose, onSubmit }: ClaimFormW
       }
       
       // Use claimSubmissionService to submit
-      const result = await claimSubmissionService.submitClaim(submissionData, user.id);
+      const result = await claimSubmissionService.submitClaim(submissionData, user.id, currentCompany?.id);
       
       // Call original onSubmit with form data
       onSubmit(formData);

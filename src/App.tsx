@@ -13,6 +13,9 @@ import BoldParallaxDemo from "./pages/BoldParallaxDemo";
 import NotFound from "./pages/NotFound";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ComponentCacheProvider } from "./contexts/ComponentCacheContext";
+import { PersistentMainLayout } from "./components/PersistentMainLayout";
+import MainAppLayout from "./components/MainAppLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 // Page imports
 import Scheduling from "./pages/Scheduling";
@@ -45,7 +48,8 @@ const App = () => (
         <Toaster />
         <Sonner />
         <AuthProvider>
-          <BrowserRouter>
+          <ComponentCacheProvider>
+            <BrowserRouter>
             <Routes>
               <Route path="/auth" element={<Auth />} />
               {/* Company Selection (public route but requires auth) */}
@@ -62,7 +66,7 @@ const App = () => (
                 path="/" 
                 element={
                   <ProtectedRoute>
-                    <Dashboard />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -71,7 +75,7 @@ const App = () => (
                 path="/scheduling" 
                 element={
                   <ProtectedRoute>
-                    <Scheduling />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -79,7 +83,7 @@ const App = () => (
                 path="/patients" 
                 element={
                   <ProtectedRoute>
-                    <PatientsPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -87,7 +91,7 @@ const App = () => (
                 path="/claims" 
                 element={
                   <ProtectedRoute>
-                    <ClaimsPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -119,7 +123,7 @@ const App = () => (
                 path="/eligibility-verification" 
                 element={
                   <ProtectedRoute>
-                    <EligibilityVerificationPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -127,7 +131,7 @@ const App = () => (
                 path="/code-validation" 
                 element={
                   <ProtectedRoute>
-                    <CodeValidationPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -135,7 +139,7 @@ const App = () => (
                 path="/authorization" 
                 element={
                   <ProtectedRoute>
-                    <AuthorizationPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -143,7 +147,7 @@ const App = () => (
                 path="/enhanced-claims" 
                 element={
                   <ProtectedRoute>
-                    <EnhancedClaimsPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -152,7 +156,7 @@ const App = () => (
                 path="/billing-workflow" 
                 element={
                   <ProtectedRoute>
-                    <BillingWorkflowPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -160,7 +164,7 @@ const App = () => (
                 path="/quick-actions" 
                 element={
                   <ProtectedRoute>
-                    <QuickActionsPage />
+                    <MainAppLayout />
                   </ProtectedRoute>
                 } 
               />
@@ -246,6 +250,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
+          </ComponentCacheProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

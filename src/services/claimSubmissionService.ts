@@ -1,44 +1,34 @@
-// Claim Submission Service
-// Handles all claim submission logic, validation, and database operations
+/**
+ * Claim Submission Service
+ * Handles claim submission logic, validation, and database operations
+ */
 
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
+//#region Types
 export interface ClaimSubmissionData {
-  // Basic Information
   claim_number?: string;
   form_type: 'HCFA' | 'CMS1500' | 'UB04' | 'ADA';
   cms_form_version?: string;
-  
-  // Patient and Provider
   patient_id: string;
   provider_id: string;
   appointment_id?: string;
-  
-  // Service Information
   service_date_from: string;
   service_date_to?: string;
   place_of_service_code: string;
   facility_id?: string;
-  
-  // Insurance Information
   primary_insurance_id: string;
   secondary_insurance_id?: string;
   insurance_type: 'EDI' | 'Paper';
-  
-  // Financial Information
   total_charges: number;
   patient_responsibility?: number;
   insurance_amount?: number;
   copay_amount?: number;
   deductible_amount?: number;
-  
-  // Authorization
   prior_auth_number?: string;
   referral_number?: string;
   treatment_auth_code?: string;
-  
-  // Procedures
   procedures: Array<{
     cpt_code: string;
     description: string;
@@ -48,20 +38,14 @@ export interface ClaimSubmissionData {
     modifier?: string;
     diagnosis_pointer?: string;
   }>;
-  
-  // Diagnoses
   diagnoses: Array<{
     icd_code: string;
     description: string;
     is_primary: boolean;
   }>;
-  
-  // Status
   status?: 'draft' | 'submitted' | 'processing' | 'paid' | 'denied';
   submission_method?: 'EDI' | 'Paper';
   is_secondary_claim?: boolean;
-  
-  // Additional
   notes?: string;
 }
 
@@ -79,7 +63,9 @@ export interface TimelyFilingInfo {
   isPastDeadline: boolean;
   warningLevel: 'none' | 'warning' | 'critical' | 'expired';
 }
+//#endregion
 
+//#region ClaimSubmissionService Class
 export class ClaimSubmissionService {
   private static instance: ClaimSubmissionService;
 
@@ -89,8 +75,9 @@ export class ClaimSubmissionService {
     }
     return ClaimSubmissionService.instance;
   }
+  //#endregion
 
-  // Generate unique claim number
+  //#region Claim Number Generation
   generateClaimNumber(): string {
     const now = new Date();
     const year = now.getFullYear();
@@ -99,6 +86,9 @@ export class ClaimSubmissionService {
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `CLM-${year}${month}${day}-${random}`;
   }
+  //#endregion
+
+  //#region Claim Validation
 
   // Comprehensive pre-submission validation
   async validateClaimSubmission(claimData: ClaimSubmissionData): Promise<ClaimValidationResult> {
@@ -110,19 +100,16 @@ export class ClaimSubmissionService {
       canSubmit: true,
     };
 
-    // 1. Patient Information Validation
     if (!claimData.patient_id) {
       result.errors.push('Patient is required');
       result.isValid = false;
     }
 
-    // 2. Provider Information Validation
     if (!claimData.provider_id) {
       result.errors.push('Provider is required');
       result.isValid = false;
     }
 
-    // 3. Service Date Validation
     if (!claimData.service_date_from) {
       result.errors.push('Service date is required');
       result.isValid = false;
@@ -137,7 +124,6 @@ export class ClaimSubmissionService {
       }
     }
 
-    // 4. Procedures Validation
     if (!claimData.procedures || claimData.procedures.length === 0) {
       result.errors.push('At least one procedure is required');
       result.isValid = false;
@@ -232,26 +218,23 @@ export class ClaimSubmissionService {
     return result;
   }
 
-  // Check timely filing deadline
   async checkTimelyFiling(serviceDate: string, payerId: string): Promise<TimelyFilingInfo> {
     const service = new Date(serviceDate);
     const today = new Date();
+    let daysAllowed = 365;
     
-    // Default deadlines (can be configured per payer)
-    // Medicare: 1 year, Commercial: 90-180 days
-    let daysAllowed = 365; // Default to 1 year (Medicare standard)
-    
-    // TODO: Fetch payer-specific deadline from database
-    // For now, use defaults based on payer type
     try {
-      const { data: payer } = await supabase
-        .from('insurance_payers')
+      const { data: payer, error } = await supabase
+        .from('insurance_payers' as any)
         .select('name, timely_filing_days')
         .eq('id', payerId)
         .single();
       
-      if (payer?.timely_filing_days) {
-        daysAllowed = payer.timely_filing_days;
+      if (!error && payer) {
+        const payerRecord = payer as any;
+        if (payerRecord && payerRecord.timely_filing_days) {
+          daysAllowed = payerRecord.timely_filing_days;
+        }
       }
     } catch (error) {
       console.log('Using default timely filing deadline');
@@ -279,24 +262,22 @@ export class ClaimSubmissionService {
       warningLevel,
     };
   }
+  //#endregion
 
-  // Submit claim to database
-  async submitClaim(claimData: ClaimSubmissionData, userId: string): Promise<any> {
+  //#region Claim Submission
+  async submitClaim(claimData: ClaimSubmissionData, userId: string, companyId?: string | null): Promise<any> {
     try {
-      // Validate before submission
       const validation = await this.validateClaimSubmission(claimData);
       if (!validation.canSubmit) {
         throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
       }
 
-      // Generate claim number if not provided
       const claimNumber = claimData.claim_number || this.generateClaimNumber();
-
-      // Insert main claim record
       const { data: claim, error: claimError } = await supabase
-        .from('claims')
+        .from('claims' as any)
         .insert({
           user_id: userId,
+          company_id: companyId || null,
           claim_number: claimNumber,
           form_type: claimData.form_type,
           cms_form_version: claimData.cms_form_version || '02/12',
@@ -327,12 +308,28 @@ export class ClaimSubmissionService {
         .select()
         .single();
 
-      if (claimError) throw claimError;
+      if (claimError) {
+        console.error('❌ Claim insert error:', claimError);
+        console.error('❌ Claim error details:', {
+          message: claimError.message,
+          code: claimError.code,
+          details: claimError.details,
+          hint: claimError.hint
+        });
+        throw claimError;
+      }
 
-      // Insert procedures
+      if (!claim) {
+        console.error('❌ Claim insert returned no data');
+        throw new Error('Claim was not created. Please check RLS policies and database permissions.');
+      }
+
+      const claimRecord = claim as any;
+      console.log('✅ Claim created successfully:', claimRecord.id);
+
       if (claimData.procedures && claimData.procedures.length > 0) {
         const procedures = claimData.procedures.map(proc => ({
-          claim_id: claim.id,
+          claim_id: claimRecord.id,
           cpt_code: proc.cpt_code,
           description: proc.description,
           quantity: proc.quantity,
@@ -343,16 +340,15 @@ export class ClaimSubmissionService {
         }));
 
         const { error: procError } = await supabase
-          .from('claim_procedures')
+          .from('claim_procedures' as any)
           .insert(procedures);
 
         if (procError) throw procError;
       }
 
-      // Insert diagnoses
       if (claimData.diagnoses && claimData.diagnoses.length > 0) {
         const diagnoses = claimData.diagnoses.map((diag, index) => ({
-          claim_id: claim.id,
+          claim_id: claimRecord.id,
           icd_code: diag.icd_code,
           description: diag.description,
           is_primary: diag.is_primary,
@@ -360,25 +356,24 @@ export class ClaimSubmissionService {
         }));
 
         const { error: diagError } = await supabase
-          .from('claim_diagnoses')
+          .from('claim_diagnoses' as any)
           .insert(diagnoses);
 
         if (diagError) throw diagError;
       }
 
-      // Create status history entry
       await supabase
-        .from('claim_status_history')
+        .from('claim_status_history' as any)
         .insert({
-          claim_id: claim.id,
-          status: claim.status || 'submitted',
+          claim_id: claimRecord.id,
+          status: claimRecord.status || 'submitted',
           changed_by: userId,
           notes: 'Claim submitted',
         });
 
       return {
         success: true,
-        claim,
+        claim: claimRecord,
         validation,
       };
     } catch (error: any) {
@@ -387,15 +382,15 @@ export class ClaimSubmissionService {
     }
   }
 
-  // Save claim as draft
-  async saveDraft(claimData: ClaimSubmissionData, userId: string): Promise<any> {
+  async saveDraft(claimData: ClaimSubmissionData, userId: string, companyId?: string | null): Promise<any> {
     try {
       const claimNumber = claimData.claim_number || this.generateClaimNumber();
 
       const { data: claim, error } = await supabase
-        .from('claims')
+        .from('claims' as any)
         .insert({
           user_id: userId,
+          company_id: companyId || null,
           claim_number: claimNumber,
           form_type: claimData.form_type,
           cms_form_version: claimData.cms_form_version || '02/12',
@@ -427,20 +422,20 @@ export class ClaimSubmissionService {
 
       if (error) throw error;
 
-      // Save procedures and diagnoses (same as submit)
+      const claimRecord = claim as any;
       if (claimData.procedures?.length > 0) {
-        await supabase.from('claim_procedures').insert(
+        await supabase.from('claim_procedures' as any).insert(
           claimData.procedures.map(proc => ({
-            claim_id: claim.id,
+            claim_id: claimRecord.id,
             ...proc,
           }))
         );
       }
 
       if (claimData.diagnoses?.length > 0) {
-        await supabase.from('claim_diagnoses').insert(
+        await supabase.from('claim_diagnoses' as any).insert(
           claimData.diagnoses.map((diag, idx) => ({
-            claim_id: claim.id,
+            claim_id: claimRecord.id,
             icd_code: diag.icd_code,
             description: diag.description,
             is_primary: diag.is_primary,
@@ -454,12 +449,13 @@ export class ClaimSubmissionService {
       throw new Error(error.message || 'Failed to save draft');
     }
   }
+  //#endregion
 
-  // Get claim by ID
+  //#region Claim Retrieval & Updates
   async getClaim(claimId: string): Promise<any> {
     try {
       const { data: claim, error } = await supabase
-        .from('claims')
+        .from('claims' as any)
         .select(`
           *,
           claim_procedures (*),
@@ -478,18 +474,16 @@ export class ClaimSubmissionService {
     }
   }
 
-  // Update claim status
   async updateClaimStatus(claimId: string, status: string, userId: string, notes?: string): Promise<void> {
     try {
       const { error } = await supabase
-        .from('claims')
+        .from('claims' as any)
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', claimId);
 
       if (error) throw error;
 
-      // Add status history
-      await supabase.from('claim_status_history').insert({
+      await supabase.from('claim_status_history' as any).insert({
         claim_id: claimId,
         status,
         changed_by: userId,
@@ -499,7 +493,9 @@ export class ClaimSubmissionService {
       throw new Error(error.message || 'Failed to update claim status');
     }
   }
+  //#endregion
 }
 
 export const claimSubmissionService = ClaimSubmissionService.getInstance();
+//#endregion
 

@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 
+//#region Types
 export interface Company {
   id: string;
   name: string;
@@ -25,7 +26,6 @@ export interface Company {
   created_at?: string;
   updated_at?: string;
   created_by?: string;
-  // Statistics (for super admin view)
   total_users?: number;
   total_patients?: number;
   total_claims?: number;
@@ -54,7 +54,9 @@ export interface CompanyUser {
     full_name?: string;
   };
 }
+//#endregion
 
+//#region CompanyService Class
 export class CompanyService {
   private static instance: CompanyService;
 
@@ -64,8 +66,9 @@ export class CompanyService {
     }
     return CompanyService.instance;
   }
+  //#endregion
 
-  // Get all companies for the current user
+  //#region User Company Methods
   async getUserCompanies(): Promise<CompanyUser[]> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -74,9 +77,6 @@ export class CompanyService {
         return [];
       }
 
-      console.log('Fetching companies for user:', user.id);
-
-      // First, try a simple query to company_users
       const { data: companyUsersData, error: companyUsersError } = await (supabase
         .from('company_users' as any)
         .select('id, company_id, user_id, role, is_primary, is_active, joined_at, created_at, updated_at')
@@ -85,27 +85,18 @@ export class CompanyService {
 
       if (companyUsersError) {
         console.error('Error fetching company_users:', companyUsersError);
-        console.error('Error details:', JSON.stringify(companyUsersError, null, 2));
-        // Return empty array to prevent crash
         return [];
       }
 
       if (!companyUsersData || companyUsersData.length === 0) {
-        console.log('No company_users found for user');
         return [];
       }
 
-      console.log('Found company_users:', companyUsersData.length);
-
-      // Get company IDs
       const companyIds = companyUsersData.map((cu: any) => cu.company_id).filter(Boolean);
-      
       if (companyIds.length === 0) {
-        console.warn('No valid company IDs found');
         return [];
       }
 
-      // Fetch companies separately with minimal fields
       const { data: companiesData, error: companiesError } = await (supabase
         .from('companies' as any)
         .select('id, name, slug, email, subscription_tier, subscription_status, is_active')
@@ -113,11 +104,8 @@ export class CompanyService {
 
       if (companiesError) {
         console.error('Error fetching companies:', companiesError);
-        console.error('Error details:', JSON.stringify(companiesError, null, 2));
-        // Continue with company_users data even if companies fail
       }
 
-      // Combine the data
       const result: CompanyUser[] = companyUsersData.map((cu: any) => {
         const company = companiesData?.find((c: any) => c.id === cu.company_id);
         return {
@@ -126,7 +114,6 @@ export class CompanyService {
         } as CompanyUser;
       });
 
-      // Sort: primary first, then by joined_at
       result.sort((a, b) => {
         if (a.is_primary && !b.is_primary) return -1;
         if (!a.is_primary && b.is_primary) return 1;
@@ -135,17 +122,13 @@ export class CompanyService {
         return aDate - bDate;
       });
 
-      console.log('Successfully loaded companies:', result.length);
       return result;
     } catch (error: any) {
       console.error('Error fetching user companies:', error);
-      console.error('Error stack:', error?.stack);
-      // Return empty array instead of throwing to prevent UI crash
       return [];
     }
   }
 
-  // Get current company (primary or first active)
   async getCurrentCompany(): Promise<Company | null> {
     try {
       const companies = await this.getUserCompanies();
@@ -157,7 +140,6 @@ export class CompanyService {
     }
   }
 
-  // Set primary company for user
   async setPrimaryCompany(companyId: string): Promise<void> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -182,8 +164,9 @@ export class CompanyService {
       throw error;
     }
   }
+  //#endregion
 
-  // Get company by ID
+  //#region Company CRUD Operations
   async getCompany(companyId: string): Promise<Company> {
     try {
       const { data, error } = await (supabase
@@ -200,7 +183,6 @@ export class CompanyService {
     }
   }
 
-  // Create new company (admin only)
   async createCompany(companyData: Partial<Company>): Promise<Company> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -243,7 +225,6 @@ export class CompanyService {
     }
   }
 
-  // Update company (admin/manager only)
   async updateCompany(companyId: string, updates: Partial<Company>): Promise<Company> {
     try {
       const { data, error } = await (supabase
@@ -260,8 +241,9 @@ export class CompanyService {
       throw error;
     }
   }
+  //#endregion
 
-  // Get company users
+  //#region Company User Management
   async getCompanyUsers(companyId: string): Promise<CompanyUser[]> {
     try {
       const { data, error } = await (supabase
@@ -272,7 +254,6 @@ export class CompanyService {
 
       if (error) throw error;
       
-      // Sort manually
       const sorted = (data || []).sort((a: any, b: any) => {
         const roleOrder = { admin: 1, manager: 2, user: 3, viewer: 4 };
         const aRole = roleOrder[a.role as keyof typeof roleOrder] || 5;
@@ -290,7 +271,6 @@ export class CompanyService {
     }
   }
 
-  // Add user to company
   async addUserToCompany(
     companyId: string,
     userId: string,
@@ -316,7 +296,6 @@ export class CompanyService {
     }
   }
 
-  // Update user role in company
   async updateUserRole(
     companyId: string,
     userId: string,
@@ -336,7 +315,6 @@ export class CompanyService {
     }
   }
 
-  // Remove user from company
   async removeUserFromCompany(companyId: string, userId: string): Promise<void> {
     try {
       const { error } = await (supabase
@@ -351,8 +329,9 @@ export class CompanyService {
       throw error;
     }
   }
+  //#endregion
 
-  // Check if user has permission
+  //#region Permissions & Roles
   async hasPermission(
     companyId: string,
     permission: string
@@ -370,22 +349,16 @@ export class CompanyService {
         .single() as any);
 
       if (!data) return false;
-
-      // Admin and manager have all permissions
       if (data.role === 'admin' || data.role === 'manager') {
         return true;
       }
-
-      // Check role permissions (simplified - can be enhanced)
-      // For now, basic role check
-      return true; // Implement actual permission check based on your needs
+      return true;
     } catch (error) {
       console.error('Error checking permission:', error);
       return false;
     }
   }
 
-  // Get user role in company
   async getUserRole(companyId: string): Promise<string | null> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -405,12 +378,9 @@ export class CompanyService {
       return null;
     }
   }
+  //#endregion
 
-  // ============================================================================
-  // SUPER ADMIN METHODS
-  // ============================================================================
-
-  // Check if current user is super admin
+  //#region Super Admin Methods
   async isSuperAdmin(): Promise<boolean> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -429,7 +399,6 @@ export class CompanyService {
     }
   }
 
-  // Get all companies (super admin only)
   async getAllCompanies(): Promise<Company[]> {
     try {
       const isSuper = await this.isSuperAdmin();
@@ -450,7 +419,6 @@ export class CompanyService {
     }
   }
 
-  // Get company statistics (super admin only)
   async getCompanyStatistics(companyId?: string): Promise<any> {
     try {
       const isSuper = await this.isSuperAdmin();
@@ -476,7 +444,6 @@ export class CompanyService {
     }
   }
 
-  // Delete company (super admin only)
   async deleteCompany(companyId: string): Promise<void> {
     try {
       const isSuper = await this.isSuperAdmin();
@@ -496,7 +463,6 @@ export class CompanyService {
     }
   }
 
-  // Disable/Enable company (super admin only)
   async toggleCompanyStatus(companyId: string, isActive: boolean): Promise<Company> {
     try {
       const isSuper = await this.isSuperAdmin();
@@ -519,9 +485,6 @@ export class CompanyService {
     }
   }
 
-  // Create user and add to company (super admin only)
-  // Note: This requires an edge function for production
-  // For now, we'll use a workaround that requires the user to sign up manually
   async createUserForCompany(
     companyId: string,
     userData: {
@@ -537,7 +500,6 @@ export class CompanyService {
         throw new Error('Only super admins can create users for companies');
       }
 
-      // Use edge function to create user (requires service role)
       try {
         const { data, error } = await supabase.functions.invoke('create-company-user', {
           body: {
@@ -562,7 +524,6 @@ export class CompanyService {
           companyUser: createdUser,
         };
       } catch (edgeError: any) {
-        // Fallback: Provide manual instructions
         console.warn('Edge function not available:', edgeError);
         throw new Error(
           `Automatic user creation requires edge function setup. ` +
@@ -576,12 +537,9 @@ export class CompanyService {
     }
   }
 
-  // Get all users for a company (super admin or company admin)
   async getAllUsersForCompany(companyId: string): Promise<CompanyUser[]> {
     try {
       const isSuper = await this.isSuperAdmin();
-      
-      // Check if user has access (super admin or company admin)
       if (!isSuper) {
         const role = await this.getUserRole(companyId);
         if (role !== 'admin' && role !== 'manager') {
@@ -595,7 +553,9 @@ export class CompanyService {
       throw error;
     }
   }
+  //#endregion
 }
 
 export const companyService = CompanyService.getInstance();
+//#endregion
 

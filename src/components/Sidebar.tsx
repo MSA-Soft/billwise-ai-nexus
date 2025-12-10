@@ -105,33 +105,17 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Detect ZarSolution limited access (manual restriction)
-  // We treat either the ZarSolution company OR the zar@gmail.com user as limited.
+  //#region ZarSolution Access Control
   const userEmail = user?.email?.toLowerCase()?.trim();
   const isZarEmail = userEmail === "zar@gmail.com";
   const isZarCompany = currentCompany && (
     currentCompany.slug === "zar" ||
     currentCompany.name?.toLowerCase()?.trim() === "zarsolution"
   );
-  
   const isZarLimited = !isSuperAdmin && (isZarEmail || isZarCompany);
+  //#endregion
 
-  // Debug logging - always log to help diagnose
-  useEffect(() => {
-    console.log('🔍 Sidebar Debug:', {
-      userEmail: user?.email,
-      userEmailLower: userEmail,
-      isZarEmail,
-      isSuperAdmin,
-      isZarLimited,
-      currentCompany: currentCompany?.name,
-      currentCompanySlug: currentCompany?.slug,
-      isZarCompany,
-      routeAccessMapSize: routeAccessMap.size,
-    });
-  }, [user, userEmail, isZarEmail, isSuperAdmin, isZarLimited, currentCompany, isZarCompany, routeAccessMap.size]);
-
-  // Auto-collapse on mobile
+  //#region Effects
   useEffect(() => {
     if (isMobile) {
       setIsCollapsed(true);
@@ -139,26 +123,17 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
     }
   }, [isMobile]);
 
-  // Load route access map
   useEffect(() => {
     const loadRouteAccess = async () => {
       if (isSuperAdmin || !user || !currentCompany) {
-        // Super admins have access to everything
         setRouteAccessMap(new Map());
         return;
       }
 
       try {
-        console.log('🔒 Loading route access for:', { 
-          userId: user.id, 
-          companyId: currentCompany.id, 
-          companyName: currentCompany.name 
-        });
         const allFormsReports = await formReportAccessService.getAllFormsReports();
-        console.log(`📋 Found ${allFormsReports.length} forms/reports in system`);
         const accessMap = new Map<string, boolean>();
 
-        // Check access for each form/report
         for (const fr of allFormsReports) {
           const hasAccess = await formReportAccessService.hasAccess(
             user.id,
@@ -166,70 +141,53 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
             fr.id
           );
           accessMap.set(fr.route_path, hasAccess);
-          console.log(`  ${hasAccess ? '✅' : '❌'} ${fr.name} (${fr.route_path}): ${hasAccess ? 'ALLOWED' : 'DENIED'}`);
         }
 
-        console.log('🔒 Route access map loaded:', Array.from(accessMap.entries()).map(([route, access]) => `${route}: ${access ? 'ALLOW' : 'DENY'}`));
         setRouteAccessMap(accessMap);
       } catch (error) {
-        console.error('❌ Error loading route access:', error);
-        // On error, set empty map to allow all (for backward compatibility)
+        console.error('Error loading route access:', error);
         setRouteAccessMap(new Map());
       }
     };
 
     loadRouteAccess();
   }, [user, currentCompany, isSuperAdmin]);
+  //#endregion
 
-  // Helper to check if route is accessible
+  //#region Route Access Helpers
   const isRouteAccessible = useMemo(() => {
     return (routePath: string): boolean => {
       if (isSuperAdmin) return true;
       if (!routePath) return true;
+      if (routeAccessMap.size === 0) return true;
       
-      // If access map is empty, access check hasn't loaded yet - allow temporarily
-      if (routeAccessMap.size === 0) {
-        return true;
-      }
-      
-      // Remove query parameters for matching
       const routeWithoutQuery = routePath.split('?')[0];
       
-      // Check exact match first
       if (routeAccessMap.has(routePath)) {
-        const access = routeAccessMap.get(routePath);
-        return access === true;
+        return routeAccessMap.get(routePath) === true;
       }
       
-      // Check without query parameters
       if (routeAccessMap.has(routeWithoutQuery)) {
-        const access = routeAccessMap.get(routeWithoutQuery);
-        return access === true;
+        return routeAccessMap.get(routeWithoutQuery) === true;
       }
 
-      // Check if route starts with any accessible route (for nested routes)
       for (const [accessibleRoute, hasAccess] of routeAccessMap.entries()) {
-        if (!hasAccess) continue; // Skip denied routes
+        if (!hasAccess) continue;
         
         const accessibleRouteClean = accessibleRoute.split('?')[0];
-        // Check if current route matches accessible route
         if (routePath === accessibleRoute || routePath === accessibleRouteClean ||
             routeWithoutQuery === accessibleRoute || routeWithoutQuery === accessibleRouteClean) {
           return true;
         }
-        // Check if current route starts with accessible route
         if (routePath.startsWith(accessibleRoute) || routePath.startsWith(accessibleRouteClean) ||
             routeWithoutQuery.startsWith(accessibleRouteClean)) {
           return true;
         }
-        // Check reverse - if accessible route starts with current route
         if (accessibleRoute.startsWith(routePath) || accessibleRouteClean.startsWith(routeWithoutQuery)) {
           return true;
         }
       }
 
-      // Check if this route is in the system (has a form/report entry)
-      // If it's in the system but not explicitly allowed, deny access
       const routeInSystem = Array.from(routeAccessMap.keys()).some(route => {
         const routeClean = route.split('?')[0];
         return route === routePath || route === routeWithoutQuery || 
@@ -238,17 +196,15 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       });
       
       if (routeInSystem) {
-        // Route is in system but not in access map or explicitly denied
-        console.log(`🚫 Route ${routePath} is in system but not allowed - denying access`);
         return false;
       }
       
-      // Route is not in the system - allow for backward compatibility
       return true;
     };
   }, [routeAccessMap, isSuperAdmin]);
+  //#endregion
 
-  // Manual allow-lists for ZarSolution (limited company)
+  //#region Navigation Configuration
   const zarAllowedMainNavIds = new Set<string>([
     "dashboard",
     "eligibility-verification",
@@ -261,8 +217,8 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
     "payers",
     "codes",
   ]);
-  const zarAllowedWorkflowIds = new Set<string>(); // none
-  const zarAllowedAnalyticsIds = new Set<string>(); // none
+  const zarAllowedWorkflowIds = new Set<string>();
+  const zarAllowedAnalyticsIds = new Set<string>();
 
   const navigationItems = [
     {
@@ -479,7 +435,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
     },
   ];
 
-  // Route map for access checking (moved outside function for use in filter)
   const routeMap: Record<string, string> = {
       // Main Navigation
       dashboard: '/',
@@ -521,20 +476,12 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       customization: '/customer-setup?tab=customization',
       settings: '/customer-setup?tab=settings',
   };
+  //#endregion
 
+  //#region Event Handlers
   const handleItemClick = (itemId: string) => {
     const route = routeMap[itemId];
     if (route) {
-      // Special handling for eligibility verification (force refresh if needed)
-      if (itemId === 'eligibility-verification') {
-        const currentPath = window.location.pathname;
-        if (currentPath === '/eligibility-verification') {
-          window.location.reload();
-        } else {
-          navigate(route);
-        }
-        return;
-      }
       navigate(route);
     } else {
       // Default/fallback: Go to dashboard
@@ -545,7 +492,9 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       setIsMobileMenuOpen(false);
     }
   };
+  //#endregion
 
+  //#region Render
   return (
     <>
       {/* Mobile Overlay */}
@@ -601,27 +550,15 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
             <div className="space-y-1">
               {navigationItems
                 .filter((item) => {
-                  // CRITICAL: Super admin sees everything
                   if (isSuperAdmin) return true;
-
-                  // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list (bypass all other checks)
                   if (isZarEmail) {
-                    const allowed = zarAllowedMainNavIds.has(item.id);
-                    console.log(`🔒 zar@gmail.com check: ${item.id} = ${allowed ? 'ALLOWED' : 'DENIED'}`);
-                    return allowed;
+                    return zarAllowedMainNavIds.has(item.id);
                   }
-
-                  // For ZarSolution company (but not zar@gmail.com user), also enforce allow-list
                   if (isZarCompany && !isZarEmail) {
-                    const allowed = zarAllowedMainNavIds.has(item.id);
-                    return allowed;
+                    return zarAllowedMainNavIds.has(item.id);
                   }
-
-                  // For other users, check database access
                   const route = routeMap[item.id];
-                  if (!route) {
-                    return true; // Allow if route not mapped
-                  }
+                  if (!route) return true;
                   return isRouteAccessible(route);
                 })
                 .map((item) => {
@@ -665,18 +602,8 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
                           {patientsSubmenuItems
                             .filter((subItem) => {
                               if (isSuperAdmin) return true;
-                              
-                              // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list
-                              if (isZarEmail) {
-                                return zarAllowedPatientSubmenuIds.has(subItem.id);
-                              }
-                              
-                              // For ZarSolution company, also enforce allow-list
-                              if (isZarCompany) {
-                                return zarAllowedPatientSubmenuIds.has(subItem.id);
-                              }
-                              
-                              // For other users, allow all patient submenu items
+                              if (isZarEmail) return zarAllowedPatientSubmenuIds.has(subItem.id);
+                              if (isZarCompany) return zarAllowedPatientSubmenuIds.has(subItem.id);
                               return true;
                             })
                             .map((subItem) => {
@@ -738,12 +665,9 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
             </div>
           </div>
 
-          {/* Workflow & Analytics - hide completely for Zar limited user */}
           {!isZarLimited && (
             <>
               <Separator className="mx-4" />
-
-              {/* Workflow */}
               <div>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                   {isCollapsed ? "" : "Workflow"}
@@ -788,10 +712,7 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
                   })}
                 </div>
               </div>
-
               <Separator className="mx-4" />
-
-              {/* Analytics */}
               <div>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                   {isCollapsed ? "" : "Analytics"}
@@ -840,8 +761,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
           )}
 
           <Separator className="mx-4" />
-
-          {/* Super Admin Section (only for super admins) */}
           {isSuperAdmin && (
             <>
               <div>
@@ -866,8 +785,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
               <Separator className="mx-4" />
             </>
           )}
-
-          {/* Customer Setup */}
           <div className="px-3 py-4">
             <Button
               variant="ghost"
@@ -891,18 +808,8 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
                 {customerSetupItems
                   .filter((item) => {
                     if (isSuperAdmin) return true;
-                    
-                    // CRITICAL: For zar@gmail.com, ALWAYS enforce strict allow-list
-                    if (isZarEmail) {
-                      return zarAllowedCustomerSetupIds.has(item.id);
-                    }
-                    
-                    // For ZarSolution company, also enforce allow-list
-                    if (isZarCompany) {
-                      return zarAllowedCustomerSetupIds.has(item.id);
-                    }
-                    
-                    // For other users, allow all customer setup items
+                    if (isZarEmail) return zarAllowedCustomerSetupIds.has(item.id);
+                    if (isZarCompany) return zarAllowedCustomerSetupIds.has(item.id);
                     return true;
                   })
                   .map((item) => {
@@ -934,8 +841,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
           </div>
         </div>
       </div>
-
-      {/* Footer */}
       <div className="px-3 py-4 border-t border-gray-200">
         <Button
           variant="ghost"
@@ -954,4 +859,5 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
     </>
   );
 };
+//#endregion
 

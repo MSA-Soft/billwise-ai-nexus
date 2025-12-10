@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   Save, 
   X, 
@@ -52,6 +53,7 @@ interface ProfessionalClaimFormProps {
 
 export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }: ProfessionalClaimFormProps) {
   const { toast } = useToast();
+  const { currentCompany } = useAuth();
   const [activeTab, setActiveTab] = useState('claim');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -441,55 +443,300 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
       setSelectedPatientId(patientData.id);
 
       // Try to load insurance from patient_insurance table if available
+      // The table uses: insurance_company_id (UUID), is_primary (boolean), multiple records
       try {
-        const { data: patientInsurance, error: insuranceError } = await supabase
+        console.log('🔍 Loading patient insurance for patient_id:', id);
+        let query = supabase
           .from('patient_insurance' as any)
-          .select('primary_insurance_company, secondary_insurance_company')
-          .eq('patient_id', id)
-          .single();
+          .select('insurance_company_id, is_primary, member_id, group_number')
+          .eq('patient_id', id);
+        
+        // Add company_id filter if available (for multi-tenant RLS)
+        if (currentCompany?.id) {
+          query = query.eq('company_id', currentCompany.id);
+          console.log('🔍 Filtering by company_id:', currentCompany.id);
+        }
+        
+        const { data: patientInsuranceRecords, error: insuranceError } = await query
+          .order('is_primary', { ascending: false }); // Primary first
 
-        if (!insuranceError && patientInsurance) {
-          const insuranceData = patientInsurance as any;
-          // Try to match insurance company names with insurance_payers
-          if (insuranceData.primary_insurance_company) {
-            const { data: primaryInsurance } = await supabase
-              .from('insurance_payers' as any)
-              .select('id, name')
-              .ilike('name', `%${insuranceData.primary_insurance_company}%`)
-              .limit(1)
-              .single();
-            
-            if (primaryInsurance) {
-              const primary = primaryInsurance as any;
-              setFormData(prev => ({ ...prev, primaryInsurance: primary.name }));
-              setSelectedPrimaryInsuranceId(primary.id);
+        if (insuranceError) {
+          console.warn('⚠️ Could not load patient insurance (this is optional):', insuranceError.message);
+          console.warn('⚠️ Error details:', insuranceError);
+        } else {
+          console.log('✅ Patient insurance records found:', patientInsuranceRecords?.length || 0);
+          if (patientInsuranceRecords && patientInsuranceRecords.length > 0) {
+            console.log('📋 Insurance records:', patientInsuranceRecords);
+            // Find primary insurance (is_primary = true)
+            const primaryInsurance = patientInsuranceRecords.find((record: any) => record.is_primary === true);
+            if (primaryInsurance && (primaryInsurance as any).insurance_company_id) {
+              console.log('🔍 Loading primary insurance payer:', (primaryInsurance as any).insurance_company_id);
+              // Get insurance payer details
+              const { data: primaryPayer, error: primaryPayerError } = await supabase
+                .from('insurance_payers' as any)
+                .select('id, name')
+                .eq('id', (primaryInsurance as any).insurance_company_id)
+                .single();
+              
+              if (primaryPayerError) {
+                console.warn('⚠️ Could not load primary insurance payer:', primaryPayerError.message);
+              } else if (primaryPayer) {
+                const payer = primaryPayer as any;
+                console.log('✅ Primary insurance loaded:', payer.name);
+                setFormData(prev => ({ ...prev, primaryInsurance: payer.name }));
+                setSelectedPrimaryInsuranceId(payer.id);
+              }
+            } else {
+              console.log('ℹ️ No primary insurance found for patient');
             }
-          }
 
-          if (insuranceData.secondary_insurance_company) {
-            const { data: secondaryInsurance } = await supabase
-              .from('insurance_payers' as any)
-              .select('id, name')
-              .ilike('name', `%${insuranceData.secondary_insurance_company}%`)
-              .limit(1)
-              .single();
-            
-            if (secondaryInsurance) {
-              const secondary = secondaryInsurance as any;
-              setFormData(prev => ({ ...prev, secondaryInsurance: secondary.name }));
-              setSelectedSecondaryInsuranceId(secondary.id);
+            // Find secondary insurance (is_primary = false)
+            const secondaryInsurance = patientInsuranceRecords.find((record: any) => record.is_primary === false);
+            if (secondaryInsurance && (secondaryInsurance as any).insurance_company_id) {
+              console.log('🔍 Loading secondary insurance payer:', (secondaryInsurance as any).insurance_company_id);
+              // Get insurance payer details
+              const { data: secondaryPayer, error: secondaryPayerError } = await supabase
+                .from('insurance_payers' as any)
+                .select('id, name')
+                .eq('id', (secondaryInsurance as any).insurance_company_id)
+                .single();
+              
+              if (secondaryPayerError) {
+                console.warn('⚠️ Could not load secondary insurance payer:', secondaryPayerError.message);
+              } else if (secondaryPayer) {
+                const payer = secondaryPayer as any;
+                console.log('✅ Secondary insurance loaded:', payer.name);
+                setFormData(prev => ({ ...prev, secondaryInsurance: payer.name }));
+                setSelectedSecondaryInsuranceId(payer.id);
+              }
+            } else {
+              console.log('ℹ️ No secondary insurance found for patient');
             }
+          } else {
+            console.log('ℹ️ No insurance records found for patient');
           }
         }
       } catch (insuranceError) {
         // Patient insurance table might not exist or have different structure
         // Silently fail - insurance can be selected manually
-        console.log('Could not load patient insurance (this is optional):', insuranceError);
+        console.warn('⚠️ Exception loading patient insurance (this is optional):', insuranceError);
       }
+
+      // Step 2: Load eligibility verification data to auto-fill claim form
+      // Industry Standard Workflow: When eligibility is verified, auto-populate claim form
+      // This is a standard practice in medical billing to save time and ensure accuracy
+      await loadEligibilityData(id, formData.dateOfService);
     } catch (error: any) {
       console.error('Error loading patient data:', error);
     }
   };
+
+  // Separate function to load eligibility data (can be called when patient or service date changes)
+  const loadEligibilityData = async (patientId: string, serviceDate?: string) => {
+    try {
+      console.log('🔍 Checking for eligibility verification for patient_id:', patientId, serviceDate ? `service_date: ${serviceDate}` : '');
+      
+      // Build query for eligibility verification
+      // Industry Standard: Match by patient_id and optionally by service date
+      // Only use verified eligible records (is_eligible = true)
+      let eligibilityQuery = supabase
+        .from('eligibility_verifications' as any)
+        .select('*')
+        .eq('patient_id', patientId)
+        .eq('is_eligible', true);
+
+      // If service date is provided, try to match by date for better accuracy
+      if (serviceDate) {
+        eligibilityQuery = eligibilityQuery.or(`date_of_service.eq.${serviceDate},appointment_date.eq.${serviceDate}`);
+      }
+
+      // Add company_id filter for multi-tenant RLS
+      if (currentCompany?.id) {
+        eligibilityQuery = eligibilityQuery.eq('company_id', currentCompany.id);
+      }
+
+      // Get most recent matching verification
+      const { data: eligibilityData, error: eligibilityError } = await eligibilityQuery
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (eligibilityError && eligibilityError.code !== 'PGRST116') {
+        // PGRST116 = no rows returned (not an error, just no data)
+        console.warn('⚠️ Error checking eligibility verification:', eligibilityError.message);
+        return;
+      }
+
+      if (!eligibilityData) {
+        console.log('ℹ️ No eligibility verification found for this patient (this is optional)');
+        return;
+      }
+
+      const elig = eligibilityData as any;
+      console.log('✅ Eligibility verification found! Auto-filling claim form from verification dated:', elig.created_at);
+      
+      // Show notification to user
+      toast({
+        title: "Eligibility Data Found",
+        description: `Auto-filling claim form from eligibility verification dated ${new Date(elig.created_at).toLocaleDateString()}. You can edit any fields as needed.`,
+        duration: 5000,
+      });
+
+      // Auto-populate claim form fields from eligibility verification
+      // Note: Only populate if field is empty to avoid overwriting user input
+      // Patient Information (already loaded, but we can verify)
+      if (elig.patient_name && !formData.patient) {
+        setFormData(prev => ({ ...prev, patient: elig.patient_name }));
+      }
+
+      // Insurance Information - Primary
+      if (elig.primary_insurance_id) {
+        // Get insurance payer name
+        const { data: payer } = await supabase
+          .from('insurance_payers' as any)
+          .select('id, name')
+          .eq('id', elig.primary_insurance_id)
+          .single();
+        
+        if (payer) {
+          setFormData(prev => ({ ...prev, primaryInsurance: (payer as any).name }));
+          setSelectedPrimaryInsuranceId((payer as any).id);
+        }
+      } else if (elig.primary_insurance_name) {
+        setFormData(prev => ({ ...prev, primaryInsurance: elig.primary_insurance_name }));
+      }
+
+      // Insurance Information - Secondary
+      if (elig.secondary_insurance_name) {
+        setFormData(prev => ({ ...prev, secondaryInsurance: elig.secondary_insurance_name }));
+      }
+
+      // Service Date
+      if (elig.date_of_service || elig.appointment_date) {
+        const serviceDate = elig.date_of_service || elig.appointment_date;
+        setFormData(prev => ({ ...prev, dateOfService: serviceDate }));
+      }
+
+      // Provider Information
+      if (elig.provider_id) {
+        const { data: provider } = await supabase
+          .from('providers' as any)
+          .select('id, first_name, last_name')
+          .eq('id', elig.provider_id)
+          .single();
+        
+        if (provider) {
+          const providerName = `${(provider as any).first_name || ''} ${(provider as any).last_name || ''}`.trim();
+          setFormData(prev => ({ ...prev, renderingProvider: providerName }));
+          setSelectedRenderingProviderId((provider as any).id);
+        }
+      } else if (elig.provider_name) {
+        setFormData(prev => ({ ...prev, renderingProvider: elig.provider_name }));
+      }
+
+      // Facility Information
+      if (elig.facility_id) {
+        const { data: facility } = await supabase
+          .from('facilities' as any)
+          .select('id, name')
+          .eq('id', elig.facility_id)
+          .single();
+        
+        if (facility) {
+          setFormData(prev => ({ ...prev, facility: (facility as any).name }));
+          setSelectedFacilityId((facility as any).id);
+        }
+      }
+
+      // CPT Codes (Procedures) - if available in eligibility
+      if (elig.cpt_codes && Array.isArray(elig.cpt_codes) && elig.cpt_codes.length > 0) {
+        const cptCodes = elig.cpt_codes as any[];
+        const mappedCharges = cptCodes.map((cpt, index) => ({
+          id: String(index + 1),
+          from: elig.date_of_service || elig.appointment_date || formData.dateOfService || '',
+          to: elig.date_of_service || elig.appointment_date || formData.dateOfService || '',
+          procedure: cpt.code || '',
+          pos: cpt.pos || '',
+          tos: cpt.tos || '',
+          mod1: cpt.modifier1 || '',
+          mod2: cpt.modifier2 || '',
+          mod3: cpt.modifier3 || '',
+          mod4: '',
+          dxPointers: '1', // Default to first diagnosis
+          unitPrice: cpt.charge ? parseFloat(cpt.charge).toFixed(2) : '0.00',
+          units: cpt.units || '1.00',
+          amount: cpt.charge ? parseFloat(cpt.charge).toFixed(2) : '0.00',
+          status: 'BALANCE DUE PATIENT',
+          other: 'Other',
+          delete: false,
+        }));
+        
+        if (mappedCharges.length > 0) {
+          setCharges(mappedCharges);
+          console.log('✅ Auto-filled', mappedCharges.length, 'CPT codes from eligibility verification');
+        }
+      }
+
+      // ICD Codes (Diagnoses) - if available in eligibility
+      if (elig.icd_codes && Array.isArray(elig.icd_codes) && elig.icd_codes.length > 0) {
+        const icdCodes = elig.icd_codes as any[];
+        // Map to ICD code fields (icdA, icdB, etc.)
+        const icdMapping: Record<string, string> = {
+          'icdA': '',
+          'icdB': '',
+          'icdC': '',
+          'icdD': '',
+          'icdE': '',
+          'icdF': '',
+          'icdG': '',
+          'icdH': '',
+          'icdI': '',
+          'icdJ': '',
+          'icdK': '',
+          'icdL': '',
+        };
+        
+        const icdFields = Object.keys(icdMapping);
+        icdCodes.forEach((icd, index) => {
+          if (index < icdFields.length && icd.code) {
+            icdMapping[icdFields[index]] = icd.code;
+          }
+        });
+        
+        setIcdCodes(prev => ({ ...prev, ...icdMapping }));
+        console.log('✅ Auto-filled', icdCodes.length, 'ICD codes from eligibility verification');
+      }
+
+      // Prior Authorization
+      if (elig.prior_auth_number) {
+        setAdditionalInfo(prev => ({
+          ...prev,
+          claimInformation: {
+            ...prev.claimInformation,
+            otherClaimId: elig.prior_auth_number,
+          }
+        }));
+      }
+
+      console.log('✅ Claim form auto-filled from eligibility verification');
+    } catch (eligibilityError) {
+      // Eligibility lookup failed - this is optional, not critical
+      console.log('ℹ️ Could not load eligibility verification (this is optional):', eligibilityError);
+    }
+  };
+
+  // Reload eligibility data when service date changes (if patient is already selected)
+  useEffect(() => {
+    if (selectedPatientId && formData.dateOfService) {
+      // Debounce to avoid too many queries
+      const timer = setTimeout(() => {
+        console.log('🔄 Service date changed, checking for matching eligibility verification...');
+        loadEligibilityData(selectedPatientId, formData.dateOfService);
+      }, 500); // Wait 500ms after user stops typing
+
+      return () => clearTimeout(timer);
+    }
+  }, [formData.dateOfService, selectedPatientId]);
 
   // Handle patient selection
   const handlePatientSelect = (patientId: string, patientName: string) => {
@@ -618,6 +865,7 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
       // Insert main claim record
       const claimInsertData: any = {
         user_id: session.user.id,
+        company_id: currentCompany?.id || null,
         claim_number: claimNumber,
         form_type: claimType === 'professional' ? 'HCFA' : 'UB04',
         cms_form_version: '02-12',
