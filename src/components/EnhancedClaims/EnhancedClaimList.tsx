@@ -496,10 +496,9 @@ export function EnhancedClaimList() {
                         </Button>
                       </div>
                     </TableCell>
-                    </TableRow>
-                  ))
-                )}
-                </TableBody>
+                  </TableRow>
+                ))}
+              </TableBody>
             </Table>
           </div>
         </CardContent>

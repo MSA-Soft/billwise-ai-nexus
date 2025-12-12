@@ -1,7 +1,6 @@
 // Audit trail utilities for HIPAA compliance
 
 import { supabase } from '@/integrations/supabase/client';
-import { encryptAuditLog } from './encryption';
 import { logger } from './logger';
 
 export interface AuditEvent {
