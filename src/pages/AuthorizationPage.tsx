@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Layout from '@/components/Layout';
 import AuthorizationTracking from '@/components/AuthorizationTracking';
-import { useComponentCache } from '@/contexts/ComponentCacheContext';
+
+// Cache the component instance outside the component to persist across re-renders
+let cachedAuthorizationTracking: React.ReactElement | null = null;
 
 const AuthorizationPage: React.FC = () => {
-  const { getCachedComponent } = useComponentCache();
-  
-  const cachedComponent = getCachedComponent(
-    'authorization',
-    () => <AuthorizationTracking key="authorization-persistent" />
-  );
+  // Use useMemo to ensure the component instance persists across re-renders
+  // This preserves state when navigating away and back
+  const cachedComponent = useMemo(() => {
+    if (!cachedAuthorizationTracking) {
+      cachedAuthorizationTracking = <AuthorizationTracking key="authorization-persistent" />;
+    }
+    return cachedAuthorizationTracking;
+  }, []);
 
   return (
     <Layout currentPage="authorization">

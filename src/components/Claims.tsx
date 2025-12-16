@@ -162,12 +162,29 @@ export function Claims() {
     fetchPatients();
   }, []);
 
+  // Track if data has been fetched to prevent unnecessary re-fetches
+  const hasFetchedClaimsRef = React.useRef(false);
+  const previousCompanyRef = React.useRef<string | undefined>(currentCompany?.id);
+
   // Fetch claims from database
   useEffect(() => {
     const fetchClaims = async () => {
       // Wait for company to load
       if (!currentCompany) {
         console.log('⏳ Waiting for company to load...');
+        return;
+      }
+
+      // Only fetch if:
+      // 1. It's the first mount and hasn't been fetched yet, OR
+      // 2. The company has actually changed (not just a re-render)
+      const companyChanged = previousCompanyRef.current !== currentCompany.id;
+      
+      if (!hasFetchedClaimsRef.current || companyChanged) {
+        hasFetchedClaimsRef.current = true;
+        previousCompanyRef.current = currentCompany.id;
+      } else {
+        // Already fetched for this company, skip
         return;
       }
 
@@ -260,8 +277,13 @@ export function Claims() {
         // Get unique IDs for related data
         const patientIds = [...new Set(claimsData.map((c: any) => c.patient_id).filter(Boolean))];
         const providerIds = [...new Set(claimsData.map((c: any) => c.provider_id).filter(Boolean))];
-        const facilityIds = [...new Set(claimsData.map((c: any) => c.facility_id).filter(Boolean))];
+        const rawFacilityIds = [...new Set(claimsData.map((c: any) => c.facility_id).filter(Boolean))];
         const payerIds = [...new Set(claimsData.map((c: any) => c.primary_insurance_id).filter(Boolean))];
+
+        // Some legacy claims may store facility name instead of UUID in facility_id.
+        // Since facilities.id is UUID, filter to only valid UUIDs to avoid 400 errors from Supabase.
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const facilityIds = rawFacilityIds.filter((id: string) => uuidRegex.test(id));
 
         // Fetch related data separately
         const [patientsResult, providersResult, facilitiesResult, payersResult] = await Promise.all([

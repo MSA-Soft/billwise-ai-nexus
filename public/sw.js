@@ -61,19 +61,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const isJSFile = url.pathname.endsWith('.js') || 
                    url.pathname.endsWith('.mjs') || 
+                   url.pathname.endsWith('.tsx') ||
+                   url.pathname.endsWith('.ts') ||
                    url.pathname.includes('/src/') ||
                    url.pathname.includes('/node_modules/') ||
                    url.searchParams.has('v'); // Vite adds version params
   
-  // For JavaScript files, always fetch from network (no cache)
+  // For JavaScript files, always fetch from network (no cache, no service worker interception)
   if (isJSFile) {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => {
-          // Only fallback to cache if network fails (offline)
-          return caches.match(event.request);
-        })
-    );
+    // Don't intercept - let browser handle it directly
     return;
   }
 

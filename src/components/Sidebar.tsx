@@ -507,7 +507,7 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       
       {/* Sidebar */}
       <div className={cn(
-        "flex flex-col h-screen bg-white border-r border-gray-200 transition-all duration-300 sticky top-0 z-50",
+        "flex flex-col h-screen bg-white border-r border-gray-200 transition-all duration-300 sticky top-0 left-0 z-50",
         isCollapsed ? "w-16" : "w-64",
         isMobile && !isMobileMenuOpen && "hidden lg:flex",
         isMobile && isMobileMenuOpen && "fixed inset-y-0 left-0 z-50"
@@ -540,8 +540,8 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="p-3 space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4 custom-scrollbar pr-2">
+        <div className="space-y-6">
           {/* Main Navigation */}
           <div>
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -785,7 +785,7 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
               <Separator className="mx-4" />
             </>
           )}
-          <div className="px-3 py-4">
+          <div className="px-4 py-4">
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 h-10 min-w-0"
@@ -840,20 +840,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
             )}
           </div>
         </div>
-      </div>
-      <div className="px-3 py-4 border-t border-gray-200">
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-3 h-10"
-          onClick={() => handleItemClick("settings")}
-        >
-          <Settings className="h-4 w-4 flex-shrink-0" />
-          {!isCollapsed && (
-            <>
-              <span className="flex-1 text-left">Settings</span>
-            </>
-          )}
-        </Button>
       </div>
       </div>
     </>

@@ -28,14 +28,24 @@ import {
   Activity,
   Grid3X3,
   List,
+  Table as TableIcon,
   SortAsc,
   SortDesc,
   Users,
   Plus
 } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 interface Patient {
   id: string;
+  patient_id?: string; // External patient ID like "PAT-014"
   name: string;
   age: number;
   phone: string;
@@ -116,7 +126,7 @@ export function PatientSearchSystem({ patients, onPatientSelect, isLoadingPatien
   });
 
   const [showFilters, setShowFilters] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('list');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
 
@@ -373,7 +383,7 @@ export function PatientSearchSystem({ patients, onPatientSelect, isLoadingPatien
             </Badge>
           </div>
           <p className="text-sm text-gray-600">
-            ID: {patient.id} • Age: {patient.age} • {patient.insurance} • 
+            ID: {patient.patient_id || patient.id} • Age: {patient.age} • {patient.insurance} • 
             {patient.outstandingBalance > 0 && (
               <span className="text-red-600 ml-2">Outstanding: ${patient.outstandingBalance.toFixed(2)}</span>
             )}
@@ -399,6 +409,107 @@ export function PatientSearchSystem({ patients, onPatientSelect, isLoadingPatien
           <ChevronRight className="h-4 w-4 text-gray-400" />
         </div>
       </div>
+    </div>
+  );
+
+  const renderPatientTable = () => (
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-12">Avatar</TableHead>
+            <TableHead>Patient Name</TableHead>
+            <TableHead>Patient ID</TableHead>
+            <TableHead>Age</TableHead>
+            <TableHead>DOB</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Insurance</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Risk Level</TableHead>
+            <TableHead>Last Visit</TableHead>
+            <TableHead>Total Visits</TableHead>
+            <TableHead>Outstanding Balance</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {paginatedPatients.map((patient) => (
+            <TableRow 
+              key={patient.id} 
+              className="cursor-pointer hover:bg-gray-50"
+              onClick={() => onPatientSelect(patient)}
+            >
+              <TableCell>
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                    {patient.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              </TableCell>
+              <TableCell className="font-medium">{patient.name}</TableCell>
+              <TableCell className="text-sm text-gray-600 font-mono">
+                {patient.patient_id || (patient.id.length > 20 ? `${patient.id.substring(0, 20)}...` : patient.id)}
+              </TableCell>
+              <TableCell>{patient.age}</TableCell>
+              <TableCell className="text-sm text-gray-600">
+                {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'N/A'}
+              </TableCell>
+              <TableCell className="text-sm">{patient.phone || 'N/A'}</TableCell>
+              <TableCell className="text-sm">{patient.email || 'N/A'}</TableCell>
+              <TableCell className="text-sm">{patient.insurance || 'N/A'}</TableCell>
+              <TableCell>
+                <Badge className={getStatusBadgeColor(patient.status)} variant="outline">
+                  {patient.status}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Badge className={getRiskBadgeColor(patient.riskLevel)} variant="outline">
+                  {patient.riskLevel}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-sm text-gray-600">
+                {patient.lastVisit || 'N/A'}
+              </TableCell>
+              <TableCell className="text-sm">{patient.totalVisits || 0}</TableCell>
+              <TableCell className="text-sm">
+                {patient.outstandingBalance > 0 ? (
+                  <span className="text-red-600 font-medium">
+                    ${patient.outstandingBalance.toFixed(2)}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">$0.00</span>
+                )}
+              </TableCell>
+              <TableCell className="text-right">
+                <div className="flex items-center justify-end space-x-1">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      onPatientSelect(patient);
+                    }}
+                    title="View Details"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                    }}
+                    title="Message"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 
@@ -764,6 +875,13 @@ export function PatientSearchSystem({ patients, onPatientSelect, isLoadingPatien
           >
             <List className="h-4 w-4" />
           </Button>
+          <Button
+            variant={viewMode === 'table' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setViewMode('table')}
+          >
+            <TableIcon className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
@@ -792,6 +910,8 @@ export function PatientSearchSystem({ patients, onPatientSelect, isLoadingPatien
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {paginatedPatients.map(renderPatientCard)}
         </div>
+      ) : viewMode === 'table' ? (
+        renderPatientTable()
       ) : (
         <div className="space-y-3">
           {paginatedPatients.map(renderPatientListItem)}

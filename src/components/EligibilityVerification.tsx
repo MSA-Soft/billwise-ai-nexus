@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   Shield, 
   CheckCircle, 
@@ -66,7 +67,7 @@ import AuthorizationRequestDialog from "@/components/AuthorizationRequestDialog"
 const EligibilityVerification = () => {
   //#region Hooks & Services
   const { toast } = useToast();
-  const { user, currentCompany } = useAuth();
+  const { user, currentCompany, isSuperAdmin } = useAuth();
   //#endregion
 
   //#region State - Loading & Results
@@ -89,6 +90,26 @@ const EligibilityVerification = () => {
   const [showCalculationDetails, setShowCalculationDetails] = useState(false);
   const [showAbnDialog, setShowAbnDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  // Dynamic columns for verification history
+  const [historyVisibleColumns, setHistoryVisibleColumns] = useState<string[]>([
+    "Patient",
+    "Payer",
+    "Plan Type",
+    "Network Status",
+    "Eligible",
+    "Deductible Remaining",
+    "Out-of-Pocket Remaining",
+    "Method",
+    "Date",
+  ]);
+  const [historyAvailableColumns, setHistoryAvailableColumns] = useState<string[]>([
+    "Referral Required",
+    "Prior Auth Required",
+    "Previous Balance",
+    "Patient Responsibility",
+    "Current Visit Amount",
+  ]);
+  const [showHistoryColumnSelector, setShowHistoryColumnSelector] = useState(false);
   //#endregion
 
   //#region State - Patient Management
@@ -110,6 +131,82 @@ const EligibilityVerification = () => {
     groupNumber: ""
   });
   //#endregion
+
+  const getHistoryColumnHeader = (column: string) => {
+    switch (column) {
+      case "Patient":
+        return "Patient";
+      case "Payer":
+        return "Payer";
+      case "Plan Type":
+        return "Plan Type";
+      case "Network Status":
+        return "Network";
+      case "Eligible":
+        return "Eligible";
+      case "Deductible Remaining":
+        return "Deductible Remaining";
+      case "Out-of-Pocket Remaining":
+        return "Out-of-Pocket Remaining";
+      case "Method":
+        return "Contact Via";
+      case "Date":
+        return "Date";
+      case "Referral Required":
+        return "Referral Required";
+      case "Prior Auth Required":
+        return "Prior Auth Required";
+      case "Previous Balance":
+        return "Previous Balance";
+      case "Patient Responsibility":
+        return "PT Responsibility";
+      case "Current Visit Amount":
+        return "Current Visit";
+      default:
+        return column;
+    }
+  };
+
+  const getHistoryColumnValue = (entry: any, column: string) => {
+    switch (column) {
+      case "Patient":
+        return entry.patientId || "—";
+      case "Payer":
+        return entry.payerId || "—";
+      case "Plan Type":
+        return entry.planType || "—";
+      case "Network Status":
+        return entry.inNetworkStatus || "—";
+      case "Eligible":
+        return entry.isEligible ? "Yes" : "No";
+      case "Deductible Remaining":
+        return entry.deductibleRemaining ?? "—";
+      case "Out-of-Pocket Remaining":
+        return entry.outOfPocketRemaining ?? "—";
+      case "Method":
+        return entry.verificationMethod || "—";
+      case "Date":
+        return entry.timestamp
+          ? new Date(entry.timestamp).toLocaleDateString("en-US", {
+              month: "2-digit",
+              day: "2-digit",
+              year: "numeric",
+            })
+          : "—";
+      case "Referral Required":
+        return entry.referralRequired ? "Yes" : "No";
+      case "Prior Auth Required":
+        return entry.preAuthorizationRequired ? "Yes" : "No";
+      case "Previous Balance":
+        return entry.previousBalanceCredit ?? "0.00";
+      case "Patient Responsibility":
+        return entry.patientResponsibility ?? "0.00";
+      case "Current Visit Amount":
+        return entry.currentVisitAmount ?? "0.00";
+      default:
+        return "—";
+    }
+  };
 
   //#region State - Verification Form
   const [verificationForm, setVerificationForm] = useState({
@@ -376,10 +473,17 @@ const EligibilityVerification = () => {
   const [filterGroup2, setFilterGroup2] = useState("today"); // year, month, biweekly, weekly, today, tomorrow, custom
   const [filterGroup3, setFilterGroup3] = useState({ checked: true, unchecked: true }); // checked/unchecked
   
-  // Hierarchical filter states (Year → Month → Time Period)
-  const [selectedFilterYear, setSelectedFilterYear] = useState<string>(""); // Selected year for filtering
-  const [selectedFilterMonth, setSelectedFilterMonth] = useState<string>(""); // Selected month for filtering
-  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>(""); // Selected time period (whole month, custom, 15 days, weekly, yesterday, today, tomorrow)
+  // Hierarchical filter states (Year → Month → Time Period) - default to current week
+  const initialNow = new Date();
+  const initialYear = initialNow.getFullYear().toString();
+  const initialMonth = (initialNow.getMonth() + 1).toString();
+  const initialWeek = (Math.floor((initialNow.getDate() - 1) / 7) + 1).toString();
+
+  const [selectedFilterYear, setSelectedFilterYear] = useState<string>(initialYear); // Selected year for filtering
+  const [selectedFilterMonth, setSelectedFilterMonth] = useState<string>(initialMonth); // Selected month for filtering
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>("week"); // Selected time period (whole month, custom, 15 days, week, yesterday, today, tomorrow)
+  const [selectedWeek, setSelectedWeek] = useState<string>(initialWeek); // Selected week (1, 2, 3, 4)
+  const [selectedDay, setSelectedDay] = useState<string>(""); // Selected day (monday, tuesday, etc.)
   
   // Filter value states
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
@@ -392,35 +496,64 @@ const EligibilityVerification = () => {
   // Fetch verification history from database
   useEffect(() => {
     const fetchVerificationHistory = async () => {
-      // Wait for currentCompany to be loaded
-      if (!currentCompany) {
+      // Super admins can see all records, regular users need a company
+      if (!isSuperAdmin && !currentCompany) {
         console.log('Waiting for company to load...');
         return;
       }
 
       try {
-        console.log('Fetching verification history for company:', currentCompany.id);
+        if (isSuperAdmin) {
+          console.log('👑 Super admin - fetching all verification records');
+        } else {
+          console.log('Fetching verification history for company:', currentCompany.id);
+        }
         
         // Build query with company_id filter
-        // Also include records where company_id is null (for backward compatibility with old records)
-        let query = supabase
-          .from('eligibility_verifications' as any)
-          .select('*')
-          .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
-          .order('created_at', { ascending: false })
-          .limit(500);
+        // Super admins see all records, regular users see only their company's records
+        let data: any[] | null = null;
+        let error: any = null;
+        
+        try {
+          let query = supabase
+            .from('eligibility_verifications' as any)
+            .select('*');
+          
+          // Only filter by company_id if not super admin
+          if (!isSuperAdmin && currentCompany) {
+            query = query.eq('company_id', currentCompany.id);
+            console.log('🔍 Query filter: company_id =', currentCompany.id);
+          } else if (isSuperAdmin) {
+            console.log('🔍 Query filter: None (super admin - showing all records)');
+          }
+          
+          query = query
+            .order('created_at', { ascending: false })
+            .limit(500);
 
-        console.log('🔍 Query filter: company_id =', currentCompany.id, 'OR company_id IS NULL');
-
-        const { data, error } = await query;
+          const result = await query;
+          data = result.data;
+          error = result.error;
+        } catch (queryError: any) {
+          console.error('❌ Query execution error:', queryError);
+          error = queryError;
+        }
 
         if (error) {
-          console.error('Error fetching verification history:', error);
-          console.error('Error details:', {
+          console.error('❌ Error fetching verification history:', error);
+          console.error('❌ Error details:', {
             message: error.message,
             code: error.code,
             details: error.details,
             hint: error.hint
+          });
+          
+          // Log the actual query being executed for debugging
+          console.error('❌ Query attempted:', {
+            table: 'eligibility_verifications',
+            filter: isSuperAdmin ? 'None (super admin)' : `company_id = ${currentCompany?.id}`,
+            company_id: currentCompany?.id,
+            isSuperAdmin
           });
           
           // If table doesn't exist, start with empty array
@@ -461,13 +594,33 @@ const EligibilityVerification = () => {
             created_at: firstRecord.created_at
           });
         } else {
-          console.warn('⚠️ No verification records found for company:', currentCompany.id);
+          if (isSuperAdmin) {
+            console.warn('⚠️ No verification records found (super admin view)');
+          } else {
+            console.warn('⚠️ No verification records found for company:', currentCompany.id);
+          }
           // Diagnostic: Check if ANY records exist (without company filter)
           const { data: allData, error: allError } = await supabase
             .from('eligibility_verifications' as any)
             .select('id, company_id, patient_name, created_at')
             .limit(5);
-          if (!allError && allData) {
+          
+          if (allError) {
+            console.error('🔍 Diagnostic query error:', allError);
+            console.error('🔍 Error code:', allError.code);
+            console.error('🔍 Error message:', allError.message);
+            console.error('🔍 Error details:', allError.details);
+            console.error('🔍 Error hint:', allError.hint);
+            
+            if (allError.code === '42501' || allError.message?.includes('permission denied') || allError.message?.includes('policy')) {
+              console.error('🚨 RLS POLICY ISSUE: Row Level Security is blocking access to eligibility_verifications table');
+              toast({
+                title: 'RLS Policy Issue',
+                description: 'Row Level Security policies are preventing access to eligibility verifications. Please check your database RLS policies.',
+                variant: 'destructive',
+              });
+            }
+          } else if (allData) {
             console.log('🔍 Diagnostic: Found', allData.length, 'total records in database (any company)');
             if (allData.length > 0) {
               console.log('🔍 Sample records:', (allData as any[]).map((r: any) => ({
@@ -475,13 +628,115 @@ const EligibilityVerification = () => {
                 company_id: r.company_id,
                 patient_name: r.patient_name
               })));
+              console.warn('⚠️ Records exist but don\'t match company filter. Company IDs in records:', 
+                (allData as any[]).map((r: any) => r.company_id));
+            } else {
+              console.warn('⚠️ No records found in database at all (RLS may be blocking or table is empty)');
             }
+          }
+          
+          // Additional diagnostic: Try querying with user_id filter
+          try {
+            const { data: { user: currentUser } } = await supabase.auth.getUser();
+            if (currentUser) {
+              console.log('🔍 Testing user-specific query for user:', currentUser.id);
+              const { data: userData, error: userError } = await supabase
+                .from('eligibility_verifications' as any)
+                .select('id, company_id, user_id, patient_name, created_at')
+                .eq('user_id', currentUser.id)
+                .limit(5);
+              
+              if (userError) {
+                console.error('🔍 User-specific query error:', userError);
+                console.error('🔍 Error code:', userError.code);
+                console.error('🔍 Error message:', userError.message);
+                if (userError.code === '42501' || userError.message?.includes('permission denied')) {
+                  console.error('🚨 RLS BLOCKING: Cannot query even with user_id filter - RLS policies are too restrictive');
+                }
+              } else {
+                console.log('🔍 Found', userData?.length || 0, 'records for current user:', currentUser.id);
+                if (userData && userData.length > 0) {
+                  console.log('🔍 User records company IDs:', (userData as any[]).map((r: any) => r.company_id));
+                  console.warn('⚠️ Records exist for user but not matching company filter. This suggests RLS allows user-based access but company filter may be the issue.');
+                } else {
+                  console.warn('⚠️ No records found even with user_id filter - RLS may be blocking all access or table is empty');
+                }
+              }
+              
+              // Also try a count query to see if we can access the table at all
+              const { count, error: countError } = await supabase
+                .from('eligibility_verifications' as any)
+                .select('*', { count: 'exact', head: true });
+              
+              if (countError) {
+                console.error('🔍 Count query error:', countError);
+              } else {
+                console.log('🔍 Total records in table (via count):', count);
+                if (count && count > 0) {
+                  console.warn('⚠️ Table has', count, 'records but query returned 0 - RLS is filtering them out');
+                }
+              }
+            }
+          } catch (userErr) {
+            console.error('🔍 Error checking user-specific records:', userErr);
           }
         }
 
         // Transform database records to match component's expected format
         const recordData = Array.isArray(data) ? data : [];
+        
+        // Collect all unique facility IDs from records.
+        // IMPORTANT: Some legacy records store a location name (e.g. "Downtown") in appointment_location.
+        // The facilities table expects UUIDs in the id column, so we must only send valid UUIDs to .in('id', ...).
+        const rawFacilityIds = recordData
+          .map((r: any) => r.facility_id || r.appointment_location)
+          .filter(Boolean);
+
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const facilityIds = [...new Set(rawFacilityIds.filter((id: string) => uuidRegex.test(id)))];
+        
+        // Fetch facility names for all valid UUID IDs
+        const facilityNameMap = new Map<string, string>();
+        if (facilityIds.length > 0) {
+          try {
+            const { data: facilityData, error: facilityError } = await supabase
+              .from('facilities' as any)
+              .select('id, name')
+              .in('id', facilityIds);
+            
+            if (!facilityError && facilityData) {
+              facilityData.forEach((f: any) => {
+                facilityNameMap.set(f.id, f.name);
+              });
+              // Update facilities state with fetched facilities
+              setFacilities(prev => {
+                const existingIds = new Set(prev.map(f => f.id));
+                const newFacilities = facilityData.filter((f: any) => !existingIds.has(f.id));
+                return [...prev, ...newFacilities.map((f: any) => ({ id: f.id, name: f.name }))];
+              });
+            }
+          } catch (err) {
+            console.warn('Could not fetch facility names:', err);
+          }
+        }
+        
+        // Helper function to get facility name from ID
+        const getFacilityName = (facilityId: string | null | undefined): string => {
+          if (!facilityId) return '';
+          // First check the map from database
+          if (facilityNameMap.has(facilityId)) {
+            return facilityNameMap.get(facilityId)!;
+          }
+          // Then check facilities state
+          const facility = facilities.find(f => f.id === facilityId);
+          return facility ? facility.name : facilityId; // Return ID if facility not found
+        };
+        
         const transformedHistory = recordData.map((record: any) => {
+          // Get facility name from ID
+          const appointmentLocationId = record.appointment_location || record.facility_id || '';
+          const appointmentLocationName = getFacilityName(appointmentLocationId);
+          
           return {
             id: record.id,
             timestamp: record.created_at || record.date_checked || new Date().toISOString(),
@@ -500,7 +755,7 @@ const EligibilityVerification = () => {
             terminationDate: record.termination_date || '',
             inNetworkStatus: record.in_network_status || '',
             serialNo: record.serial_no || `VER-${record.id.substring(0, 8)}`,
-            appointmentLocation: record.appointment_location || '',
+            appointmentLocation: appointmentLocationName || appointmentLocationId || '', // Use name if available, fallback to ID
             appointmentDate: record.appointment_date || record.date_of_service || '',
             dateOfService: record.date_of_service || '',
             typeOfVisit: record.type_of_visit || '',
@@ -514,7 +769,7 @@ const EligibilityVerification = () => {
             groupNumber: record.group_number || '',
             totalCollectible: parseFloat(record.collection_amount || record.patient_responsibility || 0).toFixed(2),
             referralRequired: record.referral_required || false,
-            preAuthorizationRequired: record.prior_auth_required || false,
+            preAuthorizationRequired: record.pre_authorization_required || false,
             previousBalanceCredit: parseFloat(record.previous_balance_credit || 0).toFixed(2),
             patientResponsibility: parseFloat(record.patient_responsibility || 0).toFixed(2),
             currentVisitAmount: parseFloat(record.estimated_cost || record.billed_amount || 0).toFixed(2),
@@ -544,7 +799,7 @@ const EligibilityVerification = () => {
     };
 
     fetchVerificationHistory();
-  }, [currentCompany]);
+  }, [currentCompany, facilities, isSuperAdmin]); // Also depend on facilities and isSuperAdmin
 
   // Edit dialog state
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -680,7 +935,7 @@ const EligibilityVerification = () => {
             coinsurance: updated.coverage?.coinsurance ? parseFloat(updated.coverage.coinsurance.replace('%', '')) : 0,
             verification_result: updated,
             updated_at: new Date().toISOString(),
-            status: updated.isEligible ? 'verified' : 'ineligible'
+            status: 'verified' // Status tracks verification completion, not eligibility. Use is_eligible boolean for eligibility status.
           })
           .eq('id', entry.id);
 
@@ -1043,7 +1298,7 @@ const EligibilityVerification = () => {
 
       // Patient found - auto-populate ALL form fields from database
       const patientData = data as any;
-      const fullName = `${patientData.first_name ?? ''} ${patientData.last_name ?? ''}`.trim();
+      const fullName = `${patientData.last_name ?? ''}, ${patientData.first_name ?? ''}`.trim().replace(/^,|,$/g, '');
       
       // Format DOB if it exists
       let formattedDob = '';
@@ -1207,7 +1462,7 @@ const EligibilityVerification = () => {
 
       // Patient found - auto-populate ALL form fields from database
       const patientData = patient as any;
-      const fullName = `${patientData.first_name ?? ''} ${patientData.last_name ?? ''}`.trim();
+      const fullName = `${patientData.last_name ?? ''}, ${patientData.first_name ?? ''}`.trim().replace(/^,|,$/g, '');
       
       // Format DOB if it exists
       let formattedDob = '';
@@ -1301,7 +1556,7 @@ const EligibilityVerification = () => {
         return { generatePatientId: async () => `PAT-${Date.now()}` };
       });
       const patientId = patientIdSearch.trim() || await generatePatientId();
-      const patientName = `${quickAddForm.firstName} ${quickAddForm.lastName}`.trim();
+      const patientName = `${quickAddForm.lastName}, ${quickAddForm.firstName}`.trim().replace(/^,|,$/g, '');
 
       // Create patient record in patients table
       const { data, error } = await supabase
@@ -2079,6 +2334,66 @@ const EligibilityVerification = () => {
           }
 
           console.log('Saving eligibility verification with company_id:', currentCompany.id);
+          
+          // Look up primary_insurance_id if primaryInsurance is provided
+          // primary_insurance_id must be a UUID, but primaryInsurance might be a name string
+          let primaryInsuranceId: string | null = null;
+          const primaryInsuranceValue = verificationForm.primaryInsurance || '';
+          
+          // Check if primaryInsurance is already a UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (primaryInsuranceValue && uuidRegex.test(primaryInsuranceValue)) {
+            // It's already a UUID, use it directly
+            primaryInsuranceId = primaryInsuranceValue;
+          } else if (primaryInsuranceValue) {
+            // It's a name string, try to look up the UUID from insurance_payers table
+            try {
+              // Try to find by name first, then by payer_name
+              let insurancePayer: any = null;
+              let insuranceError: any = null;
+              
+              // First try name field
+              const { data: nameData, error: nameError } = await supabase
+                .from('insurance_payers' as any)
+                .select('id')
+                .ilike('name', `%${primaryInsuranceValue}%`)
+                .eq('company_id', currentCompany.id)
+                .limit(1)
+                .maybeSingle();
+              
+              if (!nameError && nameData && (nameData as any)?.id) {
+                insurancePayer = nameData;
+              } else {
+                // If not found by name, try payer_name field
+                const { data: payerNameData, error: payerNameError } = await supabase
+                  .from('insurance_payers' as any)
+                  .select('id')
+                  .ilike('payer_name', `%${primaryInsuranceValue}%`)
+                  .eq('company_id', currentCompany.id)
+                  .limit(1)
+                  .maybeSingle();
+                
+                if (!payerNameError && payerNameData && (payerNameData as any)?.id) {
+                  insurancePayer = payerNameData;
+                } else {
+                  insuranceError = payerNameError || nameError;
+                }
+              }
+              
+              if (!insuranceError && insurancePayer?.id) {
+                primaryInsuranceId = insurancePayer.id;
+                console.log('✅ Found insurance payer UUID:', primaryInsuranceId, 'for name:', primaryInsuranceValue);
+              } else {
+                console.warn('⚠️ Could not find insurance payer UUID for:', primaryInsuranceValue, '- will store name only');
+                // Set to null - we'll store the name in primary_insurance_name instead
+                primaryInsuranceId = null;
+              }
+            } catch (lookupError) {
+              console.warn('⚠️ Error looking up insurance payer:', lookupError);
+              primaryInsuranceId = null;
+            }
+          }
+          
           const verificationData: any = {
             user_id: currentUser.id,
             company_id: currentCompany.id,
@@ -2099,8 +2414,8 @@ const EligibilityVerification = () => {
             patient_name: verificationForm.patientName,
             patient_dob: verificationForm.dob || (verificationForm as any).patientDob || null,
             patient_gender: verificationForm.patientGender,
-            primary_insurance_id: verificationForm.primaryInsurance || null,
-            primary_insurance_name: verificationForm.primaryInsurance || null,
+            primary_insurance_id: primaryInsuranceId, // Use the looked-up UUID or null
+            primary_insurance_name: primaryInsuranceValue || null, // Store the name/string value here
             insurance_id: verificationForm.insuranceId,
             insurance_plan: verificationForm.insurancePlan || '',
             group_number: verificationForm.groupNumber,
@@ -2123,23 +2438,30 @@ const EligibilityVerification = () => {
             is_eligible: result.isEligible,
             referral_required: verificationForm.referralRequired,
             referral_number: verificationForm.referralNumber || '',
-            prior_auth_required: verificationForm.preAuthorizationRequired,
+            pre_authorization_required: verificationForm.preAuthorizationRequired, // Note: column name is pre_authorization_required, not prior_auth_required
             // Financial Information
             previous_balance_credit: parseFloat(verificationForm.previousBalanceCredit || '0'),
             patient_responsibility: parseFloat(verificationForm.patientResponsibility || '0'),
             collection_amount: parseFloat(verificationForm.collection || '0'),
             estimated_cost: parseFloat(verificationForm.estimatedCost || '0'),
             allowed_amount: parseFloat(verificationForm.allowedAmount || '0'),
+            // CPT and ICD Codes - Store as JSONB arrays
+            cpt_codes: verificationForm.cptCodes.length > 0 
+              ? verificationForm.cptCodes.map(cpt => cpt.code).filter(code => code && code.trim() !== '')
+              : null,
+            icd_codes: verificationForm.icdCodes.length > 0
+              ? verificationForm.icdCodes.map(icd => icd.code).filter(code => code && code.trim() !== '')
+              : null,
             // Additional Information
             remarks: verificationForm.remarks,
             date_checked: verificationForm.dateChecked || new Date().toISOString().split('T')[0],
-            check_by: verificationForm.checkBy || userEmail,
+            // Note: check_by field doesn't exist in schema, using verified_by instead
             demographic_changes_made: verificationForm.demographicChangesMade || false,
             qa: verificationForm.qa || false,
             verification_result: result as any,
             verification_method: verificationForm.verificationMethod || 'manual',
-            verified_by: userEmail,
-            status: result.isEligible ? 'verified' : 'ineligible'
+            verified_by: verificationForm.checkBy || userEmail, // Use checkBy value for verified_by field
+            status: 'verified' // Status tracks verification completion, not eligibility. Use is_eligible boolean for eligibility status.
           };
 
           console.log('💾 Inserting verification data:', {
@@ -2171,12 +2493,24 @@ const EligibilityVerification = () => {
               serial_no: verificationData.serial_no
             });
             // Show user-friendly error message
+            const errorMsg = saveError.message || "Failed to save eligibility verification to database.";
+            const hintMsg = saveError.hint ? ` Hint: ${saveError.hint}` : "";
+            
+            // Special handling for RLS policy errors
+            let description = errorMsg + hintMsg;
+            if (saveError.code === '42501' || errorMsg.includes('row-level security')) {
+              description = "Row Level Security (RLS) policy is blocking this operation. Please contact your database administrator to set up RLS policies for the eligibility_verifications table. The user needs INSERT permission for rows matching their company_id.";
+            }
+            
             toast({
-              title: "Database Error",
-              description: saveError.message || "Failed to save eligibility verification to database. Please check your permissions and RLS policies.",
+              title: "Database Save Error",
+              description: description + " The verification was not saved. Please try again or check your permissions.",
               variant: "destructive",
             });
             errorOccurred = true;
+            savedSuccessfully = false;
+            // Don't proceed with adding to history or showing success message
+            return;
           } else if (savedVerification) {
             verificationId = (savedVerification as any).id;
             savedSuccessfully = true;
@@ -2217,7 +2551,7 @@ const EligibilityVerification = () => {
                   collection_amount: parseFloat(verificationForm.collection || '0'),
                   remarks: verificationForm.remarks,
                   date_checked: verificationForm.dateChecked || new Date().toISOString().split('T')[0],
-                  check_by: verificationForm.checkBy || userEmail,
+                  // Note: check_by field may not exist in referrals table schema
                   demographic_changes_made: verificationForm.demographicChangesMade || false,
                   qa: verificationForm.qa || false,
                   eligibility_verification_id: verificationId, // Link to eligibility verification
@@ -2273,15 +2607,39 @@ const EligibilityVerification = () => {
               },
               'Eligibility verification performed'
             );
+
           }
         } catch (error) {
           console.error('Error saving verification to database:', error);
+          const errorMsg = error instanceof Error ? error.message : "Failed to save eligibility verification to database.";
           toast({
-            title: "Database Error",
-            description: error instanceof Error ? error.message : "Failed to save eligibility verification to database.",
+            title: "Database Save Error",
+            description: errorMsg + " The verification was not saved. Please try again.",
             variant: "destructive",
           });
+          errorOccurred = true;
+          savedSuccessfully = false;
+          // Don't proceed with adding to history or showing success message
+          return;
         }
+      } else {
+        // No current user - cannot save
+        console.error('No current user - cannot save to database');
+        toast({
+          title: "Authentication Error",
+          description: "You must be logged in to save eligibility verifications. Please log in and try again.",
+          variant: "destructive",
+        });
+        errorOccurred = true;
+        savedSuccessfully = false;
+        // Don't proceed with adding to history or showing success message
+        return;
+      }
+
+      // Only proceed if save was successful
+      if (!savedSuccessfully) {
+        // Error already shown above, just return
+        return;
       }
 
       // Add to history with user info - include all fields to match database structure and display requirements
@@ -2342,11 +2700,13 @@ const EligibilityVerification = () => {
         outOfPocketRemaining: verificationForm.outOfPocketRemaining || '',
       };
 
-      // Add to local history immediately for UI responsiveness
-      setVerificationHistory(prev => [newEntry, ...prev]);
-
-      // Show success message with save status
+      // Only add to local history if save was successful
+      // This prevents showing entries that weren't actually saved to the database
       if (savedSuccessfully) {
+        // Add to local history immediately for UI responsiveness
+        setVerificationHistory(prev => [newEntry, ...prev]);
+
+        // Show success message
         toast({
           title: "Eligibility Checked & Saved",
           description: result.isEligible 
@@ -2367,72 +2727,122 @@ const EligibilityVerification = () => {
                 .limit(500);
 
               if (!refreshError && refreshData) {
-                const transformedHistory = refreshData.map((record: any) => ({
-                  id: record.id,
-                  timestamp: record.created_at || record.date_checked || new Date().toISOString(),
-                  patientId: record.patient_id || '',
-                  patientName: record.patient_name || '',
-                  payerId: record.primary_insurance_name || '',
-                  isEligible: record.is_eligible || false,
-                  coverage: {
-                    copay: parseFloat(record.copay || 0),
-                    deductible: parseFloat(record.deductible || 0),
+                // Collect all unique facility IDs from records.
+                // IMPORTANT: Some legacy records store a location name (e.g. "Downtown") in appointment_location.
+                // The facilities table expects UUIDs in the id column, so we must only send valid UUIDs to .in('id', ...).
+                const rawFacilityIds = refreshData
+                  .map((r: any) => r.facility_id || r.appointment_location)
+                  .filter(Boolean);
+
+                // Only keep values that look like UUIDs to avoid 400 errors like id=in.(Downtown)
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const facilityIds = [...new Set(rawFacilityIds.filter((id: string) => uuidRegex.test(id)))];
+                
+                // Fetch facility names for all valid UUID IDs
+                const facilityNameMap = new Map<string, string>();
+                if (facilityIds.length > 0) {
+                  try {
+                    const { data: facilityData, error: facilityError } = await supabase
+                      .from('facilities' as any)
+                      .select('id, name')
+                      .in('id', facilityIds);
+                    
+                    if (!facilityError && facilityData) {
+                      facilityData.forEach((f: any) => {
+                        facilityNameMap.set(f.id, f.name);
+                      });
+                      // Update facilities state with fetched facilities
+                      setFacilities(prev => {
+                        const existingIds = new Set(prev.map(f => f.id));
+                        const newFacilities = facilityData.filter((f: any) => !existingIds.has(f.id));
+                        return [...prev, ...newFacilities.map((f: any) => ({ id: f.id, name: f.name }))];
+                      });
+                    }
+                  } catch (err) {
+                    console.warn('Could not fetch facility names:', err);
+                  }
+                }
+                
+                // Helper function to get facility name from ID
+                const getFacilityName = (facilityId: string | null | undefined): string => {
+                  if (!facilityId) return '';
+                  // First check the map from database
+                  if (facilityNameMap.has(facilityId)) {
+                    return facilityNameMap.get(facilityId)!;
+                  }
+                  // Then check facilities state
+                  const facility = facilities.find(f => f.id === facilityId);
+                  return facility ? facility.name : facilityId; // Return ID if facility not found
+                };
+                
+                const transformedHistory = refreshData.map((record: any) => {
+                  // Get facility name from ID
+                  const appointmentLocationId = record.appointment_location || record.facility_id || '';
+                  const appointmentLocationName = getFacilityName(appointmentLocationId);
+                  
+                  return {
+                    id: record.id,
+                    timestamp: record.created_at || record.date_checked || new Date().toISOString(),
+                    patientId: record.patient_id || '',
+                    patientName: record.patient_name || '',
+                    payerId: record.primary_insurance_name || '',
+                    isEligible: record.is_eligible || false,
+                    coverage: {
+                      copay: parseFloat(record.copay || 0),
+                      deductible: parseFloat(record.deductible || 0),
+                      coinsurance: record.coinsurance ? `${record.coinsurance}%` : '0%',
+                      outOfPocketMax: record.out_of_pocket_max || ''
+                    },
+                    planType: record.plan_type || '',
+                    effectiveDate: record.effective_date || '',
+                    terminationDate: record.termination_date || '',
+                    inNetworkStatus: record.in_network_status || '',
+                    serialNo: record.serial_no || `VER-${record.id.substring(0, 8)}`,
+                    appointmentLocation: appointmentLocationName || appointmentLocationId || '', // Use name if available, fallback to ID
+                    appointmentDate: record.appointment_date || record.date_of_service || '',
+                    dateOfService: record.date_of_service || '',
+                    typeOfVisit: record.type_of_visit || '',
+                    serviceType: record.service_type || '',
+                    patientDob: record.patient_dob || '',
+                    patientGender: record.patient_gender || '',
+                    providerName: record.provider_name || '',
+                    nppName: record.npp_name || '',
+                    insuranceId: record.insurance_id || '',
+                    memberId: record.insurance_id || '',
+                    groupNumber: record.group_number || '',
+                    totalCollectible: parseFloat(record.collection_amount || record.patient_responsibility || 0).toFixed(2),
+                    referralRequired: record.referral_required || false,
+                    preAuthorizationRequired: record.pre_authorization_required || false,
+                    previousBalanceCredit: parseFloat(record.previous_balance_credit || 0).toFixed(2),
+                    patientResponsibility: parseFloat(record.patient_responsibility || 0).toFixed(2),
+                    currentVisitAmount: parseFloat(record.estimated_cost || record.billed_amount || 0).toFixed(2),
+                    remarks: record.remarks || '',
+                    notes: record.remarks || '',
+                    verificationMethod: record.verification_method || 'manual',
+                    created_by: record.verified_by || '',
+                    created_by_name: record.verified_by || '',
+                    verified_by: record.verified_by || '',
+                    allowedAmount: parseFloat(record.allowed_amount || 0),
+                    estimatedResponsibility: parseFloat(record.patient_responsibility || 0),
+                    copayBeforeDeductible: record.copay_before_deductible !== undefined ? record.copay_before_deductible : true,
                     coinsurance: record.coinsurance ? `${record.coinsurance}%` : '0%',
-                    outOfPocketMax: record.out_of_pocket_max || ''
-                  },
-                  planType: record.plan_type || '',
-                  effectiveDate: record.effective_date || '',
-                  terminationDate: record.termination_date || '',
-                  inNetworkStatus: record.in_network_status || '',
-                  serialNo: record.serial_no || `VER-${record.id.substring(0, 8)}`,
-                  appointmentLocation: record.appointment_location || '',
-                  appointmentDate: record.appointment_date || record.date_of_service || '',
-                  dateOfService: record.date_of_service || '',
-                  typeOfVisit: record.type_of_visit || '',
-                  serviceType: record.service_type || '',
-                  patientDob: record.patient_dob || '',
-                  patientGender: record.patient_gender || '',
-                  providerName: record.provider_name || '',
-                  nppName: record.npp_name || '',
-                  insuranceId: record.insurance_id || '',
-                  memberId: record.insurance_id || '',
-                  groupNumber: record.group_number || '',
-                  totalCollectible: parseFloat(record.collection_amount || record.patient_responsibility || 0).toFixed(2),
-                  referralRequired: record.referral_required || false,
-                  preAuthorizationRequired: record.prior_auth_required || false,
-                  previousBalanceCredit: parseFloat(record.previous_balance_credit || 0).toFixed(2),
-                  patientResponsibility: parseFloat(record.patient_responsibility || 0).toFixed(2),
-                  currentVisitAmount: parseFloat(record.estimated_cost || record.billed_amount || 0).toFixed(2),
-                  remarks: record.remarks || '',
-                  notes: record.remarks || '',
-                  verificationMethod: record.verification_method || 'manual',
-                  created_by: record.verified_by || '',
-                  created_by_name: record.verified_by || '',
-                  verified_by: record.verified_by || '',
-                  allowedAmount: parseFloat(record.allowed_amount || 0),
-                  estimatedResponsibility: parseFloat(record.patient_responsibility || 0),
-                  copayBeforeDeductible: record.copay_before_deductible !== undefined ? record.copay_before_deductible : true,
-                  coinsurance: record.coinsurance ? `${record.coinsurance}%` : '0%',
-                  deductible: parseFloat(record.deductible || 0),
-                  copay: parseFloat(record.copay || 0),
-                  outOfPocketMax: record.out_of_pocket_max || '',
-                  deductibleMet: record.deductible_status === 'Met' || record.deductible_met === true,
-                  outOfPocketRemaining: record.out_of_pocket_remaining || ''
-                }));
+                    deductible: parseFloat(record.deductible || 0),
+                    copay: parseFloat(record.copay || 0),
+                    outOfPocketMax: record.out_of_pocket_max || '',
+                    deductibleMet: record.deductible_status === 'Met' || record.deductible_met === true,
+                    outOfPocketRemaining: record.out_of_pocket_remaining || ''
+                  };
+                });
                 setVerificationHistory(transformedHistory);
                 console.log('History refreshed from database:', transformedHistory.length, 'records');
+              } else if (refreshError) {
+                console.error('Error refreshing history from database:', refreshError);
               }
             }
           } catch (refreshErr) {
             console.error('Error refreshing history:', refreshErr);
           }
         }, 500); // Small delay to ensure database write is complete
-      } else {
-        toast({
-          title: "Eligibility Checked",
-          description: result.isEligible ? "Patient is eligible for coverage" : "Patient is not eligible for coverage",
-          variant: savedSuccessfully ? "default" : "destructive",
-        });
       }
       
       // Close dialog after verification
@@ -2585,9 +2995,26 @@ const EligibilityVerification = () => {
         remarks: "",
         dateChecked: new Date().toISOString().split('T')[0],
         verifiedBy: "",
+        checkBy: "",
         verificationMethod: "manual",
         demographicChangesMade: false,
         qa: false,
+        demographicDisplay: {
+          patientId: "",
+          firstName: "",
+          lastName: "",
+          middleInitial: "",
+          suffix: "",
+          dob: "",
+          gender: "",
+          phone: "",
+          email: "",
+          address: "",
+          city: "",
+          state: "",
+          zip: "",
+          ssn: "",
+        },
       });
       }
     }
@@ -2711,7 +3138,7 @@ const EligibilityVerification = () => {
         effective_date: result.coverage?.effectiveDate || null,
         termination_date: result.coverage?.terminationDate || null,
         verification_result: result,
-        status: result.isEligible ? 'verified' : 'ineligible',
+        status: 'verified' as const, // Status tracks verification completion, not eligibility. Use is_eligible boolean for eligibility status.
         verification_method: 'batch',
         verified_by: user?.email || 'system'
       }));
@@ -2787,7 +3214,7 @@ const EligibilityVerification = () => {
     const csvContent = [
       "Patient ID,Payer,Date,Status,Copay,Deductible,Coinsurance,Allowed Amount,Estimated Responsibility,Copay Before Deductible",
       ...verificationHistory.map(entry => 
-        `${entry.patientId},${entry.payerId},${new Date(entry.timestamp).toLocaleDateString()},${entry.isEligible ? 'Eligible' : 'Not Eligible'},${entry.coverage?.copay ?? ''},${entry.coverage?.deductible ?? ''},${entry.coverage?.coinsurance ?? ''},${entry.allowedAmount ?? ''},${entry.estimatedResponsibility ?? ''},${entry.copayBeforeDeductible ?? ''}`
+        `${entry.patientId},${entry.payerId},${entry.timestamp ? new Date(entry.timestamp).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : ''},${entry.isEligible ? 'Eligible' : 'Not Eligible'},${entry.coverage?.copay ?? ''},${entry.coverage?.deductible ?? ''},${entry.coverage?.coinsurance ?? ''},${entry.allowedAmount ?? ''},${entry.estimatedResponsibility ?? ''},${entry.copayBeforeDeductible ?? ''}`
       ).join('\n')
     ].join('\n');
 
@@ -2882,13 +3309,66 @@ const EligibilityVerification = () => {
         return entryDateOnly >= startDateStr && entryDateOnly <= endDateStr;
       }
 
-      case "weekly": {
-        const monthEnd = new Date(parseInt(selectedFilterYear), parseInt(selectedFilterMonth), 0);
-        const lastWeekStart = new Date(monthEnd);
-        lastWeekStart.setDate(lastWeekStart.getDate() - 6);
-        const startDateStr = lastWeekStart.toISOString().split('T')[0];
-        const endDateStr = monthEnd.toISOString().split('T')[0];
-        return entryDateOnly >= startDateStr && entryDateOnly <= endDateStr;
+      case "week": {
+        // If a specific week is selected
+        if (selectedWeek) {
+          const year = parseInt(selectedFilterYear);
+          const month = parseInt(selectedFilterMonth);
+          const weekNumber = parseInt(selectedWeek);
+          
+          // Get the first day of the month
+          const firstDayOfMonth = new Date(year, month - 1, 1);
+          const firstDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          
+          // Calculate week boundaries: Week 1 = days 1-7, Week 2 = days 8-14, Week 3 = days 15-21, Week 4 = days 22-28/end
+          const daysInMonth = new Date(year, month, 0).getDate();
+          let weekStartDate: number;
+          let weekEndDate: number;
+          
+          if (weekNumber === 1) {
+            weekStartDate = 1;
+            weekEndDate = Math.min(7, daysInMonth);
+          } else if (weekNumber === 2) {
+            weekStartDate = 8;
+            weekEndDate = Math.min(14, daysInMonth);
+          } else if (weekNumber === 3) {
+            weekStartDate = 15;
+            weekEndDate = Math.min(21, daysInMonth);
+          } else if (weekNumber === 4) {
+            weekStartDate = 22;
+            weekEndDate = daysInMonth;
+          } else {
+            return false;
+          }
+          
+          // If a specific day is selected within the week
+          if (selectedDay) {
+            const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+            const dayIndex = dayNames.indexOf(selectedDay.toLowerCase());
+            
+            if (dayIndex === -1) return false;
+            
+            // Find the date of the selected day within the week range
+            // We need to find which date in the week range corresponds to the selected day name
+            for (let date = weekStartDate; date <= weekEndDate; date++) {
+              const testDate = new Date(year, month - 1, date);
+              if (testDate.getDay() === dayIndex) {
+                const entryDay = entry.getDate();
+                return entryDay === date && entryYear === selectedFilterYear && entryMonth === selectedFilterMonth;
+              }
+            }
+            
+            // Day not found in this week range
+            return false;
+          }
+          
+          // Otherwise, filter by the entire week
+          const entryDay = entry.getDate();
+          return entryDay >= weekStartDate && entryDay <= weekEndDate && entryYear === selectedFilterYear && entryMonth === selectedFilterMonth;
+        }
+        
+        // If no week selected, return false (shouldn't happen, but handle it)
+        return false;
       }
 
       case "yesterday": {
@@ -3149,18 +3629,28 @@ const EligibilityVerification = () => {
                             <Label htmlFor="typeOfVisit">Type Of Visit *</Label>
                             <Select 
                               value={verificationForm.typeOfVisit} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, typeOfVisit: value }))}
+                              onValueChange={(value) => {
+                                const lower = value.toLowerCase();
+                                setVerificationForm(prev => ({ 
+                                  ...prev, 
+                                  typeOfVisit: value,
+                                  // Auto-mark prior authorization required for surgery/facility
+                                  preAuthorizationRequired: lower === 'surgery' || lower === 'facility' ? true : prev.preAuthorizationRequired
+                                }));
+                              }}
                             >
                               <SelectTrigger className="h-9">
                                 <SelectValue placeholder="Select visit type" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="consultation">Consultation</SelectItem>
-                                <SelectItem value="follow-up">Follow-up</SelectItem>
-                                <SelectItem value="routine">Routine</SelectItem>
+                                <SelectItem value="follow_up">Follow-up</SelectItem>
+                                <SelectItem value="routine_checkup">Routine Checkup</SelectItem>
+                                <SelectItem value="physical_therapy">Physical Therapy</SelectItem>
                                 <SelectItem value="emergency">Emergency</SelectItem>
-                                <SelectItem value="urgent">Urgent</SelectItem>
-                                <SelectItem value="preventive">Preventive</SelectItem>
+                                <SelectItem value="specialist">Specialist Visit</SelectItem>
+                                <SelectItem value="surgery">Surgery</SelectItem>
+                                <SelectItem value="facility">Facility</SelectItem>
                               </SelectContent>
                             </Select>
                     </div>
@@ -5561,56 +6051,6 @@ const EligibilityVerification = () => {
                       </CardContent>
                     </Card>
 
-                    {/* Additional Information */}
-              <Card>
-                <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          Additional Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                <div>
-                          <Label htmlFor="remarks">Remarks</Label>
-                          <Textarea
-                            id="remarks"
-                            value={verificationForm.remarks}
-                            onChange={(e) => setVerificationForm(prev => ({ ...prev, remarks: e.target.value }))}
-                            placeholder="Enter any additional remarks or notes..."
-                            rows={4}
-                            className="w-full max-w-full"
-                          />
-                  </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                            <Label htmlFor="dateChecked">Date Checked</Label>
-                    <Input
-                              id="dateChecked"
-                              type="date"
-                              value={verificationForm.dateChecked}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, dateChecked: e.target.value }))}
-                            />
-                  </div>
-                          <div className="flex items-center space-x-2 pt-6">
-                    <Checkbox
-                              id="demographicChangesMade"
-                              checked={verificationForm.demographicChangesMade}
-                              onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, demographicChangesMade: checked as boolean }))}
-                            />
-                            <Label htmlFor="demographicChangesMade" className="cursor-pointer">Demographic Changes Made</Label>
-                  </div>
-                          <div className="flex items-center space-x-2 pt-6">
-                            <Checkbox
-                              id="qa"
-                              checked={verificationForm.qa}
-                              onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, qa: checked as boolean }))}
-                            />
-                            <Label htmlFor="qa" className="cursor-pointer">QA</Label>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Action Buttons */}
                     <div className="flex justify-between items-center gap-3">
                       <div className="flex gap-2 flex-wrap">
@@ -5935,9 +6375,26 @@ const EligibilityVerification = () => {
                                 remarks: "",
                                 dateChecked: new Date().toISOString().split('T')[0],
                                 verifiedBy: "",
+                                checkBy: "",
                                 verificationMethod: "manual",
                                 demographicChangesMade: false,
                                 qa: false,
+                                demographicDisplay: {
+                                  patientId: "",
+                                  firstName: "",
+                                  lastName: "",
+                                  middleInitial: "",
+                                  suffix: "",
+                                  dob: "",
+                                  gender: "",
+                                  phone: "",
+                                  email: "",
+                                  address: "",
+                                  city: "",
+                                  state: "",
+                                  zip: "",
+                                  ssn: "",
+                                },
                               });
                               toast({
                                 title: "Voided",
@@ -6043,6 +6500,8 @@ const EligibilityVerification = () => {
                 setSelectedFilterYear("");
                 setSelectedFilterMonth("");
                 setSelectedTimePeriod("");
+                setSelectedWeek("");
+                setSelectedDay("");
               }}
               className="h-7 text-xs"
             >
@@ -6130,9 +6589,11 @@ const EligibilityVerification = () => {
                     setSelectedTimePeriod("");
                   } else {
                     setSelectedFilterYear(value);
-                    // Reset month and time period when year changes
+                    // Reset month, time period, week, and day when year changes
                     setSelectedFilterMonth("");
                     setSelectedTimePeriod("");
+                    setSelectedWeek("");
+                    setSelectedDay("");
                   }
                 }}
               >
@@ -6157,8 +6618,10 @@ const EligibilityVerification = () => {
                       setSelectedTimePeriod("");
                     } else {
                       setSelectedFilterMonth(value);
-                      // Reset time period when month changes
+                      // Reset time period, week, and day when month changes
                       setSelectedTimePeriod("");
+                      setSelectedWeek("");
+                      setSelectedDay("");
                     }
                   }}
                 >
@@ -6180,6 +6643,11 @@ const EligibilityVerification = () => {
                   value={selectedTimePeriod || "none"} 
                   onValueChange={(value) => {
                     setSelectedTimePeriod(value === "none" ? "" : value);
+                    // Reset week and day when time period changes
+                    if (value !== "week") {
+                      setSelectedWeek("");
+                      setSelectedDay("");
+                    }
                     // When Custom Range is selected, clear Date of Service filter to avoid confusion
                     if (value === "custom" && filterGroup1 === "dateOfService") {
                       setFilterGroup1("");
@@ -6195,7 +6663,7 @@ const EligibilityVerification = () => {
                     <SelectItem value="wholeMonth">Whole Month</SelectItem>
                     <SelectItem value="custom">Custom Date Range</SelectItem>
                     <SelectItem value="15days">Last 15 Days</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="week">Week</SelectItem>
                     {/* Show Yesterday only if it's current year and current month */}
                     {isCurrentYear && isCurrentMonth && (
                       <SelectItem value="yesterday">Yesterday</SelectItem>
@@ -6208,6 +6676,53 @@ const EligibilityVerification = () => {
                     {isCurrentYear && isCurrentMonth && (
                       <SelectItem value="tomorrow">Tomorrow</SelectItem>
                     )}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Step 4: Week Selection (only shown when "Week" is selected) */}
+              {selectedTimePeriod === "week" && selectedFilterYear && selectedFilterMonth && (
+                <Select 
+                  value={selectedWeek || "none"} 
+                  onValueChange={(value) => {
+                    setSelectedWeek(value === "none" ? "" : value);
+                    // Reset day when week changes
+                    setSelectedDay("");
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select Week" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="1">Week 1</SelectItem>
+                    <SelectItem value="2">Week 2</SelectItem>
+                    <SelectItem value="3">Week 3</SelectItem>
+                    <SelectItem value="4">Week 4</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Step 5: Day Selection (only shown when a week is selected) */}
+              {selectedTimePeriod === "week" && selectedWeek && selectedFilterYear && selectedFilterMonth && (
+                <Select 
+                  value={selectedDay || "none"} 
+                  onValueChange={(value) => {
+                    setSelectedDay(value === "none" ? "" : value);
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select Day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (Show All Days in Week)</SelectItem>
+                    <SelectItem value="monday">Monday</SelectItem>
+                    <SelectItem value="tuesday">Tuesday</SelectItem>
+                    <SelectItem value="wednesday">Wednesday</SelectItem>
+                    <SelectItem value="thursday">Thursday</SelectItem>
+                    <SelectItem value="friday">Friday</SelectItem>
+                    <SelectItem value="saturday">Saturday</SelectItem>
+                    <SelectItem value="sunday">Sunday</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -6344,10 +6859,21 @@ const EligibilityVerification = () => {
         <TabsContent value="history" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Verification History
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Verification History
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setShowHistoryColumnSelector(true)}
+                  title="Select columns"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {/* Search and Filter Controls */}
@@ -6373,222 +6899,90 @@ const EligibilityVerification = () => {
                     <SelectItem value="ineligible">Not Eligible</SelectItem>
                   </SelectContent>
                 </Select>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={expandAll}>Expand all</Button>
-                  <Button variant="outline" onClick={collapseAll}>Collapse all</Button>
-                </div>
               </div>
 
               {filteredHistory.length > 0 ? (
-                <div className="space-y-3">
-                  {filteredHistory.map((entry) => (
-                    <HoverCard key={entry.id}>
-                      <HoverCardTrigger asChild>
-                        <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors cursor-default" onClick={() => toggleRow(entry.id)}>
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                              {entry.isEligible ? (
-                                <CheckCircle className="h-5 w-5 text-green-600" />
-                              ) : (
-                                <XCircle className="h-5 w-5 text-red-600" />
-                              )}
-                              <span className="font-medium">Patient {entry.patientId}</span>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {historyVisibleColumns.map((col) => (
+                          <TableHead key={col}>{getHistoryColumnHeader(col)}</TableHead>
+                        ))}
+                        <TableHead className="w-[140px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredHistory.map((entry) => (
+                        <TableRow key={entry.id}>
+                          {historyVisibleColumns.map((col) => {
+                            const value = getHistoryColumnValue(entry, col);
+
+                            if (col === "Eligible") {
+                              return (
+                                <TableCell key={col}>
+                                  <Badge
+                                    variant={entry.isEligible ? "secondary" : "destructive"}
+                                  >
+                                    {entry.isEligible ? "Eligible" : "Not Eligible"}
+                                  </Badge>
+                                </TableCell>
+                              );
+                            }
+
+                            if (col === "Date") {
+                              return (
+                                <TableCell key={col}>
+                                  {entry.timestamp
+                                    ? new Date(entry.timestamp).toLocaleDateString("en-US", {
+                                        month: "2-digit",
+                                        day: "2-digit",
+                                        year: "numeric",
+                                      })
+                                    : "—"}
+                                </TableCell>
+                              );
+                            }
+
+                            return <TableCell key={col}>{value}</TableCell>;
+                          })}
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEdit(entry)}
+                                title="Edit"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => reverifyEntry(entry)}
+                                disabled={verifyingIds.includes(entry.id)}
+                                title="Re-verify"
+                              >
+                                {verifyingIds.includes(entry.id) ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => duplicateToForm(entry)}
+                                title="Copy to form"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <Badge variant="outline">{entry.payerId}</Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {new Date(entry.timestamp).toLocaleString()}
-                            </span>
-                            {entry.created_by_name && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                by {entry.created_by_name}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm text-muted-foreground">
-                              Copay: ${entry.coverage.copay} • Ded: ${entry.coverage.deductible}
-                            </div>
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(entry); }}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); reverifyEntry(entry); }} disabled={verifyingIds.includes(entry.id)}>
-                              {verifyingIds.includes(entry.id) ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); duplicateToForm(entry); }}>
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </HoverCardTrigger>
-                      <HoverCardContent align="start" className="w-96">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold">{entry.payerId}</span>
-                            <Badge variant="secondary">{entry.isEligible ? 'Eligible' : 'Not Eligible'}</Badge>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                            <div>
-                              <div className="font-medium text-foreground">Patient</div>
-                              <div>{entry.patientId}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Date</div>
-                              <div>{new Date(entry.timestamp).toLocaleString()}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Plan</div>
-                              <div>{entry.planType || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Network</div>
-                              <div>{entry.inNetworkStatus || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Copay</div>
-                              <div>${entry.coverage.copay}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Deductible</div>
-                              <div>${entry.coverage.deductible}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Coinsurance</div>
-                              <div>{entry.coverage.coinsurance}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Effective</div>
-                              <div>{entry.effectiveDate || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Termination</div>
-                              <div>{entry.terminationDate || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">OOP Max</div>
-                              <div>{entry.outOfPocketMax || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">OOP Remaining</div>
-                              <div>{entry.outOfPocketRemaining || '—'}</div>
-                            </div>
-                          </div>
-                          <div className="pt-2 flex justify-end">
-                            <Button size="sm" onClick={() => openEdit(entry)}>
-                              <Edit className="h-4 w-4 mr-2" /> Edit
-                            </Button>
-                          </div>
-                        </div>
-                      </HoverCardContent>
-                      {expandedRows.includes(entry.id) && (
-                        <div className="mt-2 border rounded-lg p-3 text-sm text-muted-foreground">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                            <div>
-                              <div className="font-medium text-foreground">S.No</div>
-                              <div>{entry.serialNo || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Appointment Location</div>
-                              <div>{entry.appointmentLocation || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">DOS / Appointment Date</div>
-                              <div>{entry.appointmentDate || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Type of Visit</div>
-                              <div>{entry.typeOfVisit || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Patient Name</div>
-                              <div>{entry.patientName || entry.patientId}</div>
-                            </div>
-                            {entry.created_by_name && (
-                              <div>
-                                <div className="font-medium text-foreground">Verified By</div>
-                                <div>{entry.created_by_name}</div>
-                              </div>
-                            )}
-                            <div>
-                              <div className="font-medium text-foreground">Total Collectible</div>
-                              <div>${(entry.estimatedResponsibility ?? entry.totalCollectible ?? ((entry.coverage?.copay ?? 0) + (entry.coverage?.deductible ?? 0)))}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Insurance Name</div>
-                              <div>{entry.payerId}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Active</div>
-                              <div>{entry.isEligible ? 'Yes' : 'No'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Network Status</div>
-                              <div>{entry.inNetworkStatus || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Copay</div>
-                              <div>${entry.coverage?.copay ?? 0}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Co-insurance</div>
-                              <div>{entry.coverage?.coinsurance ?? '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Deductible Met</div>
-                              <div>{entry.deductibleMet ? 'Met' : 'Not Met'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Member ID</div>
-                              <div>{entry.memberId || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Group #</div>
-                              <div>{entry.groupNumber || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Out-of-Pocket Max</div>
-                              <div>{entry.outOfPocketMax || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">OOP Remaining</div>
-                              <div>{entry.outOfPocketRemaining || '—'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Referral Required</div>
-                              <div>{entry.referralRequired ? 'Yes' : 'No'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Prior Auth Required</div>
-                              <div>{entry.preAuthorizationRequired ? 'Yes' : 'No'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Previous Balance</div>
-                              <div>${entry.previousBalanceCredit || '0.00'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">PT Responsibility</div>
-                              <div>${entry.patientResponsibility || '0.00'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Current Visit</div>
-                              <div>${entry.currentVisitAmount || '0.00'}</div>
-                            </div>
-                            <div>
-                              <div className="font-medium text-foreground">Contact Via</div>
-                              <div>{entry.verificationMethod || '—'}</div>
-                            </div>
-                            <div className="col-span-2">
-                              <div className="font-medium text-foreground">Notes</div>
-                              <div>{entry.notes || '—'}</div>
-                            </div>
-                          </div>
-                          <div className="pt-2 flex gap-2 justify-end">
-                            <Button variant="outline" size="sm" onClick={() => copySummary(entry)}>Copy summary</Button>
-                            <Button size="sm" onClick={() => duplicateToForm(entry)}>Duplicate to form</Button>
-                          </div>
-                        </div>
-                      )}
-                    </HoverCard>
-                  ))}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-8">
@@ -6601,6 +6995,89 @@ const EligibilityVerification = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Column selector dialog for Verification History */}
+          <Dialog open={showHistoryColumnSelector} onOpenChange={setShowHistoryColumnSelector}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold">Select Columns</DialogTitle>
+                <DialogDescription>
+                  Choose which columns to display in the Verification History table.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid grid-cols-2 gap-6 py-4">
+                {/* Available Columns */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Available Columns</h3>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {historyAvailableColumns.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No more columns to add.</p>
+                    )}
+                    {historyAvailableColumns.map((column) => (
+                      <div
+                        key={column}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="text-gray-900">{getHistoryColumnHeader(column)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            setHistoryAvailableColumns(
+                              historyAvailableColumns.filter((c) => c !== column)
+                            );
+                            setHistoryVisibleColumns([...historyVisibleColumns, column]);
+                          }}
+                        >
+                          <Plus className="h-4 w-4 text-gray-600" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Visible Columns */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {historyVisibleColumns.map((column) => (
+                      <div
+                        key={column}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="text-gray-900">{getHistoryColumnHeader(column)}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => {
+                            if (historyVisibleColumns.length === 1) return;
+                            setHistoryVisibleColumns(
+                              historyVisibleColumns.filter((c) => c !== column)
+                            );
+                            setHistoryAvailableColumns([...historyAvailableColumns, column]);
+                          }}
+                        >
+                          <X className="h-4 w-4 text-gray-600" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t">
+                <Button
+                  onClick={() => setShowHistoryColumnSelector(false)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Done
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-6">
@@ -6670,37 +7147,138 @@ const EligibilityVerification = () => {
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
                 Recent Activity
               </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHistoryColumnSelector(true)}
+                className="flex items-center gap-1"
+              >
+                <Filter className="h-4 w-4" />
+                Columns
+              </Button>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {verificationHistory.slice(0, 5).map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      {entry.isEligible ? (
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-600" />
-                      )}
-                      <div>
-                        <span className="font-medium">Patient {entry.patientId}</span>
-                        <span className="text-sm text-muted-foreground ml-2">• {entry.payerId}</span>
-                      </div>
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {new Date(entry.timestamp).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {verificationHistory.length === 0 ? (
+                <div className="text-center text-muted-foreground py-8">
+                  <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No verification history found</p>
+                  {searchTerm && (
+                    <p className="text-sm mt-2">Try adjusting your search criteria</p>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        {historyVisibleColumns.map((col) => (
+                          <th
+                            key={col}
+                            className="px-3 py-2 text-left font-medium text-muted-foreground"
+                          >
+                            {getHistoryColumnHeader(col)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {verificationHistory.slice(0, 50).map((entry) => (
+                        <tr key={entry.id} className="border-b last:border-0">
+                          {historyVisibleColumns.map((col) => (
+                            <td key={`${entry.id}-${col}`} className="px-3 py-2">
+                              {getHistoryColumnValue(entry, col)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* History column selector */}
+      <Dialog open={showHistoryColumnSelector} onOpenChange={setShowHistoryColumnSelector}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold">Select History Columns</DialogTitle>
+            <DialogDescription>
+              Choose which fields from the eligibility form you want to see in the Recent Activity table.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-6 py-4">
+            <div>
+              <h3 className="text-sm font-medium mb-2">Available Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {historyAvailableColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-2 border rounded-md bg-muted/40"
+                  >
+                    <span className="text-sm">{getHistoryColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        setHistoryAvailableColumns((prev) => prev.filter((c) => c !== column));
+                        setHistoryVisibleColumns((prev) => [...prev, column]);
+                      }}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                {historyAvailableColumns.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    All columns are currently visible.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium mb-2">Visible Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {historyVisibleColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-2 border rounded-md bg-muted/40"
+                  >
+                    <span className="text-sm">{getHistoryColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        setHistoryVisibleColumns((prev) => prev.filter((c) => c !== column));
+                        setHistoryAvailableColumns((prev) => [...prev, column]);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                {historyVisibleColumns.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Select at least one column to display.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => setShowHistoryColumnSelector(false)}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Verification Entry Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,19 @@ interface AuthorizationRequestDialogProps {
 
 const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizationId, patientId, patientData }: AuthorizationRequestDialogProps) => {
   const { currentCompany } = useAuth();
+
+  // Shared list of visit types (kept in sync with SimpleAppointmentForm)
+  const visitTypeOptions = [
+    { value: "consultation", label: "Consultation" },
+    { value: "follow_up", label: "Follow-up" },
+    { value: "routine_checkup", label: "Routine Checkup" },
+    { value: "physical_therapy", label: "Physical Therapy" },
+    { value: "emergency", label: "Emergency" },
+    { value: "specialist", label: "Specialist Visit" },
+    { value: "surgery", label: "Surgery" },
+    { value: "facility", label: "Facility" },
+  ];
+
   const [loading, setLoading] = useState(false);
   const [payers, setPayers] = useState<any[]>([]);
   const [providers, setProviders] = useState<any[]>([]);
@@ -56,46 +69,104 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   const [isCommentInternal, setIsCommentInternal] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [formData, setFormData] = useState({
-    // Simplified fields as per requirements
-    serial_no: "", // S.No
-    scheduled_location: "", // Scheduled Location
-    order_date: "", // Order Date
-    type_of_visit: "", // Type of Visit
-    patient_name: "", // Patient Name
-    primary_insurance: "", // Primary Insurance (payer_name)
-    primary_insurance_id: "", // Primary Insurance ID
-    description: "", // Description
-    prior_auth_required: false, // Prior Auth Required (checkbox)
-    prior_authorization_status: "pending", // Prior Authorization Status
-    remarks: "", // Remarks
-    secondary_insurance: "", // Secondary Insurance
-    secondary_insurance_id: "", // Secondary Insurance ID
-    secondary_prior_auth_required: false, // Prior Auth Required (secondary) (checkbox)
-    secondary_prior_authorization_status: "pending", // Prior Authorization Status (secondary)
-    // Hidden fields for database compatibility (mapped from simplified fields)
-    payer_id: "",
-    payer_name: "",
-    secondary_payer_id: "",
-    secondary_payer_name: "",
-    status: "pending",
-    service_type: "",
+    // Basic identification
+    serial_no: "",
+    
+    // Patient Information - ALL fields
+    patient_name: "",
+    patient_id: "",
+    patient_dob: "",
+    patient_member_id: "",
+    
+    // Facility Information
+    scheduled_location: "",
     facility_id: "",
     facility_name: "",
+    
+    // Service Information - ALL fields
+    order_date: "",
+    type_of_visit: "",
+    service_type: "",
+    service_start_date: "",
+    service_end_date: "",
+    description: "",
+    procedure_description: "",
+    procedure_codes: [] as string[],
+    diagnosis_codes: [] as string[],
+    clinical_indication: "",
+    
+    // Insurance Information - Primary
+    primary_insurance: "",
+    primary_insurance_id: "",
+    payer_id: "",
+    payer_name: "",
+    
+    // Insurance Information - Secondary
+    secondary_insurance: "",
+    secondary_insurance_id: "",
+    secondary_payer_id: "",
+    secondary_payer_name: "",
+    secondary_prior_auth_required: false,
+    secondary_prior_authorization_status: "pending",
+    
+    // Provider Information
+    provider_name: "",
+    provider_npi: "",
+    
+    // Authorization Status and Workflow
+    prior_auth_required: false,
+    prior_authorization_status: "pending",
+    status: "pending",
+    review_status: "",
+    authorization_type: "prior",
+    urgency_level: "",
+    
+    // Authorization Numbers and References
+    auth_number: "",
+    prior_auth_number: "",
+    submission_ref: "",
+    ack_status: "",
+    
+    // Visit Tracking
+    visits_authorized: 0,
+    units_requested: 0,
+    authorization_expiration_date: "",
+    
+    // Notes and Remarks
+    remarks: "",
+    internal_notes: "",
+    
+    // Renewal tracking
+    renewal_initiated: false,
   });
   const { toast } = useToast();
 
+  // Track if form has been initialized to prevent unnecessary resets
+  const formInitializedRef = useRef(false);
+  const previousOpenRef = useRef(false);
+
   useEffect(() => {
+    // Only reset if dialog was closed and is now opening (not just switching tabs)
+    const wasClosed = previousOpenRef.current === false;
+    const isNowOpen = open === true;
+    previousOpenRef.current = open;
+
     if (open) {
+      // Only fetch data if not already loaded (prevent unnecessary API calls)
+      if (!formInitializedRef.current || wasClosed) {
       fetchPayers();
       fetchPatients();
       fetchFacilities();
+      }
+
       if (authorizationId) {
         setIsEditMode(true);
         loadAuthorizationData(authorizationId);
         loadComments(authorizationId);
+        formInitializedRef.current = true;
       } else {
         setIsEditMode(false);
-        setSelectedPatientId(null);
+        
         // Pre-populate from patientData if provided
         if (patientData) {
           const timestamp = Date.now();
@@ -113,13 +184,24 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
             setPatientSearchTerm(patientData.name);
             setSelectedPatientId(patientId || 'pre-filled');
           }
+          formInitializedRef.current = true;
         } else if (patientId) {
           setSelectedPatientId(patientId);
           loadPatientData(patientId);
+          formInitializedRef.current = true;
         } else {
+          // Only reset form if dialog was closed and is now opening fresh
+          // Don't reset if just switching tabs (dialog stays open)
+          if (wasClosed && isNowOpen) {
           resetForm();
+            formInitializedRef.current = false;
         }
       }
+      }
+    } else {
+      // Dialog closed - reset the initialization flag
+      // But don't clear form data yet (preserve for when reopening)
+      formInitializedRef.current = false;
     }
   }, [open, authorizationId, patientId, patientData]);
 
@@ -135,34 +217,88 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
       if (data) {
         const authData = data as any;
-        // Map database fields to simplified form fields
+        // Map ALL database fields to form fields - comprehensive loading
         setFormData(prev => ({
           ...prev,
+          // Basic identification
           serial_no: authData.id ? authData.id.substring(0, 8).toUpperCase() : `AUTH-${Date.now().toString().slice(-8)}`,
-          scheduled_location: authData.facility_name || "",
-          order_date: authData.service_start_date || authData.created_at ? new Date(authData.service_start_date || authData.created_at).toISOString().split('T')[0] : "",
-          type_of_visit: authData.service_type || "",
+          
+          // Patient Information - load ALL patient fields
           patient_name: authData.patient_name || "",
-          primary_insurance: authData.payer_name_custom || "",
-          primary_insurance_id: authData.payer_id || "",
-          description: authData.service_type || authData.procedure_description || "",
-          prior_auth_required: authData.status && authData.status !== "draft" ? true : false,
-          prior_authorization_status: authData.status || "pending",
-          remarks: authData.internal_notes || "",
-          secondary_insurance: authData.secondary_payer_name || "",
-          secondary_insurance_id: authData.secondary_payer_id || "",
-          secondary_prior_auth_required: authData.secondary_payer_id ? true : false,
-          secondary_prior_authorization_status: authData.status || "pending",
-          // Keep mapping for database compatibility
-          payer_id: authData.payer_id || "",
-          payer_name: authData.payer_name_custom || "",
-          secondary_payer_id: authData.secondary_payer_id || "",
-          secondary_payer_name: authData.secondary_payer_name || "",
-          status: authData.status || "pending",
-          service_type: authData.service_type || "",
+          patient_id: authData.patient_id || "",
+          patient_dob: authData.patient_dob || "",
+          patient_member_id: authData.patient_member_id || "",
+          
+          // Facility Information
+          scheduled_location: authData.facility_name || authData.scheduled_location || "",
           facility_id: authData.facility_id || "",
           facility_name: authData.facility_name || "",
+          
+          // Service Information - load ALL service fields
+          order_date: authData.service_start_date || authData.order_date || (authData.created_at ? new Date(authData.created_at).toISOString().split('T')[0] : ""),
+          type_of_visit: authData.service_type || authData.type_of_visit || "",
+          service_type: authData.service_type || "",
+          service_start_date: authData.service_start_date || "",
+          service_end_date: authData.service_end_date || "",
+          description: authData.procedure_description || authData.service_type || authData.description || "",
+          procedure_description: authData.procedure_description || "",
+          procedure_codes: authData.procedure_codes || [],
+          diagnosis_codes: authData.diagnosis_codes || [],
+          clinical_indication: authData.clinical_indication || "",
+          
+          // Insurance Information - Primary
+          primary_insurance: authData.payer_name_custom || "",
+          primary_insurance_id: authData.payer_id || "",
+          payer_id: authData.payer_id || "",
+          payer_name: authData.payer_name_custom || "",
+          
+          // Insurance Information - Secondary
+          secondary_insurance: authData.secondary_payer_name || "",
+          secondary_insurance_id: authData.secondary_payer_id || "",
+          secondary_payer_id: authData.secondary_payer_id || "",
+          secondary_payer_name: authData.secondary_payer_name || "",
+          secondary_prior_auth_required: authData.secondary_payer_id ? true : false,
+          secondary_prior_authorization_status: authData.status || "pending",
+          
+          // Provider Information
+          provider_name: authData.provider_name_custom || "",
+          provider_npi: authData.provider_npi_custom || "",
+          
+          // Authorization Status and Workflow
+          prior_auth_required: authData.pa_required !== undefined ? authData.pa_required : (authData.status && authData.status !== "draft" ? true : false),
+          prior_authorization_status: authData.status || "pending",
+          status: authData.status || "pending",
+          review_status: authData.review_status || "",
+          authorization_type: authData.authorization_type || "prior",
+          urgency_level: authData.urgency_level || "",
+          
+          // Authorization Numbers and References
+          auth_number: authData.auth_number || authData.prior_auth_number || "",
+          prior_auth_number: authData.auth_number || authData.prior_auth_number || "",
+          submission_ref: authData.submission_ref || "",
+          ack_status: authData.ack_status || "",
+          
+          // Visit Tracking
+          visits_authorized: authData.visits_authorized || authData.units_requested || 0,
+          units_requested: authData.units_requested || 0,
+          authorization_expiration_date: authData.authorization_expiration_date || authData.expires_at || authData.service_end_date || "",
+          
+          // Notes and Remarks
+          remarks: authData.internal_notes || authData.remarks || "",
+          internal_notes: authData.internal_notes || "",
+          
+          // Renewal tracking
+          renewal_initiated: authData.renewal_initiated || false,
         }));
+        
+        // If patient_id exists, try to load patient data
+        if (authData.patient_id) {
+          try {
+            await loadPatientData(authData.patient_id);
+          } catch (err) {
+            console.log('Could not load additional patient data:', err);
+          }
+        }
       }
     } catch (error: any) {
       toast({
@@ -179,29 +315,75 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
     const serialNo = `AUTH-${timestamp.toString().slice(-8)}`;
     
     setFormData({
+      // Basic identification
       serial_no: serialNo,
-      scheduled_location: "",
-      order_date: "",
-      type_of_visit: "",
+      
+      // Patient Information
       patient_name: "",
-      primary_insurance: "",
-      primary_insurance_id: "",
-      description: "",
-      prior_auth_required: false,
-      prior_authorization_status: "pending",
-      remarks: "",
-      secondary_insurance: "",
-      secondary_insurance_id: "",
-      secondary_prior_auth_required: false,
-      secondary_prior_authorization_status: "pending",
-      payer_id: "",
-      payer_name: "",
-      secondary_payer_id: "",
-      secondary_payer_name: "",
-      status: "pending",
-      service_type: "",
+      patient_id: "",
+      patient_dob: "",
+      patient_member_id: "",
+      
+      // Facility Information
+      scheduled_location: "",
       facility_id: "",
       facility_name: "",
+      
+      // Service Information
+      order_date: "",
+      type_of_visit: "",
+      service_type: "",
+      service_start_date: "",
+      service_end_date: "",
+      description: "",
+      procedure_description: "",
+      procedure_codes: [],
+      diagnosis_codes: [],
+      clinical_indication: "",
+      
+      // Insurance Information - Primary
+      primary_insurance: "",
+      primary_insurance_id: "",
+      payer_id: "",
+      payer_name: "",
+      
+      // Insurance Information - Secondary
+      secondary_insurance: "",
+      secondary_insurance_id: "",
+      secondary_payer_id: "",
+      secondary_payer_name: "",
+      secondary_prior_auth_required: false,
+      secondary_prior_authorization_status: "pending",
+      
+      // Provider Information
+      provider_name: "",
+      provider_npi: "",
+      
+      // Authorization Status and Workflow
+      prior_auth_required: false,
+      prior_authorization_status: "pending",
+      status: "pending",
+      review_status: "",
+      authorization_type: "prior",
+      urgency_level: "",
+      
+      // Authorization Numbers and References
+      auth_number: "",
+      prior_auth_number: "",
+      submission_ref: "",
+      ack_status: "",
+      
+      // Visit Tracking
+      visits_authorized: 0,
+      units_requested: 0,
+      authorization_expiration_date: "",
+      
+      // Notes and Remarks
+      remarks: "",
+      internal_notes: "",
+      
+      // Renewal tracking
+      renewal_initiated: false,
     });
     setUploadedDocuments([]);
     setSelectedPatientId(null);
@@ -304,14 +486,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       setIsLoadingComments(true);
       const { data, error } = await supabase
         .from('authorization_request_comments' as any)
-        .select(`
-          *,
-          user:user_id (
-            id,
-            email,
-            raw_user_meta_data
-          )
-        `)
+        // Simple select without joined user relationship to avoid PostgREST FK errors
+        .select('*')
         .eq('authorization_request_id', authId)
         .order('created_at', { ascending: false });
 
@@ -327,7 +503,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         comment_type: comment.comment_type || 'general',
         user_id: comment.user_id,
         created_at: comment.created_at,
-        user_name: comment.user?.raw_user_meta_data?.full_name || comment.user?.email || 'Unknown User',
+        // Without a FK-based join, we fall back to user_id for display
+        user_name: comment.user_id ? comment.user_id.substring(0, 8) : 'Unknown User',
       }));
 
       setComments(formattedComments);
@@ -706,11 +883,18 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       console.log('🔍 Search patterns:', searchPatterns);
       
       // Search in database using ilike for case-insensitive search
-      const { data: patientsData, error } = await supabase
+      // CRITICAL: Filter by company_id for multi-tenant isolation
+      let searchQuery = supabase
         .from('patients' as any)
         .select('id, patient_id, first_name, last_name, date_of_birth, phone, email')
-        .or(searchPatterns.join(','))
-        .limit(20);
+        .or(searchPatterns.join(','));
+      
+      if (currentCompany?.id) {
+        console.log('🏢 Filtering patient search by company_id:', currentCompany.id);
+        searchQuery = searchQuery.eq('company_id', currentCompany.id);
+      }
+      
+      const { data: patientsData, error } = await searchQuery.limit(20);
 
       if (error) {
         console.error('❌ Patient search error:', error);
@@ -718,11 +902,16 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         
         // Try a simpler search as fallback
         try {
-          const { data: fallbackData, error: fallbackError } = await supabase
+          let fallbackQuery = supabase
             .from('patients' as any)
             .select('id, patient_id, first_name, last_name, date_of_birth, phone, email')
-            .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%`)
-            .limit(20);
+            .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%`);
+          
+          if (currentCompany?.id) {
+            fallbackQuery = fallbackQuery.eq('company_id', currentCompany.id);
+          }
+          
+          const { data: fallbackData, error: fallbackError } = await fallbackQuery.limit(20);
             
           if (!fallbackError && fallbackData) {
             const formattedResults = ((fallbackData || []) as any[]).map(p => ({
@@ -842,29 +1031,64 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         return;
       }
       
-      // Prepare data object with simplified fields
+      // Prepare data object with ALL fields - comprehensive save
       const authData: any = {
         user_id: user.id,
         company_id: currentCompany?.id || null,
-        // Patient Information
-        patient_name: formData.patient_name,
-        // Payer Information
+        
+        // Patient Information - ALL fields
+        patient_id: formData.patient_id || selectedPatientId || null,
+        patient_name: formData.patient_name || null,
+        patient_dob: formData.patient_dob || null,
+        patient_member_id: formData.patient_member_id || null,
+        
+        // Payer Information - Primary
         payer_id: formData.primary_insurance_id || formData.payer_id || null,
-        payer_name_custom: formData.primary_insurance || (selectedPayer ? selectedPayer.name : null),
+        payer_name_custom: formData.primary_insurance || formData.payer_name || (selectedPayer ? selectedPayer.name : null),
+        
+        // Payer Information - Secondary
+        secondary_payer_id: formData.secondary_insurance_id || formData.secondary_payer_id || null,
+        secondary_payer_name: formData.secondary_insurance || formData.secondary_payer_name || null,
+        
         // Facility Information
         facility_id: formData.facility_id || null,
         facility_name: formData.scheduled_location || formData.facility_name || null,
-        // Service Information
-        service_type: formData.description || formData.type_of_visit || null,
-        service_start_date: formData.order_date || null,
-        // Secondary Insurance
-        secondary_payer_id: formData.secondary_insurance_id || formData.secondary_payer_id || null,
-        secondary_payer_name: formData.secondary_insurance || null,
-        // Status and workflow
+        
+        // Service Information - ALL fields
+        service_type: formData.service_type || formData.type_of_visit || formData.description || null,
+        service_start_date: formData.service_start_date || formData.order_date || null,
+        service_end_date: formData.service_end_date || null,
+        procedure_description: formData.procedure_description || formData.description || null,
+        procedure_codes: formData.procedure_codes && formData.procedure_codes.length > 0 ? formData.procedure_codes : null,
+        diagnosis_codes: formData.diagnosis_codes && formData.diagnosis_codes.length > 0 ? formData.diagnosis_codes : null,
+        clinical_indication: formData.clinical_indication || null,
+        
+        // Provider Information
+        provider_name_custom: formData.provider_name || null,
+        provider_npi_custom: formData.provider_npi || null,
+        
+        // Status and workflow - ALL fields
         status: formData.prior_authorization_status || formData.status || 'pending',
-        authorization_type: 'prior',
+        review_status: formData.review_status || null,
+        authorization_type: formData.authorization_type || 'prior',
+        urgency_level: formData.urgency_level || null,
+        pa_required: formData.prior_auth_required !== undefined ? formData.prior_auth_required : null,
+        
+        // Authorization Numbers and References
+        auth_number: formData.auth_number || formData.prior_auth_number || null,
+        submission_ref: formData.submission_ref || null,
+        ack_status: formData.ack_status || null,
+        
+        // Visit tracking and expiration
+        visits_authorized: formData.visits_authorized || null,
+        units_requested: formData.units_requested || null,
+        authorization_expiration_date: formData.authorization_expiration_date || null,
+        
         // Internal notes/remarks
-        internal_notes: formData.remarks || null,
+        internal_notes: formData.internal_notes || formData.remarks || null,
+        
+        // Renewal tracking
+        renewal_initiated: formData.renewal_initiated || false,
       };
 
       if (isEditMode && authorizationId) {
@@ -904,8 +1128,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         });
       } else {
         // Create new authorization
-        authData.status = 'draft';
-        
+        // Keep the status coming from the form (defaults to "pending")
         const { data: newAuth, error } = await supabase
           .from('authorization_requests' as any)
           .insert(authData)
@@ -1103,13 +1326,29 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
               </div>
               <div>
                 <Label htmlFor="type_of_visit">Type of Visit *</Label>
-                <Input
-                  id="type_of_visit"
+                <Select
                   value={formData.type_of_visit}
-                  onChange={(e) => setFormData({ ...formData, type_of_visit: e.target.value, service_type: e.target.value, description: e.target.value })}
-                  placeholder="e.g., Office Visit, Consultation"
+                  onValueChange={(value) => {
+                    const selected = visitTypeOptions.find(v => v.value === value);
+                    setFormData({
+                      ...formData,
+                      type_of_visit: value,
+                      service_type: selected?.label || value,
+                    });
+                  }}
                   required
-                />
+                >
+                  <SelectTrigger id="type_of_visit">
+                    <SelectValue placeholder="Select type of visit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visitTypeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="patient_name_display">Patient Name *</Label>
@@ -1191,6 +1430,29 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                     <SelectItem value="under_review">Under Review</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label htmlFor="visits_authorized">Visits Authorized</Label>
+                <Input
+                  id="visits_authorized"
+                  type="number"
+                  min="0"
+                  value={formData.visits_authorized || ""}
+                  onChange={(e) => setFormData({ ...formData, visits_authorized: parseInt(e.target.value) || 0 })}
+                  placeholder="0 = Unlimited"
+                  title="Enter 0 for unlimited visits, or a number to set a limit"
+                />
+                <p className="text-xs text-muted-foreground mt-1">0 = Unlimited visits</p>
+              </div>
+              <div>
+                <Label htmlFor="authorization_expiration_date">Expiration Date</Label>
+                <Input
+                  id="authorization_expiration_date"
+                  type="date"
+                  value={formData.authorization_expiration_date || ""}
+                  onChange={(e) => setFormData({ ...formData, authorization_expiration_date: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground mt-1">When this authorization expires</p>
               </div>
               <div className="col-span-2">
                 <Label htmlFor="remarks">Remarks</Label>

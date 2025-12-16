@@ -46,13 +46,23 @@ export function Patients() {
   const [isLoading, setIsLoading] = useState(true); // Start as loading
   const isFetchingRef = useRef(false); // Use ref to prevent duplicate fetches (avoids race conditions)
   const { toast } = useToast();
-  const { currentCompany } = useAuth();
+  const { currentCompany, isSuperAdmin } = useAuth();
+  
+  // CRITICAL: Ensure company is loaded before fetching data
+  useEffect(() => {
+    if (currentCompany?.id) {
+      console.log('🏢 Current company loaded:', currentCompany.id, currentCompany.name);
+    } else {
+      console.warn('⚠️ No company selected. Data will be filtered by RLS only.');
+    }
+  }, [currentCompany]);
   
   // CRITICAL: Log initial state
   console.log('📊 Initial patients state length:', patients.length);
 
   // Fetch patients from database on component mount
   // Use auth state listener to ensure session is ready before fetching
+  // CRITICAL: Also depend on currentCompany to refetch when company changes
   useEffect(() => {
     let mounted = true;
     let authListener: { data: { subscription: any } } | null = null;
@@ -62,7 +72,7 @@ export function Patients() {
     const fetchIfNeeded = () => {
       if (mounted && !hasFetched) {
         hasFetched = true;
-      fetchPatientsFromDatabase();
+        fetchPatientsFromDatabase();
       }
     };
 
@@ -104,7 +114,7 @@ export function Patients() {
         authListener.data.subscription.unsubscribe();
       }
     };
-  }, []);
+  }, [currentCompany?.id]); // Refetch when company changes
 
   const fetchPatientsFromDatabase = async () => {
     // Prevent duplicate concurrent fetches using ref (avoids race conditions with state)
@@ -138,23 +148,50 @@ export function Patients() {
       let data: any[] | null = null;
       let error: any = null;
       
-      // Try to use the enhanced view first
-      const { data: viewData, error: viewError } = await supabase
+      // CRITICAL: Filter by company_id for multi-tenant isolation
+      // Build query with company_id filter if available
+      let viewQuery = supabase
         .from('patient_dashboard_summary' as any)
-        .select('*')
+        .select('*');
+      
+      let tableQuery = supabase
+        .from('patients' as any)
+        .select('*');
+      
+      // Add company_id filter if currentCompany is available
+      // CRITICAL: Each company should ONLY see their own data, not NULL records or other companies' data
+      // Super admins can see all patients regardless of company_id
+      if (isSuperAdmin) {
+        console.log('👑 Super admin - showing all patients (no company filter)');
+        // Super admin sees everything - no filter needed
+      } else if (currentCompany?.id) {
+        console.log('🏢 Filtering patients by company_id ONLY:', currentCompany.id, currentCompany.name || currentCompany.slug);
+        // CRITICAL: Only show records with this exact company_id - NO NULL records
+        // Each company must only see their own data for proper multi-tenancy isolation
+        // Use .eq() for exact match - this is the correct Supabase syntax
+        viewQuery = viewQuery.eq('company_id', currentCompany.id);
+        tableQuery = tableQuery.eq('company_id', currentCompany.id);
+      } else {
+        console.warn('⚠️ No company_id filter applied - showing patients with NULL company_id only');
+        // Only show NULL records if no company is selected (shouldn't happen in production)
+        // Use .is() for NULL check - this is the correct Supabase syntax
+        viewQuery = viewQuery.is('company_id', null);
+        tableQuery = tableQuery.is('company_id', null);
+      }
+      
+      // Try to use the enhanced view first
+      const { data: viewData, error: viewError } = await viewQuery
         .order('created_at', { ascending: false });
       
       if (!viewError && viewData) {
         // View exists and works - use it
         data = viewData;
-        console.log('✅ Using patient_dashboard_summary view');
+        console.log('✅ Using patient_dashboard_summary view with company filter');
       } else {
         // View doesn't exist or has error - fallback to patients table
         console.log('⚠️ View not available, falling back to patients table');
-        const { data: tableData, error: tableError } = await supabase
-        .from('patients' as any)
-        .select('*')
-        .order('created_at', { ascending: false });
+        const { data: tableData, error: tableError } = await tableQuery
+          .order('created_at', { ascending: false });
         data = tableData;
         error = tableError;
       }
@@ -482,37 +519,83 @@ export function Patients() {
 
       console.log('✅ Patient updated successfully:', updated);
 
-      // Update insurance if provided
-      if (updatedPatient.insuranceCompany || updatedPatient.insuranceId) {
+      // Update insurance if provided - save ALL insurance fields
+      if (updatedPatient.insuranceCompany || updatedPatient.insuranceId || updatedPatient.secondaryInsurance || updatedPatient.secondaryInsuranceCompanyId) {
         // Check if insurance record exists
         const { data: existingInsurance } = await supabase
           .from('patient_insurance' as any)
           .select('id')
           .eq('patient_id', updatedPatient.id)
-          .single();
+          .maybeSingle();
 
         const insuranceData: any = {
           patient_id: updatedPatient.id,
+          // Primary Insurance - ALL fields
           primary_insurance_company: updatedPatient.insuranceCompany || updatedPatient.insurance || null,
+          primary_insurance_company_id: updatedPatient.insuranceCompanyId || null,
           primary_insurance_id: updatedPatient.insuranceId || null,
           primary_group_number: updatedPatient.groupNumber || null,
           primary_policy_holder_name: updatedPatient.policyHolderName || null,
           primary_policy_holder_relationship: updatedPatient.policyHolderRelationship || null,
+          // Secondary Insurance - ALL fields
           secondary_insurance_company: updatedPatient.secondaryInsurance || null,
+          secondary_insurance_company_id: updatedPatient.secondaryInsuranceCompanyId || null,
           secondary_insurance_id: updatedPatient.secondaryInsuranceId || null,
+          secondary_group_number: updatedPatient.secondaryGroupNumber || null,
+          secondary_policy_holder_name: updatedPatient.secondaryPolicyHolderName || null,
+          secondary_policy_holder_relationship: updatedPatient.secondaryPolicyHolderRelationship || null,
         };
+
+        // Remove null values for optional fields
+        Object.keys(insuranceData).forEach(key => {
+          if (insuranceData[key] === null || insuranceData[key] === '') {
+            delete insuranceData[key];
+          }
+        });
 
         if (existingInsurance) {
           // Update existing insurance
-          await supabase
+          const { error: insuranceError } = await supabase
             .from('patient_insurance' as any)
             .update(insuranceData)
             .eq('patient_id', updatedPatient.id);
+          
+          if (insuranceError) {
+            console.warn('⚠️ Error updating insurance (non-critical):', insuranceError);
+          }
         } else {
           // Insert new insurance record
-          await supabase
+          const { error: insuranceError } = await supabase
             .from('patient_insurance' as any)
             .insert(insuranceData);
+          
+          if (insuranceError) {
+            console.warn('⚠️ Error inserting insurance (non-critical):', insuranceError);
+          }
+        }
+      }
+      
+      // Also update insurance fields directly in patients table if they exist
+      const patientInsuranceUpdate: any = {};
+      if (updatedPatient.insuranceCompanyId) patientInsuranceUpdate.primary_insurance_id = updatedPatient.insuranceCompanyId;
+      if (updatedPatient.insuranceId) patientInsuranceUpdate.insurance_id = updatedPatient.insuranceId;
+      if (updatedPatient.groupNumber) patientInsuranceUpdate.group_number = updatedPatient.groupNumber;
+      if (updatedPatient.policyHolderName) patientInsuranceUpdate.policy_holder_name = updatedPatient.policyHolderName;
+      if (updatedPatient.policyHolderRelationship) patientInsuranceUpdate.policy_holder_relationship = updatedPatient.policyHolderRelationship;
+      if (updatedPatient.secondaryInsuranceCompanyId) patientInsuranceUpdate.secondary_insurance_company_id = updatedPatient.secondaryInsuranceCompanyId;
+      if (updatedPatient.secondaryInsuranceId) patientInsuranceUpdate.secondary_insurance_id = updatedPatient.secondaryInsuranceId;
+      if (updatedPatient.secondaryGroupNumber) patientInsuranceUpdate.secondary_group_number = updatedPatient.secondaryGroupNumber;
+      if (updatedPatient.secondaryPolicyHolderName) patientInsuranceUpdate.secondary_policy_holder_name = updatedPatient.secondaryPolicyHolderName;
+      if (updatedPatient.secondaryPolicyHolderRelationship) patientInsuranceUpdate.secondary_policy_holder_relationship = updatedPatient.secondaryPolicyHolderRelationship;
+      
+      if (Object.keys(patientInsuranceUpdate).length > 0) {
+        const { error: patientInsuranceError } = await supabase
+          .from('patients' as any)
+          .update(patientInsuranceUpdate)
+          .eq('id', updatedPatient.id);
+        
+        if (patientInsuranceError) {
+          console.warn('⚠️ Error updating insurance in patients table (non-critical):', patientInsuranceError);
         }
       }
 
@@ -560,7 +643,7 @@ export function Patients() {
         }
       }
 
-      // Transform updated database record to match component format
+      // Transform updated database record to match component format - include ALL fields
       const transformedPatient = {
         id: updated.id,
         name: `${updated.first_name || ''} ${updated.last_name || ''}`.trim(),
@@ -601,6 +684,22 @@ export function Patients() {
         race: updated.race,
         ethnicity: updated.ethnicity,
         language: updated.language,
+        // Insurance fields - ALL fields
+        insuranceCompany: updatedPatient.insuranceCompany || '',
+        insuranceCompanyId: updatedPatient.insuranceCompanyId || (updated as any).primary_insurance_id || '',
+        insuranceId: updatedPatient.insuranceId || (updated as any).insurance_id || '',
+        groupNumber: updatedPatient.groupNumber || (updated as any).group_number || '',
+        policyHolderName: updatedPatient.policyHolderName || (updated as any).policy_holder_name || '',
+        policyHolderRelationship: updatedPatient.policyHolderRelationship || (updated as any).policy_holder_relationship || '',
+        secondaryInsurance: updatedPatient.secondaryInsurance || '',
+        secondaryInsuranceCompanyId: updatedPatient.secondaryInsuranceCompanyId || (updated as any).secondary_insurance_company_id || '',
+        secondaryInsuranceId: updatedPatient.secondaryInsuranceId || (updated as any).secondary_insurance_id || '',
+        secondaryGroupNumber: updatedPatient.secondaryGroupNumber || (updated as any).secondary_group_number || '',
+        secondaryPolicyHolderName: updatedPatient.secondaryPolicyHolderName || (updated as any).secondary_policy_holder_name || '',
+        secondaryPolicyHolderRelationship: updatedPatient.secondaryPolicyHolderRelationship || (updated as any).secondary_policy_holder_relationship || '',
+        // Medical history fields
+        previousSurgeries: updatedPatient.previousSurgeries || '',
+        familyHistory: updatedPatient.familyHistory || '',
       };
 
       // Update local state

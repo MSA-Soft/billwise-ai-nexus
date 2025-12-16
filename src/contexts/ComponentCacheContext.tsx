@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useRef, useEffect } from 'react';
 
 interface ComponentCacheContextType {
   getCachedComponent: (key: string, factory: () => ReactNode) => ReactNode;
@@ -8,15 +8,27 @@ interface ComponentCacheContextType {
 const ComponentCacheContext = createContext<ComponentCacheContextType | undefined>(undefined);
 
 export const ComponentCacheProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [cache, setCache] = useState<Map<string, ReactNode>>(new Map());
+  // Use ref to store cache - no state updates during render
+  const cacheRef = useRef<Map<string, ReactNode>>(new Map());
+  const [, forceUpdate] = useState({});
 
   const getCachedComponent = (key: string, factory: () => ReactNode): ReactNode => {
-    if (!cache.has(key)) {
-      const component = factory();
-      setCache(prev => new Map(prev).set(key, component));
-      return component;
+    // Check ref synchronously (no state update during render)
+    if (cacheRef.current.has(key)) {
+      return cacheRef.current.get(key)!;
     }
-    return cache.get(key)!;
+    
+    // If not in cache, create component and store in ref
+    const component = factory();
+    cacheRef.current.set(key, component);
+    
+    // Schedule a state update after render to trigger re-render if needed
+    // This is safe because it's deferred
+    setTimeout(() => {
+      forceUpdate({});
+    }, 0);
+    
+    return component;
   };
 
   const clearCache = (key?: string) => {
@@ -24,10 +36,13 @@ export const ComponentCacheProvider: React.FC<{ children: ReactNode }> = ({ chil
       setCache(prev => {
         const newCache = new Map(prev);
         newCache.delete(key);
+        cacheRef.current.delete(key);
         return newCache;
       });
     } else {
       setCache(new Map());
+      cacheRef.current.clear();
+      pendingUpdatesRef.current.clear();
     }
   };
 

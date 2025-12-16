@@ -6,7 +6,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   User, 
   Phone, 
@@ -20,7 +19,6 @@ import {
   Stethoscope,
   CreditCard,
   Users,
-  ChevronRight,
   Check,
   X
 } from 'lucide-react';
@@ -35,7 +33,6 @@ interface PatientRegistrationFormProps {
 
 export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRegistrationFormProps) {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   
@@ -52,11 +49,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
   const [lastName, setLastName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
-  const [ssn, setSsn] = useState('');
-  const [maritalStatus, setMaritalStatus] = useState('');
-  const [race, setRace] = useState('');
-  const [ethnicity, setEthnicity] = useState('');
-  const [language, setLanguage] = useState('');
 
   // Contact Information
   const [phone, setPhone] = useState('');
@@ -77,11 +69,13 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
   const [policyHolderName, setPolicyHolderName] = useState('');
   const [policyHolderRelationship, setPolicyHolderRelationship] = useState('');
   const [secondaryInsurance, setSecondaryInsurance] = useState('');
+  const [secondaryInsuranceCompanyId, setSecondaryInsuranceCompanyId] = useState('');
   const [secondaryInsuranceId, setSecondaryInsuranceId] = useState('');
+  const [secondaryGroupNumber, setSecondaryGroupNumber] = useState('');
+  const [secondaryPolicyHolderName, setSecondaryPolicyHolderName] = useState('');
+  const [secondaryPolicyHolderRelationship, setSecondaryPolicyHolderRelationship] = useState('');
   
   // Provider/Practice Information
-  const [preferredProvider, setPreferredProvider] = useState('');
-  const [primaryPractice, setPrimaryPractice] = useState('');
   
   // Fetch data from Customer Setup
   useEffect(() => {
@@ -248,12 +242,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     return Object.keys(newErrors).length === 0;
   };
 
-  const validateCurrentTab = (tab: string): boolean => {
-    if (tab === 'basic') return validateBasicTab();
-    if (tab === 'contact') return validateContactTab();
-    if (tab === 'insurance') return validateInsuranceTab();
-    return true; // medical tab has no required fields
-  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -366,24 +354,19 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
         totalVisits: 0,
         outstandingBalance: 0,
         riskLevel: 'low' as const,
-        preferredProvider: preferredProvider,
-        preferredProviderId: preferredProvider,
-        primaryPractice: primaryPractice,
-        primaryPracticeId: primaryPractice,
         lastVisit: '',
         // Additional fields
         gender,
-        ssn,
-        maritalStatus,
-        race,
-        ethnicity,
-        language,
         insuranceId,
         groupNumber,
         policyHolderName,
         policyHolderRelationship,
         secondaryInsurance,
+        secondaryInsuranceCompanyId: secondaryInsuranceCompanyId || null,
         secondaryInsuranceId,
+        secondaryGroupNumber,
+        secondaryPolicyHolderName,
+        secondaryPolicyHolderRelationship,
         previousSurgeries,
         familyHistory
       };
@@ -395,11 +378,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
       setLastName('');
       setDateOfBirth('');
       setGender('');
-      setSsn('');
-      setMaritalStatus('');
-      setRace('');
-      setEthnicity('');
-      setLanguage('');
       setPhone('');
       setEmail('');
       setAddress('');
@@ -424,7 +402,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
       setMedicalConditions('');
       setPreviousSurgeries('');
       setFamilyHistory('');
-      setActiveTab('basic');
       setErrors({});
     } catch (error) {
       console.error('Error submitting patient registration:', error);
@@ -442,8 +419,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     setGender('');
     setSsn('');
     setMaritalStatus('');
-    setRace('');
-    setEthnicity('');
     setLanguage('');
     setPhone('');
     setEmail('');
@@ -463,13 +438,16 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     setPolicyHolderName('');
     setPolicyHolderRelationship('');
     setSecondaryInsurance('');
+    setSecondaryInsuranceCompanyId('');
     setSecondaryInsuranceId('');
+    setSecondaryGroupNumber('');
+    setSecondaryPolicyHolderName('');
+    setSecondaryPolicyHolderRelationship('');
     setAllergies('');
     setCurrentMedications('');
     setMedicalConditions('');
     setPreviousSurgeries('');
     setFamilyHistory('');
-    setActiveTab('basic');
     setErrors({});
   };
 
@@ -486,27 +464,7 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="basic" className="flex items-center">
-              <User className="h-4 w-4 mr-2" />
-              Basic Info
-            </TabsTrigger>
-            <TabsTrigger value="contact" className="flex items-center">
-              <Phone className="h-4 w-4 mr-2" />
-              Contact
-            </TabsTrigger>
-            <TabsTrigger value="insurance" className="flex items-center">
-              <Shield className="h-4 w-4 mr-2" />
-              Insurance
-            </TabsTrigger>
-            <TabsTrigger value="medical" className="flex items-center">
-              <Stethoscope className="h-4 w-4 mr-2" />
-              Medical
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="basic" className="space-y-6">
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -596,140 +554,9 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                       </p>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ssn">Social Security Number</Label>
-                    <Input
-                      id="ssn"
-                      value={ssn}
-                      onChange={(e) => setSsn(e.target.value)}
-                      placeholder="XXX-XX-XXXX"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="maritalStatus">Marital Status</Label>
-                    <Select value={maritalStatus} onValueChange={setMaritalStatus}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select marital status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="single">Single</SelectItem>
-                        <SelectItem value="married">Married</SelectItem>
-                        <SelectItem value="divorced">Divorced</SelectItem>
-                        <SelectItem value="widowed">Widowed</SelectItem>
-                        <SelectItem value="separated">Separated</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="race">Race</Label>
-                    <Select value={race} onValueChange={setRace}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select race" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="american-indian">American Indian or Alaska Native</SelectItem>
-                        <SelectItem value="asian">Asian</SelectItem>
-                        <SelectItem value="black">Black or African American</SelectItem>
-                        <SelectItem value="native-hawaiian">Native Hawaiian or Other Pacific Islander</SelectItem>
-                        <SelectItem value="white">White</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                        <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ethnicity">Ethnicity</Label>
-                    <Select value={ethnicity} onValueChange={setEthnicity}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select ethnicity" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                        <SelectItem value="not-hispanic">Not Hispanic or Latino</SelectItem>
-                        <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Preferred Language</Label>
-                    <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="english">English</SelectItem>
-                        <SelectItem value="spanish">Spanish</SelectItem>
-                        <SelectItem value="french">French</SelectItem>
-                        <SelectItem value="german">German</SelectItem>
-                        <SelectItem value="chinese">Chinese</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                
-                {/* Provider and Practice Selection */}
-                <div className="pt-4 border-t">
-                  <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
-                    <Stethoscope className="h-4 w-4 mr-2 text-blue-500" />
-                    Provider & Practice Assignment
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="primaryPractice">Primary Practice</Label>
-                      <Select 
-                        value={primaryPractice || "none"} 
-                        onValueChange={(value) => setPrimaryPractice(value === "none" ? "" : value)}
-                        disabled={isLoadingPractices}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={isLoadingPractices ? "Loading practices..." : "Select practice (optional)"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {practices.length === 0 && !isLoadingPractices ? (
-                            <SelectItem value="no-practices" disabled>No practices found. Please add practices in Customer Setup.</SelectItem>
-                          ) : (
-                            practices.map(practice => (
-                              <SelectItem key={practice.id} value={practice.id}>
-                                {practice.name} {practice.npi ? `(NPI: ${practice.npi})` : ''}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="preferredProvider">Preferred Provider</Label>
-                      <Select 
-                        value={preferredProvider || "none"} 
-                        onValueChange={(value) => setPreferredProvider(value === "none" ? "" : value)}
-                        disabled={isLoadingProviders}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={isLoadingProviders ? "Loading providers..." : "Select provider (optional)"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {providers.length === 0 && !isLoadingProviders ? (
-                            <SelectItem value="no-providers" disabled>No providers found. Please add providers in Customer Setup.</SelectItem>
-                          ) : (
-                            providers.map(provider => (
-                              <SelectItem key={provider.id} value={provider.id}>
-                                {provider.first_name} {provider.last_name} {provider.credentials ? `, ${provider.credentials}` : ''} {provider.taxonomy_specialty ? `- ${provider.taxonomy_specialty}` : ''}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="contact" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -912,9 +739,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="insurance" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -1020,13 +844,32 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="secondaryInsurance">Secondary Insurance Company</Label>
-                      <Input
-                        id="secondaryInsurance"
-                        value={secondaryInsurance}
-                        onChange={(e) => setSecondaryInsurance(e.target.value)}
-                        placeholder="Secondary insurance company"
-                      />
+                      <Label htmlFor="secondaryInsuranceCompany">Secondary Insurance Company</Label>
+                      <Select
+                        value={secondaryInsuranceCompanyId}
+                        onValueChange={(value) => {
+                          const payer = payers.find(p => p.id === value);
+                          setSecondaryInsuranceCompanyId(value);
+                          setSecondaryInsurance(payer?.name || '');
+                        }}
+                        disabled={isLoadingPayers}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance company"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {payers.length === 0 && !isLoadingPayers ? (
+                            <SelectItem value="no-payers" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                          ) : (
+                            payers.map(payer => (
+                              <SelectItem key={payer.id} value={payer.id}>
+                                {payer.name} {payer.plan_name ? `- ${payer.plan_name}` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="secondaryInsuranceId">Secondary Insurance ID</Label>
@@ -1034,16 +877,46 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                         id="secondaryInsuranceId"
                         value={secondaryInsuranceId}
                         onChange={(e) => setSecondaryInsuranceId(e.target.value)}
-                        placeholder="Secondary insurance ID"
+                        placeholder="ABC123456789"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryGroupNumber">Group Number</Label>
+                      <Input
+                        id="secondaryGroupNumber"
+                        value={secondaryGroupNumber}
+                        onChange={(e) => setSecondaryGroupNumber(e.target.value)}
+                        placeholder="Group number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryPolicyHolderName">Policy Holder Name</Label>
+                      <Input
+                        id="secondaryPolicyHolderName"
+                        value={secondaryPolicyHolderName}
+                        onChange={(e) => setSecondaryPolicyHolderName(e.target.value)}
+                        placeholder="Policy holder name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryPolicyHolderRelationship">Policy Holder Relationship</Label>
+                      <Select value={secondaryPolicyHolderRelationship} onValueChange={setSecondaryPolicyHolderRelationship}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select relationship" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="self">Self</SelectItem>
+                          <SelectItem value="spouse">Spouse</SelectItem>
+                          <SelectItem value="parent">Parent</SelectItem>
+                          <SelectItem value="child">Child</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="medical" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -1108,46 +981,12 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+        </div>
 
-        <DialogFooter className="flex justify-between">
+        <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <div className="flex space-x-2">
-            {activeTab !== 'basic' && (
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  const tabs = ['basic', 'contact', 'insurance', 'medical'];
-                  const currentIndex = tabs.indexOf(activeTab);
-                  if (currentIndex > 0) {
-                    setActiveTab(tabs[currentIndex - 1]);
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Previous
-              </Button>
-            )}
-            {activeTab !== 'medical' ? (
-              <Button 
-                onClick={() => {
-                  const tabs = ['basic', 'contact', 'insurance', 'medical'];
-                  const currentIndex = tabs.indexOf(activeTab);
-                  if (currentIndex < tabs.length - 1) {
-                    if (validateCurrentTab(activeTab)) {
-                      setActiveTab(tabs[currentIndex + 1]);
-                    }
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-2" />
-              </Button>
-            ) : (
               <Button 
                 onClick={handleSubmit} 
                 disabled={isSubmitting}
@@ -1165,8 +1004,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
                   </>
                 )}
               </Button>
-            )}
-          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

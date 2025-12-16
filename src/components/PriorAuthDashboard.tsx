@@ -6,7 +6,22 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, FileText } from "lucide-react";
+import { Plus, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, FileText, Columns3, X } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import AuthorizationRequestDialog from "./AuthorizationRequestDialog";
 
 const PriorAuthDashboard = () => {
@@ -24,6 +39,26 @@ const PriorAuthDashboard = () => {
     approvalRate: 0
   });
   const { toast } = useToast();
+
+  // Dynamic column management for authorization list
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    "Patient",
+    "Payer",
+    "Service",
+    "Requested Date",
+    "Status",
+    "AI Score",
+    "Auth Number",
+    "Actions",
+  ]);
+
+  const [availableColumns, setAvailableColumns] = useState<string[]>([
+    "Urgency",
+    "Review Status",
+    "Submission Ref",
+  ]);
+
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   const handleAIAnalysis = async () => {
     try {
@@ -127,6 +162,68 @@ const PriorAuthDashboard = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const getColumnHeader = (column: string) => {
+    switch (column) {
+      case "Patient":
+        return "Patient";
+      case "Payer":
+        return "Payer";
+      case "Service":
+        return "Service";
+      case "Requested Date":
+        return "Requested";
+      case "Status":
+        return "Status";
+      case "AI Score":
+        return "AI Score";
+      case "Auth Number":
+        return "Auth #";
+      case "Urgency":
+        return "Urgency";
+      case "Review Status":
+        return "Review Status";
+      case "Submission Ref":
+        return "Submission Ref";
+      case "Actions":
+        return "Actions";
+      default:
+        return column;
+    }
+  };
+
+  const getColumnValue = (auth: any, column: string) => {
+    switch (column) {
+      case "Patient":
+        return auth.patient_name || "Unknown Patient";
+      case "Payer":
+        return auth.insurance_payers?.name || auth.payer_name_custom || auth.insurance_company || "N/A";
+      case "Service":
+        return auth.service_type || "N/A";
+      case "Requested Date":
+        return auth.requested_date
+          ? new Date(auth.requested_date).toLocaleDateString()
+          : auth.service_start_date
+          ? new Date(auth.service_start_date).toLocaleDateString()
+          : "N/A";
+      case "Status":
+        return auth.status ? auth.status.charAt(0).toUpperCase() + auth.status.slice(1) : "Draft";
+      case "AI Score":
+        return auth.ai_approval_suggestions?.[0]?.approval_probability != null
+          ? `${auth.ai_approval_suggestions[0].approval_probability}%`
+          : "—";
+      case "Auth Number":
+        return auth.auth_number || "—";
+      case "Urgency":
+        return auth.urgency_level ? auth.urgency_level.toUpperCase() : "ROUTINE";
+      case "Review Status":
+        return auth.review_status || "—";
+      case "Submission Ref":
+        return auth.submission_ref || "—";
+      default:
+        return "";
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
@@ -327,86 +424,94 @@ This is a mock workflow for demonstration purposes.
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          {authorizations.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-lg font-medium">No authorizations yet</p>
-                <p className="text-sm text-muted-foreground mb-4">Create your first authorization request to get started</p>
-                <Button onClick={() => setShowNewDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Authorization
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            authorizations.map((auth) => (
-              <Card key={auth.id}>
-                <CardContent className="pt-6">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-2">
-                        <h3 className="text-lg font-semibold">{auth.patient_name}</h3>
-                        {getStatusBadge(auth.status)}
-                        {auth.ai_approval_suggestions?.length > 0 && (
-                          <Badge variant="outline" className="bg-blue-50">
-                            AI Score: {auth.ai_approval_suggestions[0].approval_probability}%
-                          </Badge>
-                        )}
-                        {auth.auth_number && (
-                          <Badge variant="outline" className="bg-green-50">
-                            Auth #: {auth.auth_number}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                        <div>
-                          <span className="font-medium">Service:</span> {auth.service_type}
-                        </div>
-                        <div>
-                          <span className="font-medium">Payer:</span> {auth.insurance_payers?.name || auth.payer_name_custom || 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Requested:</span> {auth.service_start_date ? new Date(auth.service_start_date).toLocaleDateString() : 'N/A'}
-                        </div>
-                        <div>
-                          <span className="font-medium">Urgency:</span> {auth.urgency_level?.toUpperCase() || 'ROUTINE'}
-                        </div>
-                        {auth.review_status && (
-                          <div className="col-span-2">
-                            <span className="font-medium">Review Status:</span> {auth.review_status}
-                          </div>
-                        )}
-                        {auth.ai_approval_suggestions?.[0]?.missing_elements?.length > 0 && (
-                          <div className="col-span-2">
-                            <span className="font-medium">Missing Elements:</span> {auth.ai_approval_suggestions[0].missing_elements.slice(0,3).join(', ')}
-                          </div>
-                        )}
-                        {auth.submission_ref && (
-                          <div className="col-span-2">
-                            <span className="font-medium">Submission Ref:</span> {auth.submission_ref}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col space-y-2">
-                      {auth.status === 'draft' && (
-                        <Button size="sm" onClick={() => handleAnalyze(auth.id)}>
-                          AI Analysis
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => {
-                        setSelectedAuth(auth);
-                        setViewOpen(true);
-                      }}>
-                        View Details
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle className="text-lg font-semibold">Authorizations</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Adjust the columns to match what your team cares about most.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowColumnSelector(true)}
+                className="flex items-center gap-1"
+              >
+                <Columns3 className="h-4 w-4" />
+                Columns
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {authorizations.length === 0 ? (
+                <div className="py-12 text-center">
+                  <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-lg font-medium">No authorizations yet</p>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Create your first authorization request to get started.
+                  </p>
+                  <Button onClick={() => setShowNewDialog(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Authorization
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        {visibleColumns.map((col) => (
+                          <TableHead key={col}>{getColumnHeader(col)}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {authorizations.map((auth) => (
+                        <TableRow key={auth.id}>
+                          {visibleColumns.map((col) => {
+                            if (col === "Actions") {
+                              return (
+                                <TableCell key={`${auth.id}-${col}`}>
+                                  <div className="flex items-center gap-2">
+                                    {auth.status === "draft" && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleAnalyze(auth.id)}
+                                      >
+                                        AI Analysis
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setSelectedAuth(auth);
+                                        setViewOpen(true);
+                                      }}
+                                    >
+                                      View Details
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              );
+                            }
+
+                            const value = getColumnValue(auth, col);
+                            return (
+                              <TableCell key={`${auth.id}-${col}`}>
+                                {value}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="pending">
@@ -438,6 +543,86 @@ This is a mock workflow for demonstration purposes.
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Column Selector Dialog */}
+      <Dialog open={showColumnSelector} onOpenChange={setShowColumnSelector}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Select Columns</DialogTitle>
+            <DialogDescription>
+              Choose which columns to display in the authorization table.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-6 py-4">
+            {/* Available Columns */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">Available Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {availableColumns.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No more columns to add.</p>
+                )}
+                {availableColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-900">{getColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        setAvailableColumns(availableColumns.filter((c) => c !== column));
+                        setVisibleColumns([...visibleColumns, column]);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 text-gray-600" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Visible Columns */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {visibleColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-900">{getColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        // Prevent removing the last column entirely
+                        if (visibleColumns.length === 1) return;
+                        setVisibleColumns(visibleColumns.filter((c) => c !== column));
+                        setAvailableColumns([...availableColumns, column]);
+                      }}
+                    >
+                      <X className="h-4 w-4 text-gray-600" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              onClick={() => setShowColumnSelector(false)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AuthorizationRequestDialog
         open={showNewDialog}

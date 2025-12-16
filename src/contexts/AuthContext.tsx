@@ -104,10 +104,98 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       } else {
         const companies = await companyService.getUserCompanies();
+        console.log('🏢 [AuthContext] Loaded user companies for', user.email, ':', companies.length);
+        console.log('🏢 [AuthContext] Companies details:', companies.map(c => ({ 
+          id: c.company_id, 
+          name: c.company?.name, 
+          slug: c.company?.slug, 
+          is_primary: c.is_primary,
+          company_full: c.company
+        })));
+        
         setUserCompanies(companies);
+        
+        // Priority: 1) Primary company, 2) Company with slug "zar" for zar@gmail.com, 3) First company (excluding "Default Company")
+        let selectedCompany: Company | null = null;
+        
+        // First, try to find primary company (but skip if it's "Default Company" and we have other options)
         const primaryCompany = companies.find(cu => cu.is_primary);
-        const company = primaryCompany?.company || companies[0]?.company || null;
-        setCurrentCompanyState(company);
+        if (primaryCompany?.company) {
+          const isDefaultCompany = primaryCompany.company.name?.toLowerCase() === 'default company';
+          // Use primary company unless it's "Default Company" and we have other options
+          if (!isDefaultCompany || companies.length === 1) {
+            selectedCompany = primaryCompany.company;
+            console.log('✅ Selected primary company:', selectedCompany.name, selectedCompany.slug);
+          } else {
+            console.log('⚠️ Primary company is "Default Company", looking for better match...');
+          }
+        }
+        
+        // If no primary selected, try to find zar company for zar@gmail.com
+        if (!selectedCompany && user.email === 'zar@gmail.com') {
+          const zarCompany = companies.find(cu => {
+            const company = cu.company;
+            if (!company) return false;
+            return (
+              company.slug === 'zar' || 
+              company.name?.toLowerCase() === 'zarsolution' ||
+              company.name?.toLowerCase() === 'zar' ||
+              company.name?.toLowerCase() === 'zar solution'
+            );
+          });
+          
+          if (zarCompany?.company) {
+            selectedCompany = zarCompany.company;
+            console.log('✅ Selected zar company for zar@gmail.com:', selectedCompany.name, selectedCompany.slug);
+            
+            // Auto-set as primary if not already set
+            if (!zarCompany.is_primary) {
+              try {
+                await companyService.setPrimaryCompany(zarCompany.company_id);
+                console.log('✅ Auto-set zar company as primary');
+                // Update the local state to reflect the change
+                zarCompany.is_primary = true;
+              } catch (error) {
+                console.warn('⚠️ Could not auto-set zar company as primary:', error);
+              }
+            }
+          } else {
+            console.warn('⚠️ zar@gmail.com logged in but no zar company found in user companies');
+          }
+        }
+        
+        // Fallback: Select first company that's not "Default Company"
+        if (!selectedCompany && companies.length > 0) {
+          const nonDefaultCompany = companies.find(cu => 
+            cu.company && cu.company.name?.toLowerCase() !== 'default company'
+          );
+          
+          if (nonDefaultCompany?.company) {
+            selectedCompany = nonDefaultCompany.company;
+            console.log('✅ Selected first non-default company:', selectedCompany.name);
+          } else {
+            // Last resort: use first company even if it's "Default Company"
+            selectedCompany = companies[0]?.company || null;
+            console.log('⚠️ Selected first company (may be "Default Company"):', selectedCompany?.name);
+          }
+        }
+        
+        setCurrentCompanyState(selectedCompany);
+        
+        if (!selectedCompany) {
+          console.error('❌ No company found for user:', user.email);
+          console.error('❌ Available companies:', companies.map(c => ({
+            id: c.company_id,
+            name: c.company?.name,
+            slug: c.company?.slug
+          })));
+        } else {
+          console.log('✅ Final selected company:', {
+            id: selectedCompany.id,
+            name: selectedCompany.name,
+            slug: selectedCompany.slug
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading user companies:', error);

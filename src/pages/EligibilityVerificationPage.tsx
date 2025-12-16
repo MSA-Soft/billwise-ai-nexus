@@ -1,15 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Layout from '@/components/Layout';
 import EligibilityVerification from '@/components/EligibilityVerification';
-import { useComponentCache } from '@/contexts/ComponentCacheContext';
+
+// Cache the component instance outside the component to persist across re-renders
+let cachedEligibilityVerification: React.ReactElement | null = null;
 
 const EligibilityVerificationPage: React.FC = () => {
-  const { getCachedComponent } = useComponentCache();
-  
-  const cachedComponent = getCachedComponent(
-    'eligibility-verification',
-    () => <EligibilityVerification key="eligibility-persistent" />
-  );
+  // Use useMemo to ensure the component instance persists across re-renders
+  // This preserves state when navigating away and back
+  const cachedComponent = useMemo(() => {
+    if (!cachedEligibilityVerification) {
+      cachedEligibilityVerification = <EligibilityVerification key="eligibility-persistent" />;
+    }
+    return cachedEligibilityVerification;
+  }, []);
 
   return (
     <Layout currentPage="eligibility-verification">

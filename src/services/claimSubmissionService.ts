@@ -29,6 +29,7 @@ export interface ClaimSubmissionData {
   prior_auth_number?: string;
   referral_number?: string;
   treatment_auth_code?: string;
+  type_of_visit?: string; // Type of visit (e.g., "surgery", "facility", "consultation")
   procedures: Array<{
     cpt_code: string;
     description: string;
@@ -370,6 +371,91 @@ export class ClaimSubmissionService {
           changed_by: userId,
           notes: 'Claim submitted',
         });
+
+      // Auto-create pending authorization if required
+      // Check if type_of_visit is "surgery" or "facility" and prior_auth_number is missing
+      if (!claimData.prior_auth_number) {
+        let typeOfVisit: string | null = null;
+        
+        // First, check if type_of_visit is provided directly in claim data
+        if (claimData.type_of_visit) {
+          typeOfVisit = claimData.type_of_visit.toLowerCase();
+        }
+        // Otherwise, try to get type_of_visit from appointment if linked
+        else if (claimData.appointment_id) {
+          try {
+            const { data: appointment } = await supabase
+              .from('appointments' as any)
+              .select('appointment_type')
+              .eq('id', claimData.appointment_id)
+              .single();
+            
+            if (appointment?.appointment_type) {
+              typeOfVisit = appointment.appointment_type.toLowerCase();
+            }
+          } catch (err) {
+            console.warn('Could not fetch appointment type:', err);
+          }
+        }
+        
+        // Check if type_of_visit is "surgery" or "facility"
+        if (typeOfVisit === 'surgery' || typeOfVisit === 'facility') {
+          try {
+            // Fetch patient and payer information
+            const { data: patient } = await supabase
+              .from('patients' as any)
+              .select('id, first_name, last_name')
+              .eq('id', claimData.patient_id)
+              .single();
+            
+            const { data: payer } = await supabase
+              .from('insurance_payers' as any)
+              .select('id, name')
+              .eq('id', claimData.primary_insurance_id)
+              .single();
+            
+            // Get CPT codes from procedures
+            const cptCodes = claimData.procedures?.map((p: any) => p.cpt_code).filter(Boolean) || [];
+            const procedureDescription = claimData.procedures?.[0]?.description || 'Service requiring prior authorization';
+            
+            // Create pending authorization request
+            const patientName = patient 
+              ? `${patient.last_name || ''}, ${patient.first_name || ''}`.trim().replace(/^,\s*|,\s*$/g, '')
+              : 'Unknown Patient';
+            
+            const authData: any = {
+              user_id: userId,
+              company_id: companyId || null,
+              patient_name: patientName,
+              payer_id: claimData.primary_insurance_id || null,
+              payer_name_custom: payer?.name || null,
+              facility_id: claimData.facility_id || null,
+              service_type: typeOfVisit,
+              service_start_date: claimData.service_date_from || null,
+              procedure_codes: cptCodes.length > 0 ? cptCodes : null,
+              procedure_description: procedureDescription,
+              status: 'pending',
+              authorization_type: 'prior',
+              internal_notes: `Auto-created from claim ${claimNumber}. Type of visit: ${typeOfVisit}. Prior authorization is required but not provided.`,
+            };
+            
+            const { data: newAuth, error: authError } = await supabase
+              .from('authorization_requests' as any)
+              .insert(authData)
+              .select()
+              .single();
+            
+            if (authError) {
+              console.error('❌ Error auto-creating authorization request:', authError);
+            } else {
+              console.log('✅ Auto-created pending authorization request:', newAuth.id);
+            }
+          } catch (authErr: any) {
+            console.error('❌ Error in auto-authorization creation:', authErr);
+            // Don't throw - claim creation should still succeed even if auth creation fails
+          }
+        }
+      }
 
       return {
         success: true,

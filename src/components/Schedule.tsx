@@ -57,7 +57,7 @@ interface Appointment {
 }
 
 export function Schedule() {
-  const { user } = useAuth();
+  const { user, currentCompany } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -98,10 +98,20 @@ export function Schedule() {
         return;
       }
 
-      // Fetch appointments first
-      const { data: appointmentsData, error: appointmentsError } = await supabase
+      // CRITICAL: Filter by company_id for multi-tenant isolation
+      let appointmentsQuery = supabase
         .from('appointments' as any)
-        .select('*')
+        .select('*');
+      
+      if (currentCompany?.id) {
+        console.log('🏢 Filtering appointments by company_id:', currentCompany.id);
+        appointmentsQuery = appointmentsQuery.eq('company_id', currentCompany.id);
+      } else {
+        console.warn('⚠️ No company_id filter applied for appointments - relying on RLS only');
+      }
+      
+      // Fetch appointments first
+      const { data: appointmentsData, error: appointmentsError } = await appointmentsQuery
         .order('scheduled_date', { ascending: true })
         .order('scheduled_time', { ascending: true });
 

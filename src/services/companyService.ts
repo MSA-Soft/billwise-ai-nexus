@@ -83,17 +83,24 @@ export class CompanyService {
         .eq('user_id', user.id)
         .eq('is_active', true) as any);
 
+      console.log('🔍 [getUserCompanies] User ID:', user.id, 'Email:', user.email);
+      console.log('🔍 [getUserCompanies] Company Users Data:', companyUsersData);
+      
       if (companyUsersError) {
-        console.error('Error fetching company_users:', companyUsersError);
+        console.error('❌ [getUserCompanies] Error fetching company_users:', companyUsersError);
         return [];
       }
 
       if (!companyUsersData || companyUsersData.length === 0) {
+        console.warn('⚠️ [getUserCompanies] No company_users found for user:', user.email);
         return [];
       }
 
       const companyIds = companyUsersData.map((cu: any) => cu.company_id).filter(Boolean);
+      console.log('🔍 [getUserCompanies] Company IDs:', companyIds);
+      
       if (companyIds.length === 0) {
+        console.warn('⚠️ [getUserCompanies] No valid company IDs found');
         return [];
       }
 
@@ -102,27 +109,50 @@ export class CompanyService {
         .select('id, name, slug, email, subscription_tier, subscription_status, is_active')
         .in('id', companyIds) as any);
 
+      console.log('🔍 [getUserCompanies] Companies Data:', companiesData);
+      console.log('🔍 [getUserCompanies] Companies Error:', companiesError);
+      
       if (companiesError) {
-        console.error('Error fetching companies:', companiesError);
+        console.error('❌ [getUserCompanies] Error fetching companies:', companiesError);
       }
 
       const result: CompanyUser[] = companyUsersData.map((cu: any) => {
         const company = companiesData?.find((c: any) => c.id === cu.company_id);
+        if (!company) {
+          console.warn('⚠️ [getUserCompanies] Company not found for company_id:', cu.company_id);
+        }
         return {
           ...cu,
           company: company || undefined,
         } as CompanyUser;
       });
 
-      result.sort((a, b) => {
+      // Filter out entries without company data
+      const validResults = result.filter(cu => cu.company);
+      if (validResults.length < result.length) {
+        console.warn('⚠️ [getUserCompanies] Filtered out', result.length - validResults.length, 'company_users entries without company data');
+      }
+
+      // Sort: primary first, then by joined date, but prioritize non-"Default Company" entries
+      validResults.sort((a, b) => {
+        // Primary companies first
         if (a.is_primary && !b.is_primary) return -1;
         if (!a.is_primary && b.is_primary) return 1;
+        
+        // Non-"Default Company" entries before "Default Company"
+        const aIsDefault = a.company?.name?.toLowerCase() === 'default company';
+        const bIsDefault = b.company?.name?.toLowerCase() === 'default company';
+        if (!aIsDefault && bIsDefault) return -1;
+        if (aIsDefault && !bIsDefault) return 1;
+        
+        // Then by joined date
         const aDate = a.joined_at ? new Date(a.joined_at).getTime() : 0;
         const bDate = b.joined_at ? new Date(b.joined_at).getTime() : 0;
         return aDate - bDate;
       });
 
-      return result;
+      console.log('✅ [getUserCompanies] Returning', validResults.length, 'valid company entries');
+      return validResults;
     } catch (error: any) {
       console.error('Error fetching user companies:', error);
       return [];

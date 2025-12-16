@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { Shield, Clock, CheckCircle, AlertTriangle, Plus, Eye, Edit, Bell, RefreshCw, Calendar, TrendingUp, XCircle, FileText } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Shield, Clock, CheckCircle, AlertTriangle, Plus, Eye, Edit, Bell, RefreshCw, Calendar, TrendingUp, XCircle, FileText, Columns3, X } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import AuthorizationWorkflow from "@/components/AuthorizationWorkflow";
 import AuthorizationRequestDialog from "@/components/AuthorizationRequestDialog";
@@ -21,7 +29,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const AuthorizationTracking = () => {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, currentCompany } = useAuth();
 
   const [selectedAuth, setSelectedAuth] = useState<any>(null);
   const [viewOpen, setViewOpen] = useState(false);
@@ -37,6 +45,83 @@ const AuthorizationTracking = () => {
   const [visitStats, setVisitStats] = useState<Record<string, VisitUsageStats>>({});
   const [loading, setLoading] = useState(false);
   const [justApproved, setJustApproved] = useState(false);
+
+  // Date filter state (Year → Month → Time Period)
+  const now = new Date();
+  const defaultYear = now.getFullYear().toString();
+  const defaultMonth = (now.getMonth() + 1).toString().padStart(2, "0");
+  const defaultWeek = (Math.floor((now.getDate() - 1) / 7) + 1).toString();
+
+  const [filterYear, setFilterYear] = useState<string>(defaultYear);
+  const [filterMonth, setFilterMonth] = useState<string>(defaultMonth);
+  const [filterTimePeriod, setFilterTimePeriod] = useState<string>("week"); // wholeMonth, last15, week, today, yesterday, tomorrow
+  const [filterWeek, setFilterWeek] = useState<string>(defaultWeek); // 1-4 when week is selected
+  const [filterDay, setFilterDay] = useState<string>(""); // monday-sunday when week/day is selected
+
+  // Status / scope filter for All Authorizations
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "pending" | "applied" | "in_process" | "approved" | "denied"
+  >("all");
+
+  // Dynamic column management for Active Authorizations table
+  const [activeVisibleColumns, setActiveVisibleColumns] = useState<string[]>([
+    "S.No",
+    "Scheduled Location",
+    "Order Date",
+    "Type of Visit",
+    "Patient Name",
+    "Primary Insurance",
+    "CPT Code",
+    "Prior Auth Required",
+    "Prior Authorization Status",
+    "Remarks",
+    "Secondary Insurance",
+    "Comments & Notes",
+    "Actions",
+  ]);
+
+  const [activeAvailableColumns, setActiveAvailableColumns] = useState<string[]>([]);
+  const [showActiveColumnSelector, setShowActiveColumnSelector] = useState(false);
+
+  const getActiveColumnHeader = (column: string) => column;
+
+  const getActiveColumnValue = (auth: any, column: string) => {
+    switch (column) {
+      case "S.No":
+        return auth.serialNo || auth.id?.substring(0, 8).toUpperCase() || "—";
+      case "Scheduled Location":
+        return auth.scheduledLocation || "—";
+      case "Order Date":
+        return auth.orderDate || "—";
+      case "Type of Visit":
+        return auth.typeOfVisit || "—";
+      case "Patient Name":
+        return auth.patientName || auth.patient || "—";
+      case "Primary Insurance":
+        return auth.primaryInsurance || auth.payer || "—";
+      case "CPT Code":
+        if (Array.isArray(auth.cptCodes) && auth.cptCodes.length > 0) {
+          return auth.cptCodes.join(", ");
+        }
+        return auth.cptCode || (auth.cpt_codes?.[0] ?? "—");
+      case "Description": // legacy support if still present in saved layouts
+        return auth.description || "—";
+      case "Prior Auth Required":
+        return auth.priorAuthRequired
+          ? "Yes"
+          : "No";
+      case "Prior Authorization Status":
+        return auth.priorAuthorizationStatus || auth.status || "Pending";
+      case "Remarks":
+        return auth.remarks || "—";
+      case "Secondary Insurance":
+        return auth.secondaryInsurance || "—";
+      case "Comments & Notes":
+        return auth.comments || "—";
+      default:
+        return "";
+    }
+  };
 
   const handleViewDetails = (authId: string) => {
     const auth = authorizations.find(a => a.id === authId);
@@ -184,10 +269,21 @@ const AuthorizationTracking = () => {
   const fetchAuthorizations = async () => {
     try {
       setLoading(true);
-      // Query without join to avoid relationship ambiguity
-      const { data, error } = await supabase
+      
+      // CRITICAL: Filter by company_id for multi-tenant isolation
+      let query = supabase
         .from('authorization_requests' as any)
-        .select('*')
+        .select('*');
+      
+      if (currentCompany?.id) {
+        console.log('🏢 Filtering authorizations by company_id:', currentCompany.id);
+        query = query.eq('company_id', currentCompany.id);
+      } else {
+        console.warn('⚠️ No company_id filter applied for authorizations - relying on RLS only');
+      }
+      
+      // Query without join to avoid relationship ambiguity
+      const { data, error } = await query
         .order('created_at', { ascending: false });
       
       // If we need payer info, fetch it separately or use payer_name_custom field
@@ -195,6 +291,26 @@ const AuthorizationTracking = () => {
       if (error) {
         console.error('Error fetching authorizations:', error);
         throw error;
+      }
+
+      // Fetch facilities to map facility IDs to names
+      const facilityIds = [...new Set((data || []).map((a: any) => a.facility_id).filter(Boolean))];
+      const facilityMap = new Map<string, string>();
+      if (facilityIds.length > 0) {
+        try {
+          const { data: facilityData, error: facilityError } = await supabase
+            .from('facilities' as any)
+            .select('id, name')
+            .in('id', facilityIds);
+          
+          if (!facilityError && facilityData) {
+            facilityData.forEach((f: any) => {
+              facilityMap.set(f.id, f.name);
+            });
+          }
+        } catch (err) {
+          console.warn('Could not fetch facility names:', err);
+        }
       }
 
       // Transform data to match expected format with new fields
@@ -212,11 +328,25 @@ const AuthorizationTracking = () => {
         const visitsUsed = auth.visits_used ?? 0;
         const visitsRemaining = Math.max(0, visitsAuthorized - visitsUsed);
         
+        // Get facility name from ID
+        const facilityName = auth.facility_name || facilityMap.get(auth.facility_id || '') || '';
+        
         return {
           id: auth.id,
           authorization_id: auth.id,
+          serialNo: auth.id ? auth.id.substring(0, 8).toUpperCase() : `AUTH-${Date.now().toString().slice(-8)}`,
+          scheduledLocation: facilityName || auth.facility_id || '',
+          orderDate: auth.service_start_date || auth.created_at ? new Date(auth.service_start_date || auth.created_at).toISOString().split('T')[0] : '',
+          typeOfVisit: auth.service_type || '',
           patient: auth.patient_name,
           patientName: auth.patient_name,
+          primaryInsurance: payerName,
+          description: auth.procedure_description || auth.service_type || '',
+          priorAuthRequired: auth.status && auth.status !== 'draft' ? true : false,
+          priorAuthorizationStatus: auth.status || 'pending',
+          remarks: auth.internal_notes || auth.notes || '',
+          secondaryInsurance: auth.secondary_payer_name || '',
+          comments: auth.internal_notes || '',
           procedure: auth.service_type,
           cptCode: auth.procedure_codes?.[0] || '',
           payer: payerName,
@@ -336,9 +466,31 @@ const AuthorizationTracking = () => {
     }
   };
 
+  // Track if data has been fetched to prevent unnecessary re-fetches
+  const hasFetchedRef = React.useRef(false);
+  const isInitialMountRef = React.useRef(true);
+
   useEffect(() => {
+    // Only fetch on initial mount, not when switching tabs or browser visibility changes
+    if (isInitialMountRef.current && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
     fetchAuthorizations();
     loadExpirationData();
+      isInitialMountRef.current = false;
+    }
+
+    // Prevent re-fetching on browser visibility changes (tab switching, minimizing)
+    // Components stay mounted with display: none, so we don't need to re-fetch
+    const handleVisibilityChange = () => {
+      // Do nothing - data is already loaded and components stay mounted
+      // This prevents unnecessary re-fetches when tab becomes visible again
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -373,6 +525,9 @@ const AuthorizationTracking = () => {
     !auth.expired_at
   );
 
+  // Controls which view is shown below (Active, Pending, Expiring, Denied, Analytics)
+  const [viewFilter, setViewFilter] = useState<'active' | 'pending' | 'expiring' | 'denied' | 'analytics'>('active');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -389,31 +544,176 @@ const AuthorizationTracking = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="active" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="active">Active Authorizations</TabsTrigger>
-          <TabsTrigger value="pending">Pending Requests</TabsTrigger>
-          <TabsTrigger value="expiring">Expiring Soon</TabsTrigger>
-          <TabsTrigger value="denied">Denied</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        </TabsList>
+      <Tabs
+        value={viewFilter}
+        onValueChange={(value) =>
+          setViewFilter(
+            value as "active" | "pending" | "expiring" | "denied" | "analytics"
+          )
+        }
+        className="space-y-6"
+      >
+        {/* Filters (Year → Month → Time Period) */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Time Period
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {/* Year filter */}
+              <Select
+                value={filterYear || "all"}
+                onValueChange={(value) => {
+                  setFilterYear(value === "all" ? "" : value);
+                  setFilterMonth("");
+                  setFilterTimePeriod("");
+                  setFilterWeek("");
+                  setFilterDay("");
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-32">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Years</SelectItem>
+                  <SelectItem value={new Date().getFullYear().toString()}>
+                    {new Date().getFullYear()}
+                  </SelectItem>
+                  <SelectItem value={(new Date().getFullYear() - 1).toString()}>
+                    {new Date().getFullYear() - 1}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Month filter (only when year selected) */}
+              <Select
+                value={filterMonth || "all"}
+                onValueChange={(value) => {
+                  setFilterMonth(value === "all" ? "" : value);
+                  setFilterTimePeriod("");
+                  setFilterWeek("");
+                  setFilterDay("");
+                }}
+                disabled={!filterYear}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Month" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  <SelectItem value="01">January</SelectItem>
+                  <SelectItem value="02">February</SelectItem>
+                  <SelectItem value="03">March</SelectItem>
+                  <SelectItem value="04">April</SelectItem>
+                  <SelectItem value="05">May</SelectItem>
+                  <SelectItem value="06">June</SelectItem>
+                  <SelectItem value="07">July</SelectItem>
+                  <SelectItem value="08">August</SelectItem>
+                  <SelectItem value="09">September</SelectItem>
+                  <SelectItem value="10">October</SelectItem>
+                  <SelectItem value="11">November</SelectItem>
+                  <SelectItem value="12">December</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Time period + week (Range) */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Range
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select
+                value={filterTimePeriod || "all"}
+                onValueChange={(value) => {
+                  setFilterTimePeriod(value === "all" ? "" : value);
+                  if (value !== "week") {
+                    setFilterWeek("");
+                    setFilterDay("");
+                  }
+                }}
+                disabled={!filterYear || !filterMonth}
+              >
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="Time Period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Whole Month</SelectItem>
+                  <SelectItem value="last15">Last 15 Days</SelectItem>
+                  <SelectItem value="week">Week in Month</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="tomorrow">Tomorrow</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filterWeek || "all"}
+                onValueChange={(value) => setFilterWeek(value === "all" ? "" : value)}
+                disabled={!filterYear || !filterMonth || filterTimePeriod !== "week"}
+              >
+                <SelectTrigger className="w-full sm:w-32">
+                  <SelectValue placeholder="Week" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Weeks</SelectItem>
+                  <SelectItem value="1">Week 1</SelectItem>
+                  <SelectItem value="2">Week 2</SelectItem>
+                  <SelectItem value="3">Week 3</SelectItem>
+                  <SelectItem value="4">Week 4</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filterDay || "all"}
+                onValueChange={(value) => setFilterDay(value === "all" ? "" : value)}
+                disabled={!filterYear || !filterMonth || filterTimePeriod !== "week"}
+              >
+                <SelectTrigger className="w-full sm:w-32">
+                  <SelectValue placeholder="Day" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Days</SelectItem>
+                  <SelectItem value="monday">Monday</SelectItem>
+                  <SelectItem value="tuesday">Tuesday</SelectItem>
+                  <SelectItem value="wednesday">Wednesday</SelectItem>
+                  <SelectItem value="thursday">Thursday</SelectItem>
+                  <SelectItem value="friday">Friday</SelectItem>
+                  <SelectItem value="saturday">Saturday</SelectItem>
+                  <SelectItem value="sunday">Sunday</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          <Card>
+          <Card
+            onClick={() => setViewFilter('active')}
+            className={`cursor-pointer transition-shadow ${
+              viewFilter === 'active' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+            }`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Authorizations</CardTitle>
+              <CardTitle className="text-sm font-medium">All Authorizations</CardTitle>
               <Shield className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {authorizations.filter(a => a.status === 'approved' && !a.expired_at).length}
+                {authorizations.length}
               </div>
-              <p className="text-xs text-muted-foreground">Currently active</p>
+              <p className="text-xs text-muted-foreground">Total authorizations</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            onClick={() => setViewFilter('pending')}
+            className={`cursor-pointer transition-shadow ${
+              viewFilter === 'pending' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+            }`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending Requests</CardTitle>
               <Clock className="h-4 w-4 text-yellow-500" />
@@ -426,7 +726,12 @@ const AuthorizationTracking = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            onClick={() => setViewFilter('expiring')}
+            className={`cursor-pointer transition-shadow ${
+              viewFilter === 'expiring' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+            }`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Expiring This Month</CardTitle>
               <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -441,7 +746,12 @@ const AuthorizationTracking = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            onClick={() => setViewFilter('denied')}
+            className={`cursor-pointer transition-shadow ${
+              viewFilter === 'denied' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+            }`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Expired</CardTitle>
               <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -537,21 +847,47 @@ const AuthorizationTracking = () => {
         <TabsContent value="active" className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Active Authorizations</CardTitle>
-                <div className="flex space-x-2">
-                  <Input placeholder="Search authorizations..." className="w-64" />
-                  <Select>
-                    <SelectTrigger className="w-32">
-                      <SelectValue placeholder="Status" />
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <CardTitle>All Authorizations</CardTitle>
+                <div className="flex flex-col md:flex-row md:items-center md:space-x-2 gap-2">
+                  <Input placeholder="Search authorizations..." className="w-full md:w-64" />
+                  <Select
+                    value={statusFilter}
+                    onValueChange={(value) =>
+                      setStatusFilter(
+                        value as
+                          | "all"
+                          | "active"
+                          | "pending"
+                          | "applied"
+                          | "in_process"
+                          | "approved"
+                          | "denied"
+                      )
+                    }
+                  >
+                    <SelectTrigger className="w-full md:w-40">
+                      <SelectValue placeholder="Filter" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="all">All Authorizations</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
                       <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="under-review">Under Review</SelectItem>
+                      <SelectItem value="applied">Applied</SelectItem>
+                      <SelectItem value="in_process">In Process</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="denied">Denied</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowActiveColumnSelector(true)}
+                    title="Select columns"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -562,211 +898,261 @@ const AuthorizationTracking = () => {
                 </div>
               ) : (
                 <>
-                  {/* Debug info - remove in production */}
                   {authorizations.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">
                       <p>No authorizations found in database.</p>
                       <p className="text-sm mt-2">Create a new authorization to get started.</p>
                     </div>
                   )}
-                  {authorizations.length > 0 && authorizations.filter(auth => {
-                    const status = auth.status?.toLowerCase() || '';
-                    const isApproved = status === 'approved';
-                    const isNotExpired = !auth.expired_at;
-                    return isApproved && isNotExpired;
-                  }).length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <p>No active authorizations found.</p>
-                      <p className="text-sm mt-2">
-                        Found {authorizations.length} authorization(s) with statuses: {[...new Set(authorizations.map(a => a.status || 'null'))].join(', ')}
-                      </p>
-                      <p className="text-sm mt-1">
-                        Active authorizations require: status = "approved" AND expired_at = null
-                      </p>
-                      {/* Debug: Show approved authorizations that might be filtered out */}
-                      {authorizations.filter(a => {
-                        const status = a.status?.toLowerCase() || '';
-                        return status === 'approved';
-                      }).length > 0 && (
-                        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-left">
-                          <p className="text-xs font-semibold text-yellow-900 mb-2">Debug Info:</p>
-                          <p className="text-xs text-yellow-800">
-                            Found {authorizations.filter(a => {
-                              const status = a.status?.toLowerCase() || '';
-                              return status === 'approved';
-                            }).length} approved authorization(s), but they may have expired_at set:
-                          </p>
-                          <ul className="text-xs text-yellow-700 mt-1 list-disc list-inside">
-                            {authorizations.filter(a => {
-                              const status = a.status?.toLowerCase() || '';
-                              return status === 'approved';
-                            }).map(auth => (
-                              <li key={auth.id}>
-                                {auth.patient || auth.patientName}: expired_at = {auth.expired_at ? new Date(auth.expired_at).toLocaleDateString() : 'null'}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className="space-y-4">
-                    {authorizations.filter(auth => {
-                      // Active: approved status AND not expired
-                      const status = auth.status?.toLowerCase() || '';
-                      return status === 'approved' && !auth.expired_at;
-                    }).map((auth) => (
-                  <div key={auth.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-4">
-                        <Shield className="h-8 w-8 text-blue-500" />
-                        <div>
-                          <div className="font-semibold">{auth.id}</div>
-                          <div className="text-sm text-gray-600">{auth.patient}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge className={getPriorityColor(auth.priority)}>{auth.priority}</Badge>
-                        <Badge className={getStatusColor(auth.status)}>{auth.status}</Badge>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-                      <div>
-                        <div className="text-sm text-gray-600">Procedure</div>
-                        <div className="font-medium">{auth.procedure}</div>
-                        <div className="text-xs text-gray-500">{auth.cptCode}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Payer</div>
-                        <div className="font-medium">{auth.payer}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Visits Used</div>
-                        <div className="font-medium">{auth.visits.used} / {auth.visits.authorized}</div>
-                        {visitStats[auth.id] && (
-                          <div className="mt-1">
-                            <Progress 
-                              value={visitStats[auth.id].usage_percentage} 
-                              className="h-2"
-                            />
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {visitStats[auth.id].visits_remaining} remaining
-                            </div>
-                          </div>
-                        )}
-                        {auth.visits.remaining !== undefined && auth.visits.remaining <= 3 && auth.visits.remaining > 0 && (
-                          <Badge variant="outline" className="mt-1 text-orange-600 border-orange-300">
-                            Low visits
-                          </Badge>
-                        )}
-                        {auth.visits.remaining === 0 && (
-                          <Badge variant="destructive" className="mt-1">
-                            Exhausted
-                          </Badge>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Request Date</div>
-                        <div className="font-medium">{auth.requestDate}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Expiry Date</div>
-                        <div className="font-medium">{auth.expiryDate || 'Not set'}</div>
-                        {auth.expiryDate && (() => {
-                          const expiryDate = new Date(auth.expiryDate);
-                          const today = new Date();
-                          const daysUntil = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                          if (daysUntil < 0) {
-                            return <Badge variant="destructive" className="mt-1">Expired</Badge>;
-                          } else if (daysUntil <= 7) {
-                            return <Badge variant="destructive" className="mt-1">{daysUntil} days left</Badge>;
-                          } else if (daysUntil <= 30) {
-                            return <Badge variant="outline" className="mt-1 text-orange-600 border-orange-300">{daysUntil} days left</Badge>;
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {activeVisibleColumns.map((col) => (
+                            <TableHead
+                              key={col}
+                              className={col === "S.No" ? "w-[80px]" : col === "Actions" ? "w-[150px]" : undefined}
+                            >
+                              {getActiveColumnHeader(col)}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {authorizations
+                          .filter((auth) => {
+                            // Status / scope filter
+                            const rawStatus: string = auth.status || "";
+                            const normalizedStatus = rawStatus
+                              .toLowerCase()
+                              .replace(/\s+/g, "_")
+                              .replace(/-/g, "_");
 
-                    <div className="flex space-x-2 flex-wrap gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleViewDetails(auth.id)}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        View Details
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => {
-                          setSelectedAuth(auth);
-                          setShowNewAuthForm(true);
-                        }}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleUpdateStatus(auth.id)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" />
-                        Update Status
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('Use Visit button clicked for auth:', auth.id, 'Status:', auth.status, 'Auth object:', auth);
-                          handleUseVisit(auth.id);
-                        }}
-                        disabled={(() => {
-                          const status = auth.status?.toLowerCase() || '';
-                          const isApproved = status === "approved";
-                          const isExpired = !!auth.expired_at;
-                          // Calculate visits remaining - if visits_authorized is 0, allow unlimited visits
-                          const visitsAuthorized = auth.visits_authorized ?? auth.visits?.authorized ?? auth.units_requested ?? 0;
-                          const visitsUsed = auth.visits_used ?? auth.visits?.used ?? 0;
-                          const visitsRemaining = visitsAuthorized > 0 ? (visitsAuthorized - visitsUsed) : 999; // If no limit set, allow visits
-                          const hasNoVisits = visitsAuthorized > 0 && visitsRemaining <= 0;
-                          
-                          // Only disable if expired or no visits remaining (allow even if not approved)
-                          const shouldDisable = isExpired || hasNoVisits;
-                          
-                          return shouldDisable;
-                        })()}
-                        title={
-                          auth.expired_at 
-                            ? "Authorization has expired"
-                            : (auth.visits?.remaining ?? auth.visits_remaining ?? ((auth.visits_authorized ?? 0) - (auth.visits_used ?? 0))) <= 0
-                            ? "All visits have been used"
-                            : auth.status?.toLowerCase() !== "approved"
-                            ? `Record a visit (Status: ${auth.status} - ${auth.visits?.remaining ?? auth.visits_remaining ?? ((auth.visits_authorized ?? 0) - (auth.visits_used ?? 0))} visits remaining)`
-                            : `Record a visit (${auth.visits?.remaining ?? auth.visits_remaining ?? ((auth.visits_authorized ?? 0) - (auth.visits_used ?? 0))} visits remaining)`
-                        }
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Use Visit
-                      </Button>
-                      {auth.expired_at && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleInitiateRenewal(auth.id)}
-                        >
-                          <RefreshCw className="h-4 w-4 mr-2" />
-                          Renew
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                            const isExpired = !!auth.expired_at;
+
+                            switch (statusFilter) {
+                              case "active":
+                                if (!(normalizedStatus === "approved" && !isExpired)) return false;
+                                break;
+                              case "pending":
+                                if (
+                                  !["pending", "under_review"].includes(normalizedStatus)
+                                )
+                                  return false;
+                                break;
+                              case "applied":
+                                if (!["submitted"].includes(normalizedStatus)) return false;
+                                break;
+                              case "in_process":
+                                if (
+                                  ![
+                                    "in_process",
+                                    "processing",
+                                    "under_review",
+                                  ].includes(normalizedStatus)
+                                )
+                                  return false;
+                                break;
+                              case "approved":
+                                if (normalizedStatus !== "approved") return false;
+                                break;
+                              case "denied":
+                                if (normalizedStatus !== "denied") return false;
+                                break;
+                              case "all":
+                              default:
+                                break;
+                            }
+
+                            // Base date for filtering: orderDate if present, else created_at
+                            const baseDateString = auth.orderDate || auth.created_at;
+                            if (!baseDateString) return !filterYear && !filterMonth && !filterTimePeriod;
+                            const d = new Date(baseDateString);
+                            if (Number.isNaN(d.getTime())) return !filterYear && !filterMonth && !filterTimePeriod;
+
+                            const year = d.getFullYear().toString();
+                            const month = (d.getMonth() + 1).toString().padStart(2, "0");
+
+                            // Year / month checks
+                            if (filterYear && year !== filterYear) return false;
+                            if (filterMonth && month !== filterMonth) return false;
+
+                            if (!filterTimePeriod) return true; // whole month
+
+                            const today = new Date();
+                            const onlyDate = (date: Date) =>
+                              new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                            const diffDays = Math.floor(
+                              (onlyDate(today).getTime() - onlyDate(d).getTime()) / (1000 * 60 * 60 * 24)
+                            );
+
+                            switch (filterTimePeriod) {
+                              case "last15":
+                                return diffDays >= 0 && diffDays <= 15;
+                              case "today":
+                                return onlyDate(d).getTime() === onlyDate(today).getTime();
+                              case "yesterday": {
+                                const y = new Date(today);
+                                y.setDate(y.getDate() - 1);
+                                return onlyDate(d).getTime() === onlyDate(y).getTime();
+                              }
+                              case "tomorrow": {
+                                const t = new Date(today);
+                                t.setDate(t.getDate() + 1);
+                                return onlyDate(d).getTime() === onlyDate(t).getTime();
+                              }
+                              case "week": {
+                                // Week number within the month (1–4) based on day-of-month
+                                const weekNumber = Math.floor((d.getDate() - 1) / 7) + 1;
+                                if (filterWeek && filterWeek !== "all" && weekNumber.toString() !== filterWeek) {
+                                  return false;
+                                }
+                                if (filterDay && filterDay !== "all") {
+                                  const dayNames = [
+                                    "sunday",
+                                    "monday",
+                                    "tuesday",
+                                    "wednesday",
+                                    "thursday",
+                                    "friday",
+                                    "saturday",
+                                  ];
+                                  const dayName = dayNames[d.getDay()];
+                                  return dayName === filterDay;
+                                }
+                                return true;
+                              }
+                              default:
+                                return true;
+                            }
+                          })
+                          .map((auth) => (
+                          <TableRow key={auth.id}>
+                            {activeVisibleColumns.map((col) => {
+                              if (col === "Actions") {
+                                return (
+                                  <TableCell key={`${auth.id}-${col}`}>
+                              <div className="flex space-x-1">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleViewDetails(auth.id)}
+                                  title="View Details"
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedAuth(auth);
+                                    setShowNewAuthForm(true);
+                                  }}
+                                  title="Edit"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleUseVisit(auth.id);
+                                  }}
+                                  disabled={(() => {
+                                          const status = auth.status?.toLowerCase() || "";
+                                    const isExpired = !!auth.expired_at;
+                                          const visitsAuthorized =
+                                            auth.visits_authorized ??
+                                            auth.visits?.authorized ??
+                                            auth.units_requested ??
+                                            0;
+                                          const visitsUsed =
+                                            auth.visits_used ?? auth.visits?.used ?? 0;
+                                          const visitsRemaining =
+                                            visitsAuthorized > 0
+                                              ? visitsAuthorized - visitsUsed
+                                              : 999;
+                                          const hasNoVisits =
+                                            visitsAuthorized > 0 && visitsRemaining <= 0;
+                                    return isExpired || hasNoVisits;
+                                  })()}
+                                  title="Use Visit"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                                );
+                              }
+
+                              const value = getActiveColumnValue(auth, col);
+
+                              if (col === "Prior Auth Required") {
+                                return (
+                                  <TableCell key={`${auth.id}-${col}`}>
+                                    {auth.priorAuthRequired ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-green-50 text-green-700"
+                                      >
+                                        Yes
+                                      </Badge>
+                                    ) : (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-gray-50 text-gray-700"
+                                      >
+                                        No
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                );
+                              }
+
+                              if (col === "Prior Authorization Status") {
+                                return (
+                                  <TableCell key={`${auth.id}-${col}`}>
+                                    <Badge
+                                      className={getStatusColor(
+                                        auth.priorAuthorizationStatus || auth.status
+                                      )}
+                                    >
+                                      {auth.priorAuthorizationStatus ||
+                                        auth.status ||
+                                        "Pending"}
+                                    </Badge>
+                                  </TableCell>
+                                );
+                              }
+
+                              const isDescription = col === "Description" || col === "Comments & Notes" || col === "Remarks";
+                              const title =
+                                col === "Description"
+                                  ? auth.description
+                                  : col === "Comments & Notes"
+                                  ? auth.comments
+                                  : col === "Remarks"
+                                  ? auth.remarks
+                                  : undefined;
+
+                              return (
+                                <TableCell
+                                  key={`${auth.id}-${col}`}
+                                  className={
+                                    isDescription ? "max-w-[200px] truncate" : undefined
+                                  }
+                                  title={isDescription ? title : undefined}
+                                >
+                                  {value}
+                                </TableCell>
+                              );
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
                 </>
               )}
@@ -906,6 +1292,105 @@ const AuthorizationTracking = () => {
             </Card>
           )}
 
+          {/* Pending / Under Review Authorizations - Awaiting payer response */}
+          {authorizations.filter(auth => {
+            const status = auth.status?.toLowerCase() || '';
+            return (status === 'pending' || status === 'under-review') && !auth.expired_at;
+          }).length > 0 && (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="h-5 w-5 text-yellow-600" />
+                    <CardTitle>Pending Authorizations - Awaiting Payer Response</CardTitle>
+                  </div>
+                  <Badge variant="outline" className="bg-yellow-100">
+                    {authorizations.filter(a => {
+                      const status = a.status?.toLowerCase() || '';
+                      return (status === 'pending' || status === 'under-review') && !a.expired_at;
+                    }).length} Pending
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {authorizations.filter(auth => {
+                    const status = auth.status?.toLowerCase() || '';
+                    return (status === 'pending' || status === 'under-review') && !auth.expired_at;
+                  }).map((auth) => (
+                    <div key={auth.id} className="border rounded-lg p-4 bg-white border-yellow-300">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-4">
+                          <Clock className="h-8 w-8 text-yellow-500" />
+                          <div>
+                            <div className="font-semibold">{auth.patient || auth.patientName}</div>
+                            <div className="text-sm text-gray-600">{auth.procedure || auth.service_type}</div>
+                            <div className="text-xs text-gray-500">
+                              Created: {auth.requestDate || auth.created_at ? new Date(auth.requestDate || auth.created_at).toLocaleDateString() : 'N/A'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                            {auth.status?.toUpperCase() || 'PENDING'}
+                          </Badge>
+                          <Badge className={getPriorityColor(auth.priority)}>{auth.priority}</Badge>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-3">
+                        <div>
+                          <div className="text-sm text-gray-600">Payer</div>
+                          <div className="font-medium">{auth.payer || auth.primaryInsurance || 'Not specified'}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">CPT Code</div>
+                          <div className="font-medium">
+                            {auth.cptCode || auth.procedure_codes?.[0] || (Array.isArray(auth.cpt_codes) ? auth.cpt_codes[0] : '') || 'Not specified'}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Service Date</div>
+                          <div className="font-medium">
+                            {auth.service_start_date || auth.requestDate || (auth.created_at ? new Date(auth.created_at).toLocaleDateString() : 'Not set')}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Status</div>
+                          <div className="font-medium text-yellow-700">
+                            {auth.status === 'under-review' ? 'Under Review' : 'Pending with Payer'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-2 flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewDetails(auth.id)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedAuth(auth);
+                            setShowNewAuthForm(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit / Update
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Pending/Under Review Authorizations */}
           <Card>
             <CardHeader>
@@ -922,37 +1407,81 @@ const AuthorizationTracking = () => {
                   <p className="text-sm mt-2">Submitted authorizations awaiting payer response will appear here.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {authorizations.filter(auth => {
-                    // Pending: pending or under-review status AND not expired (exclude drafts)
-                    const status = auth.status?.toLowerCase() || '';
-                    return (status === 'pending' || status === 'under-review') && !auth.expired_at;
-                  }).map((auth) => (
-                    <div key={auth.id} className="border rounded-lg p-4 bg-yellow-50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <Clock className="h-8 w-8 text-yellow-500" />
-                          <div>
-                            <div className="font-semibold">{auth.patient || auth.patientName}</div>
-                            <div className="text-sm text-gray-600">{auth.procedure || auth.service_type}</div>
-                            <div className="text-xs text-gray-500">Submitted: {auth.requestDate || auth.created_at ? new Date(auth.requestDate || auth.created_at).toLocaleDateString() : 'N/A'}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge className={getPriorityColor(auth.priority)}>{auth.priority}</Badge>
-                          <Badge className={getStatusColor(auth.status)}>{auth.status}</Badge>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleViewDetails(auth.id)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[80px]">S.No</TableHead>
+                        <TableHead>Scheduled Location</TableHead>
+                        <TableHead>Order Date</TableHead>
+                        <TableHead>Type of Visit</TableHead>
+                        <TableHead>Patient Name</TableHead>
+                        <TableHead>Primary Insurance</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Prior Auth Required</TableHead>
+                        <TableHead>Prior Authorization Status</TableHead>
+                        <TableHead>Remarks</TableHead>
+                        <TableHead>Secondary Insurance</TableHead>
+                        <TableHead>Comments & Notes</TableHead>
+                        <TableHead className="w-[150px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {authorizations.filter(auth => {
+                        // Pending: pending or under-review status AND not expired (exclude drafts)
+                        const status = auth.status?.toLowerCase() || '';
+                        return (status === 'pending' || status === 'under-review') && !auth.expired_at;
+                      }).map((auth) => (
+                        <TableRow key={auth.id}>
+                          <TableCell className="font-medium">{auth.serialNo || auth.id?.substring(0, 8).toUpperCase() || '—'}</TableCell>
+                          <TableCell>{auth.scheduledLocation || '—'}</TableCell>
+                          <TableCell>{auth.orderDate || '—'}</TableCell>
+                          <TableCell>{auth.typeOfVisit || '—'}</TableCell>
+                          <TableCell className="font-medium">{auth.patientName || auth.patient || '—'}</TableCell>
+                          <TableCell>{auth.primaryInsurance || auth.payer || '—'}</TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={auth.description}>{auth.description || '—'}</TableCell>
+                          <TableCell>
+                            {auth.priorAuthRequired ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700">Yes</Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-gray-50 text-gray-700">No</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={getStatusColor(auth.priorAuthorizationStatus || auth.status)}>
+                              {auth.priorAuthorizationStatus || auth.status || 'Pending'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[150px] truncate" title={auth.remarks}>{auth.remarks || '—'}</TableCell>
+                          <TableCell>{auth.secondaryInsurance || '—'}</TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={auth.comments}>{auth.comments || '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex space-x-1">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleViewDetails(auth.id)}
+                                title="View Details"
+                              >
+                                <Eye className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedAuth(auth);
+                                  setShowNewAuthForm(true);
+                                }}
+                                title="Edit"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
@@ -1243,29 +1772,156 @@ const AuthorizationTracking = () => {
         </TabsContent>
       </Tabs>
 
+      {/* Active Authorizations Column Selector */}
+      <Dialog open={showActiveColumnSelector} onOpenChange={setShowActiveColumnSelector}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold">Select Columns</DialogTitle>
+            <DialogDescription>
+              Choose which columns to display in the Active Authorizations table.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-6 py-4">
+            {/* Available Columns */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">Available Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {activeAvailableColumns.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No more columns to add.</p>
+                )}
+                {activeAvailableColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-900">{getActiveColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        setActiveAvailableColumns(
+                          activeAvailableColumns.filter((c) => c !== column)
+                        );
+                        setActiveVisibleColumns([...activeVisibleColumns, column]);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 text-gray-600" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Visible Columns */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {activeVisibleColumns.map((column) => (
+                  <div
+                    key={column}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                  >
+                    <span className="text-gray-900">{getActiveColumnHeader(column)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        if (activeVisibleColumns.length === 1) return;
+                        setActiveVisibleColumns(
+                          activeVisibleColumns.filter((c) => c !== column)
+                        );
+                        setActiveAvailableColumns([...activeAvailableColumns, column]);
+                      }}
+                    >
+                      <X className="h-4 w-4 text-gray-600" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              onClick={() => setShowActiveColumnSelector(false)}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* View Details Dialog */}
       {selectedAuth && viewOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Authorization Details</h3>
-            <div className="space-y-3">
-              <div><strong>Patient:</strong> {selectedAuth.patient}</div>
-              <div><strong>Procedure:</strong> {selectedAuth.procedure} ({selectedAuth.cptCode})</div>
-              <div><strong>Status:</strong> {selectedAuth.status}</div>
-              <div><strong>Requested Date:</strong> {selectedAuth.requestDate}</div>
-              <div><strong>Expires:</strong> {selectedAuth.expiryDate || 'Not set'}</div>
-              <div><strong>Payer:</strong> {selectedAuth.payer}</div>
-              {selectedAuth.visits && (
-                <>
-                  <div><strong>Visits:</strong> {selectedAuth.visits.used} / {selectedAuth.visits.authorized} used</div>
-                  <div><strong>Remaining:</strong> {selectedAuth.visits.remaining || 0} visits</div>
-                </>
-              )}
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">Authorization Details - Complete Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Patient Information */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Patient Information</h4>
+                <div><strong>Patient Name:</strong> {selectedAuth.patient || selectedAuth.patient_name || 'N/A'}</div>
+                <div><strong>Patient ID:</strong> {selectedAuth.patient_id || 'N/A'}</div>
+                <div><strong>Patient DOB:</strong> {selectedAuth.patient_dob ? new Date(selectedAuth.patient_dob).toLocaleDateString() : 'N/A'}</div>
+                <div><strong>Patient Member ID:</strong> {selectedAuth.patient_member_id || 'N/A'}</div>
+              </div>
+
+              {/* Payer Information */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Insurance Information</h4>
+                <div><strong>Primary Payer:</strong> {selectedAuth.payer || selectedAuth.payer_name_custom || 'N/A'}</div>
+                <div><strong>Payer ID:</strong> {selectedAuth.payer_id || 'N/A'}</div>
+                <div><strong>Secondary Payer:</strong> {selectedAuth.secondary_payer_name || selectedAuth.secondaryInsurance || 'N/A'}</div>
+                <div><strong>Secondary Payer ID:</strong> {selectedAuth.secondary_payer_id || 'N/A'}</div>
+              </div>
+
+              {/* Service Information */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Service Information</h4>
+                <div><strong>Service Type:</strong> {selectedAuth.service_type || selectedAuth.procedure || 'N/A'}</div>
+                <div><strong>Type of Visit:</strong> {selectedAuth.type_of_visit || selectedAuth.service_type || 'N/A'}</div>
+                <div><strong>Procedure Description:</strong> {selectedAuth.procedure_description || selectedAuth.description || 'N/A'}</div>
+                <div><strong>CPT Codes:</strong> {selectedAuth.procedure_codes && Array.isArray(selectedAuth.procedure_codes) ? selectedAuth.procedure_codes.join(', ') : (selectedAuth.cptCode || 'N/A')}</div>
+                <div><strong>Diagnosis Codes:</strong> {selectedAuth.diagnosis_codes && Array.isArray(selectedAuth.diagnosis_codes) ? selectedAuth.diagnosis_codes.join(', ') : 'N/A'}</div>
+                <div><strong>Clinical Indication:</strong> {selectedAuth.clinical_indication || 'N/A'}</div>
+                <div><strong>Service Start Date:</strong> {selectedAuth.service_start_date ? new Date(selectedAuth.service_start_date).toLocaleDateString() : (selectedAuth.orderDate || selectedAuth.requestDate || 'N/A')}</div>
+                <div><strong>Service End Date:</strong> {selectedAuth.service_end_date ? new Date(selectedAuth.service_end_date).toLocaleDateString() : 'N/A'}</div>
+              </div>
+
+              {/* Authorization Details */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Authorization Details</h4>
+                <div><strong>Authorization ID:</strong> {selectedAuth.id || selectedAuth.authorization_id || 'N/A'}</div>
+                <div><strong>Serial Number:</strong> {selectedAuth.serialNo || selectedAuth.id?.substring(0, 8).toUpperCase() || 'N/A'}</div>
+                <div><strong>Status:</strong> {selectedAuth.status || 'N/A'}</div>
+                <div><strong>Review Status:</strong> {selectedAuth.review_status || 'N/A'}</div>
+                <div><strong>Authorization Number:</strong> {selectedAuth.auth_number || selectedAuth.prior_auth_number || 'N/A'}</div>
+                <div><strong>Authorization Type:</strong> {selectedAuth.authorization_type || 'prior'}</div>
+                <div><strong>Urgency Level:</strong> {selectedAuth.urgency_level || selectedAuth.priority || 'Standard'}</div>
+                <div><strong>Requested Date:</strong> {selectedAuth.requestDate || (selectedAuth.created_at ? new Date(selectedAuth.created_at).toLocaleDateString() : 'N/A')}</div>
+                <div><strong>Expiration Date:</strong> {selectedAuth.expiryDate || (selectedAuth.authorization_expiration_date ? new Date(selectedAuth.authorization_expiration_date).toLocaleDateString() : 'Not set')}</div>
               {selectedAuth.expired_at && (
                 <div className="text-red-600 font-medium">
-                  <strong>Status:</strong> EXPIRED on {new Date(selectedAuth.expired_at).toLocaleDateString()}
+                    <strong>Expired:</strong> {new Date(selectedAuth.expired_at).toLocaleDateString()}
                 </div>
               )}
+              </div>
+
+              {/* Visit Information */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Visit Information</h4>
+                {selectedAuth.visits && (
+                  <>
+                    <div><strong>Visits Authorized:</strong> {selectedAuth.visits.authorized || selectedAuth.visits_authorized || 0}</div>
+                    <div><strong>Visits Used:</strong> {selectedAuth.visits.used || selectedAuth.visits_used || 0}</div>
+                    <div><strong>Visits Remaining:</strong> {selectedAuth.visits.remaining || selectedAuth.visits_remaining || 0}</div>
+                  </>
+                )}
+                <div><strong>Units Requested:</strong> {selectedAuth.units_requested || 'N/A'}</div>
               {visitStats[selectedAuth.id] && (
                 <div className="mt-2">
                   <div className="text-sm font-medium mb-1">Visit Usage</div>
@@ -1275,6 +1931,35 @@ const AuthorizationTracking = () => {
                   </div>
                 </div>
               )}
+              </div>
+
+              {/* Facility & Provider Information */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Facility & Provider</h4>
+                <div><strong>Facility:</strong> {selectedAuth.facility_name || selectedAuth.scheduledLocation || 'N/A'}</div>
+                <div><strong>Facility ID:</strong> {selectedAuth.facility_id || 'N/A'}</div>
+                <div><strong>Provider Name:</strong> {selectedAuth.provider_name_custom || 'N/A'}</div>
+                <div><strong>Provider NPI:</strong> {selectedAuth.provider_npi_custom || 'N/A'}</div>
+                <div><strong>Scheduled Location:</strong> {selectedAuth.scheduled_location || selectedAuth.scheduledLocation || 'N/A'}</div>
+              </div>
+
+              {/* Submission & Tracking */}
+              <div className="space-y-3 border-b pb-4">
+                <h4 className="font-semibold text-blue-600">Submission & Tracking</h4>
+                <div><strong>Submission Reference:</strong> {selectedAuth.submission_ref || 'N/A'}</div>
+                <div><strong>Acknowledgment Status:</strong> {selectedAuth.ack_status || 'N/A'}</div>
+                <div><strong>Prior Auth Required:</strong> {selectedAuth.pa_required !== undefined ? (selectedAuth.pa_required ? 'Yes' : 'No') : (selectedAuth.priorAuthRequired ? 'Yes' : 'No')}</div>
+                <div><strong>Renewal Initiated:</strong> {selectedAuth.renewal_initiated ? 'Yes' : 'No'}</div>
+                <div><strong>Created At:</strong> {selectedAuth.created_at ? new Date(selectedAuth.created_at).toLocaleString() : 'N/A'}</div>
+                <div><strong>Updated At:</strong> {selectedAuth.updated_at ? new Date(selectedAuth.updated_at).toLocaleString() : 'N/A'}</div>
+              </div>
+
+              {/* Notes & Remarks */}
+              <div className="space-y-3 border-b pb-4 md:col-span-2">
+                <h4 className="font-semibold text-blue-600">Notes & Remarks</h4>
+                <div><strong>Internal Notes:</strong> {selectedAuth.internal_notes || selectedAuth.remarks || selectedAuth.comments || 'N/A'}</div>
+                <div><strong>Order Date:</strong> {selectedAuth.orderDate || (selectedAuth.order_date ? new Date(selectedAuth.order_date).toLocaleDateString() : 'N/A')}</div>
+              </div>
             </div>
             <div className="flex justify-end mt-6">
               <Button onClick={() => {

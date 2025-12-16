@@ -14,6 +14,8 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children, 
   requiredRole 
 }) => {
+  // Hooks must be called unconditionally - AuthProvider should always be available
+  // If this throws, it means AuthProvider is not in the component tree (configuration error)
   const { user, loading, currentCompany, companyLoading, userCompanies, isSuperAdmin, hasFormReportAccess } = useAuth();
   const location = useLocation();
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);

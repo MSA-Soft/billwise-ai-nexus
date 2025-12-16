@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Select,
@@ -25,6 +25,25 @@ export const CompanySelector: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Debug logging
+  useEffect(() => {
+    console.log('🏢 [CompanySelector] Current Company:', currentCompany);
+    console.log('🏢 [CompanySelector] User Companies Count:', userCompanies.length);
+    console.log('🏢 [CompanySelector] User Companies:', userCompanies.map(cu => ({
+      id: cu.company_id,
+      name: cu.company?.name,
+      slug: cu.company?.slug,
+      is_primary: cu.is_primary
+    })));
+    const displayName = currentCompany?.name || userCompanies[0]?.company?.name || 'Select Company';
+    console.log('🏢 [CompanySelector] Display Name:', displayName);
+    
+    // Warn if showing "Default Company" when there might be better options
+    if (displayName.toLowerCase() === 'default company' && userCompanies.length > 1) {
+      console.warn('⚠️ [CompanySelector] Showing "Default Company" but user has', userCompanies.length, 'companies available');
+    }
+  }, [currentCompany, userCompanies]);
+
   const handleCompanyChange = async (companyId: string) => {
     try {
       setLoading(true);
@@ -45,10 +64,15 @@ export const CompanySelector: React.FC = () => {
   }
 
   if (userCompanies.length === 1) {
+    const companyName = currentCompany?.name || userCompanies[0]?.company?.name || 'No Company';
+    // Warn if the only company is "Default Company"
+    if (companyName.toLowerCase() === 'default company') {
+      console.warn('⚠️ [CompanySelector] Only company available is "Default Company"');
+    }
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted">
         <Building2 className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{currentCompany?.name || 'No Company'}</span>
+        <span className="text-sm font-medium">{companyName}</span>
       </div>
     );
   }
@@ -64,7 +88,7 @@ export const CompanySelector: React.FC = () => {
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="text-sm font-medium">
-              {currentCompany?.name || 'Select Company'}
+              {currentCompany?.name || userCompanies[0]?.company?.name || 'Select Company'}
             </span>
           </div>
           <ChevronDown className="h-4 w-4 opacity-50" />

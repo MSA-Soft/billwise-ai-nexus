@@ -6,7 +6,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   User, 
   Phone, 
@@ -20,11 +19,12 @@ import {
   Stethoscope,
   CreditCard,
   Users,
-  ChevronRight,
   Check,
   X,
   Save
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface PatientData {
   id: string;
@@ -73,20 +73,48 @@ interface EditPatientFormProps {
 }
 
 export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatientFormProps) {
-  const [activeTab, setActiveTab] = useState('basic');
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  
+  // Data from Customer Setup
+  const [payers, setPayers] = useState<any[]>([]);
+  const [isLoadingPayers, setIsLoadingPayers] = useState(false);
+
+  // Fetch payers on mount
+  useEffect(() => {
+    if (isOpen) {
+      fetchPayers();
+    }
+  }, [isOpen]);
+
+  const fetchPayers = async () => {
+    try {
+      setIsLoadingPayers(true);
+      const { data, error } = await supabase
+        .from('insurance_payers' as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching payers:', error);
+        return;
+      }
+
+      setPayers(data || []);
+    } catch (error: any) {
+      console.error('Error fetching payers:', error);
+    } finally {
+      setIsLoadingPayers(false);
+    }
+  };
 
   // Basic Information
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
-  const [ssn, setSsn] = useState('');
-  const [maritalStatus, setMaritalStatus] = useState('');
-  const [race, setRace] = useState('');
-  const [ethnicity, setEthnicity] = useState('');
-  const [language, setLanguage] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [riskLevel, setRiskLevel] = useState<'low' | 'medium' | 'high'>('low');
 
@@ -108,7 +136,11 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
   const [policyHolderName, setPolicyHolderName] = useState('');
   const [policyHolderRelationship, setPolicyHolderRelationship] = useState('');
   const [secondaryInsurance, setSecondaryInsurance] = useState('');
+  const [secondaryInsuranceCompanyId, setSecondaryInsuranceCompanyId] = useState('');
   const [secondaryInsuranceId, setSecondaryInsuranceId] = useState('');
+  const [secondaryGroupNumber, setSecondaryGroupNumber] = useState('');
+  const [secondaryPolicyHolderName, setSecondaryPolicyHolderName] = useState('');
+  const [secondaryPolicyHolderRelationship, setSecondaryPolicyHolderRelationship] = useState('');
 
   // Medical Information
   const [allergies, setAllergies] = useState('');
@@ -128,11 +160,6 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
       // Basic info
       setDateOfBirth(patient.dateOfBirth || '');
       setGender((patient as any).gender || '');
-      setSsn((patient as any).ssn || '');
-      setMaritalStatus((patient as any).maritalStatus || '');
-      setRace((patient as any).race || '');
-      setEthnicity((patient as any).ethnicity || '');
-      setLanguage((patient as any).language || '');
       setStatus(patient.status || 'active');
       setRiskLevel(patient.riskLevel || 'low');
       
@@ -171,7 +198,11 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
       setPolicyHolderName((patient as any).policyHolderName || '');
       setPolicyHolderRelationship((patient as any).policyHolderRelationship || '');
       setSecondaryInsurance((patient as any).secondaryInsurance || '');
+      setSecondaryInsuranceCompanyId((patient as any).secondaryInsuranceCompanyId || '');
       setSecondaryInsuranceId((patient as any).secondaryInsuranceId || '');
+      setSecondaryGroupNumber((patient as any).secondaryGroupNumber || '');
+      setSecondaryPolicyHolderName((patient as any).secondaryPolicyHolderName || '');
+      setSecondaryPolicyHolderRelationship((patient as any).secondaryPolicyHolderRelationship || '');
       
       // Emergency contact
       if (patient.emergencyContact) {
@@ -309,17 +340,16 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
         },
         // Additional fields for database
         gender,
-        ssn,
-        maritalStatus,
-        race,
-        ethnicity,
-        language,
         insuranceId,
         groupNumber,
         policyHolderName,
         policyHolderRelationship,
         secondaryInsurance,
+        secondaryInsuranceCompanyId: secondaryInsuranceCompanyId || null,
         secondaryInsuranceId,
+        secondaryGroupNumber,
+        secondaryPolicyHolderName,
+        secondaryPolicyHolderRelationship,
         previousSurgeries,
         familyHistory
       };
@@ -352,27 +382,7 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="basic" className="flex items-center">
-              <User className="h-4 w-4 mr-2" />
-              Basic Info
-            </TabsTrigger>
-            <TabsTrigger value="contact" className="flex items-center">
-              <Phone className="h-4 w-4 mr-2" />
-              Contact
-            </TabsTrigger>
-            <TabsTrigger value="insurance" className="flex items-center">
-              <Shield className="h-4 w-4 mr-2" />
-              Insurance
-            </TabsTrigger>
-            <TabsTrigger value="medical" className="flex items-center">
-              <Stethoscope className="h-4 w-4 mr-2" />
-              Medical
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="basic" className="space-y-6">
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -469,82 +479,9 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ssn">Social Security Number</Label>
-                    <Input
-                      id="ssn"
-                      value={ssn}
-                      onChange={(e) => setSsn(e.target.value)}
-                      placeholder="XXX-XX-XXXX"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="maritalStatus">Marital Status</Label>
-                    <Select value={maritalStatus} onValueChange={setMaritalStatus}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select marital status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="single">Single</SelectItem>
-                        <SelectItem value="married">Married</SelectItem>
-                        <SelectItem value="divorced">Divorced</SelectItem>
-                        <SelectItem value="widowed">Widowed</SelectItem>
-                        <SelectItem value="separated">Separated</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="race">Race</Label>
-                    <Select value={race} onValueChange={setRace}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select race" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="american-indian">American Indian or Alaska Native</SelectItem>
-                        <SelectItem value="asian">Asian</SelectItem>
-                        <SelectItem value="black">Black or African American</SelectItem>
-                        <SelectItem value="native-hawaiian">Native Hawaiian or Other Pacific Islander</SelectItem>
-                        <SelectItem value="white">White</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                        <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ethnicity">Ethnicity</Label>
-                    <Select value={ethnicity} onValueChange={setEthnicity}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select ethnicity" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hispanic">Hispanic or Latino</SelectItem>
-                        <SelectItem value="not-hispanic">Not Hispanic or Latino</SelectItem>
-                        <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Preferred Language</Label>
-                    <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="english">English</SelectItem>
-                        <SelectItem value="spanish">Spanish</SelectItem>
-                        <SelectItem value="french">French</SelectItem>
-                        <SelectItem value="german">German</SelectItem>
-                        <SelectItem value="chinese">Chinese</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="contact" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -680,9 +617,6 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="insurance" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -757,15 +691,39 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
                     <Shield className="h-4 w-4 mr-2 text-blue-500" />
                     Secondary Insurance (Optional)
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="secondaryInsurance">Secondary Insurance Company</Label>
-                      <Input
-                        id="secondaryInsurance"
-                        value={secondaryInsurance}
-                        onChange={(e) => setSecondaryInsurance(e.target.value)}
-                        placeholder="Secondary insurance company"
-                      />
+                      <Label htmlFor="secondaryInsuranceCompany">Secondary Insurance Company</Label>
+                      <Select
+                        value={secondaryInsuranceCompanyId || "none"}
+                        onValueChange={(value) => {
+                          if (value === "none") {
+                            setSecondaryInsuranceCompanyId("");
+                            setSecondaryInsurance("");
+                          } else {
+                            const payer = payers.find(p => p.id === value);
+                            setSecondaryInsuranceCompanyId(value);
+                            setSecondaryInsurance(payer?.name || '');
+                          }
+                        }}
+                        disabled={isLoadingPayers}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance company"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {payers.length === 0 && !isLoadingPayers ? (
+                            <SelectItem value="no-payers" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                          ) : (
+                            payers.map(payer => (
+                              <SelectItem key={payer.id} value={payer.id}>
+                                {payer.name} {payer.plan_name ? `- ${payer.plan_name}` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="secondaryInsuranceId">Secondary Insurance ID</Label>
@@ -773,16 +731,46 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
                         id="secondaryInsuranceId"
                         value={secondaryInsuranceId}
                         onChange={(e) => setSecondaryInsuranceId(e.target.value)}
-                        placeholder="Secondary insurance ID"
+                        placeholder="ABC123456789"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryGroupNumber">Group Number</Label>
+                      <Input
+                        id="secondaryGroupNumber"
+                        value={secondaryGroupNumber}
+                        onChange={(e) => setSecondaryGroupNumber(e.target.value)}
+                        placeholder="Group number"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryPolicyHolderName">Policy Holder Name</Label>
+                      <Input
+                        id="secondaryPolicyHolderName"
+                        value={secondaryPolicyHolderName}
+                        onChange={(e) => setSecondaryPolicyHolderName(e.target.value)}
+                        placeholder="Policy holder name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryPolicyHolderRelationship">Policy Holder Relationship</Label>
+                      <Select value={secondaryPolicyHolderRelationship} onValueChange={setSecondaryPolicyHolderRelationship}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select relationship" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="self">Self</SelectItem>
+                          <SelectItem value="spouse">Spouse</SelectItem>
+                          <SelectItem value="parent">Parent</SelectItem>
+                          <SelectItem value="child">Child</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="medical" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -847,8 +835,7 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+        </div>
 
         {errors.submit && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
@@ -859,60 +846,27 @@ export function EditPatientForm({ patient, isOpen, onClose, onSave }: EditPatien
           </div>
         )}
 
-        <DialogFooter className="flex justify-between">
+        <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <div className="flex space-x-2">
-            {activeTab !== 'basic' && (
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  const tabs = ['basic', 'contact', 'insurance', 'medical'];
-                  const currentIndex = tabs.indexOf(activeTab);
-                  if (currentIndex > 0) {
-                    setActiveTab(tabs[currentIndex - 1]);
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Previous
-              </Button>
-            )}
-            {activeTab !== 'medical' ? (
-              <Button 
-                onClick={() => {
-                  const tabs = ['basic', 'contact', 'insurance', 'medical'];
-                  const currentIndex = tabs.indexOf(activeTab);
-                  if (currentIndex < tabs.length - 1) {
-                    setActiveTab(tabs[currentIndex + 1]);
-                  }
-                }}
-                disabled={isSubmitting}
-              >
-                Next
-                <ChevronRight className="h-4 w-4 ml-2" />
-              </Button>
+          <Button 
+            onClick={handleSave} 
+            disabled={isSubmitting}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Saving...
+              </>
             ) : (
-              <Button 
-                onClick={handleSave} 
-                disabled={isSubmitting}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Changes
+              </>
             )}
-          </div>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

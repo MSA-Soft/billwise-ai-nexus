@@ -586,6 +586,8 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
                             <SelectItem value="physical_therapy">Physical Therapy</SelectItem>
                             <SelectItem value="emergency">Emergency</SelectItem>
                             <SelectItem value="specialist">Specialist Visit</SelectItem>
+                            <SelectItem value="surgery">Surgery</SelectItem>
+                            <SelectItem value="facility">Facility</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
