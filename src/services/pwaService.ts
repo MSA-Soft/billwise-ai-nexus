@@ -63,9 +63,16 @@ export class PWAService {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               // New service worker available
-              console.log('[PWA] New service worker available - reload to update');
-              // Force reload to activate new service worker
-              window.location.reload();
+              console.log('[PWA] New service worker available (update ready).');
+              // IMPORTANT:
+              // Do NOT force a hard reload here — it can wipe in-progress user work (forms, dialogs)
+              // and looks like the app "refreshes" when the tab regains focus.
+              // Instead, notify the app so UI can offer an "Update" button if desired.
+              try {
+                window.dispatchEvent(new CustomEvent('pwa:update-available'));
+              } catch {
+                // no-op (older browsers)
+              }
             }
           });
         }
@@ -207,14 +214,15 @@ export class PWAService {
   }
 
   // Utility: Convert VAPID key
-  private urlBase64ToUint8Array(base64String: string): Uint8Array {
+  private urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding)
       .replace(/\-/g, '+')
       .replace(/_/g, '/');
 
     const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
+    // Create the view over a real ArrayBuffer (not ArrayBufferLike) for stricter TS libs
+    const outputArray = new Uint8Array(new ArrayBuffer(rawData.length));
 
     for (let i = 0; i < rawData.length; ++i) {
       outputArray[i] = rawData.charCodeAt(i);

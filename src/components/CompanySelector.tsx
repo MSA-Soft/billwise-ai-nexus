@@ -49,8 +49,9 @@ export const CompanySelector: React.FC = () => {
       setLoading(true);
       await setCurrentCompany(companyId);
       toast.success('Company switched successfully');
-      // Refresh the page to reload data with new company context
-      window.location.reload();
+      // Do NOT hard-reload the SPA; it wipes in-progress work and can look like a "refresh" bug.
+      // MainAppLayout will remount page components when the company changes (keyed by company id).
+      navigate('/', { replace: true });
     } catch (error: any) {
       console.error('Error switching company:', error);
       toast.error(error.message || 'Failed to switch company');

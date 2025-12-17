@@ -21,9 +21,8 @@ const CompanySelectionPage: React.FC = () => {
     try {
       await setCurrentCompany(companyId);
       toast.success('Company selected successfully');
-      navigate('/');
-      // Reload to refresh all data with new company context
-      window.location.reload();
+      // Navigate into the app without hard reloading (prevents losing in-progress state).
+      navigate('/', { replace: true });
     } catch (error: any) {
       console.error('Error selecting company:', error);
       toast.error(error.message || 'Failed to select company');
@@ -67,7 +66,7 @@ const CompanySelectionPage: React.FC = () => {
               className="w-full"
               onClick={() => {
                 refreshCompanies();
-                setTimeout(() => window.location.reload(), 1000);
+                // Avoid hard reload; if companies were added, AuthContext state will update.
               }}
             >
               Refresh

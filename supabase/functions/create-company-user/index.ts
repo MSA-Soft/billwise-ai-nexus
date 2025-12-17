@@ -1,5 +1,8 @@
+// deno-lint-ignore-file
+// @deno-types="https://deno.land/x/types/index.d.ts"
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "@supabase/supabase-js";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +31,13 @@ serve(async (req) => {
     // Get the authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error('No authorization header');
+      return new Response(
+        JSON.stringify({ error: 'No authorization header' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
     // Verify the requesting user is a super admin
@@ -36,7 +45,13 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
     
     if (authError || !user) {
-      throw new Error('Invalid token');
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        }
+      );
     }
 
     // Check if user is super admin
@@ -47,14 +62,46 @@ serve(async (req) => {
       .single();
 
     if (!profile?.is_super_admin) {
-      throw new Error('Only super admins can create users');
+      return new Response(
+        JSON.stringify({ error: 'Only super admins can create users' }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      );
     }
 
     // Parse request body
-    const { companyId, userData } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      throw new Error('Invalid JSON in request body');
+    }
 
-    if (!companyId || !userData.email || !userData.password || !userData.fullName) {
-      throw new Error('Missing required fields');
+    const { companyId, userData } = body;
+
+    if (!companyId || !userData?.email || !userData?.password || !userData?.fullName) {
+      throw new Error('Missing required fields: companyId, userData.email, userData.password, userData.fullName');
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userData.email)) {
+      throw new Error('Invalid email format');
+    }
+
+    // Validate password strength (minimum 8 characters)
+    if (userData.password.length < 8) {
+      throw new Error('Password must be at least 8 characters long');
+    }
+
+    // Check if user with this email already exists
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const emailExists = existingUsers?.users?.some(u => u.email === userData.email);
+    
+    if (emailExists) {
+      throw new Error('User with this email already exists');
     }
 
     // Create user in Supabase Auth
@@ -67,11 +114,33 @@ serve(async (req) => {
       },
     });
 
-    if (createError) throw createError;
-    if (!authData.user) throw new Error('Failed to create user');
+    if (createError) {
+      // Handle specific Supabase auth errors
+      if (createError.message?.includes('already registered') || createError.message?.includes('already exists')) {
+        throw new Error('User with this email already exists');
+      }
+      throw new Error(`Failed to create user: ${createError.message}`);
+    }
+    
+    if (!authData.user) {
+      throw new Error('Failed to create user: No user data returned');
+    }
+
+    // Verify company exists
+    const { data: company, error: companyError } = await supabaseAdmin
+      .from('companies')
+      .select('id')
+      .eq('id', companyId)
+      .single();
+
+    if (companyError || !company) {
+      // Clean up: delete the auth user if company doesn't exist
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      throw new Error('Company not found');
+    }
 
     // Create profile
-    await supabaseAdmin
+    const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert({
         id: authData.user.id,
@@ -80,8 +149,14 @@ serve(async (req) => {
         is_super_admin: false,
       });
 
+    if (profileError) {
+      // Clean up: delete the auth user if profile creation fails
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      throw new Error(`Failed to create profile: ${profileError.message}`);
+    }
+
     // Add user to company
-    await supabaseAdmin
+    const { error: companyUserError } = await supabaseAdmin
       .from('company_users')
       .insert({
         company_id: companyId,
@@ -89,6 +164,13 @@ serve(async (req) => {
         role: userData.role || 'user',
         is_active: true,
       });
+
+    if (companyUserError) {
+      // Clean up: delete profile and auth user if company_users insert fails
+      await supabaseAdmin.from('profiles').delete().eq('id', authData.user.id);
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      throw new Error(`Failed to add user to company: ${companyUserError.message}`);
+    }
 
     return new Response(
       JSON.stringify({
@@ -104,11 +186,24 @@ serve(async (req) => {
       }
     );
   } catch (error: any) {
+    console.error('Error creating company user:', error);
+    
+    // Determine appropriate status code
+    let status = 400;
+    if (error.message?.includes('authorization') || error.message?.includes('token')) {
+      status = 401;
+    } else if (error.message?.includes('super admin') || error.message?.includes('permission')) {
+      status = 403;
+    }
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message || 'An unexpected error occurred',
+        success: false 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
+        status,
       }
     );
   }

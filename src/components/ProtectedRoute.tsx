@@ -50,8 +50,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     checkAccess();
   }, [location.pathname, currentCompany, isSuperAdmin, hasFormReportAccess, user]);
 
-  // Show loading while auth is initializing
-  if (loading || companyLoading) {
+  // Show loading while auth is initializing.
+  // NOTE: Don't block the whole app just because companies are refreshing in the background
+  // (e.g., after tab focus). Only block if we *still* don't have enough info to route.
+  if (loading || (companyLoading && !isSuperAdmin && !currentCompany)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Card className="w-96">

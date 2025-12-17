@@ -9,7 +9,10 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    // Use a stable dev port to avoid Vite auto-incrementing to random ports (8081/8082/...)
+    // which can look like "the app is still loading" if the browser is on an older port.
+    port: 8084,
+    strictPort: true,
     hmr: {
       overlay: false,
     },

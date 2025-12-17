@@ -479,18 +479,8 @@ const AuthorizationTracking = () => {
       isInitialMountRef.current = false;
     }
 
-    // Prevent re-fetching on browser visibility changes (tab switching, minimizing)
-    // Components stay mounted with display: none, so we don't need to re-fetch
-    const handleVisibilityChange = () => {
-      // Do nothing - data is already loaded and components stay mounted
-      // This prevents unnecessary re-fetches when tab becomes visible again
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    // No visibilitychange listener needed.
+    // If you ever want to refresh on focus, do it explicitly and safely (no hard reload).
   }, []);
 
   const getStatusColor = (status: string) => {

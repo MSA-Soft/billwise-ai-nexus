@@ -22,7 +22,7 @@ interface AuthContextType {
   isManager: () => boolean;
   hasPermission: (permission: string) => Promise<boolean>;
   isSuperAdmin: boolean;
-  checkSuperAdmin: () => Promise<void>;
+  checkSuperAdmin: () => Promise<boolean>;
   hasFormReportAccess: (routePath: string) => Promise<boolean>;
   accessibleRoutes: string[];
 }
@@ -59,18 +59,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   //#endregion
 
   //#region Super Admin Methods
-  const checkSuperAdmin = async () => {
+  const checkSuperAdmin = async (): Promise<boolean> => {
     if (!user) {
       setIsSuperAdmin(false);
-      return;
+      return false;
     }
 
     try {
       const isSuper = await companyService.isSuperAdmin();
       setIsSuperAdmin(isSuper);
+      return isSuper;
     } catch (error) {
       console.error('Error checking super admin status:', error);
       setIsSuperAdmin(false);
+      return false;
     }
   };
   //#endregion
@@ -85,9 +87,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       setCompanyLoading(true);
-      await checkSuperAdmin();
+      // IMPORTANT: compute super admin status locally to avoid state feedback loops
+      // (isSuperAdmin state update can trigger effects that call loadUserCompanies again).
+      const isSuper = await checkSuperAdmin();
       
-      if (isSuperAdmin) {
+      if (isSuper) {
         const allCompanies = await companyService.getAllCompanies();
         const superAdminCompanies: CompanyUser[] = allCompanies.map(company => ({
           id: `super-${company.id}`,
@@ -286,7 +290,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   //#region Effects
   useEffect(() => {
     if (user && !loading) {
-      checkSuperAdmin();
+      // Super admin is checked as part of loadUserCompanies to avoid duplicated calls/loops.
     } else if (!user) {
       setIsSuperAdmin(false);
     }
@@ -299,7 +303,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUserCompanies([]);
       setCurrentCompanyState(null);
     }
-  }, [user, loading, isSuperAdmin]);
+  }, [user, loading]);
 
   useEffect(() => {
     const loadAccessibleRoutes = async () => {

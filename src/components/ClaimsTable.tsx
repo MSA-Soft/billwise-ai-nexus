@@ -77,6 +77,7 @@ interface ClaimsTableProps {
   onSelectAll: () => void;
   onViewClaim: (claim: ClaimData) => void;
   onEditClaim: (claim: ClaimData) => void;
+  onRefresh?: () => void;
 }
 
 export function ClaimsTable({
@@ -85,7 +86,8 @@ export function ClaimsTable({
   onSelectClaim,
   onSelectAll,
   onViewClaim,
-  onEditClaim
+  onEditClaim,
+  onRefresh,
 }: ClaimsTableProps) {
   const [sortField, setSortField] = useState<keyof ClaimData>('submissionDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -159,7 +161,9 @@ export function ClaimsTable({
               variant="ghost"
               size="sm"
               className="text-white hover:bg-white/20"
-              onClick={() => window.location.reload()}
+              onClick={() => onRefresh?.()}
+              disabled={!onRefresh}
+              title={onRefresh ? 'Refresh claims' : 'Refresh not available'}
             >
               <RefreshCw className="h-4 w-4" />
             </Button>

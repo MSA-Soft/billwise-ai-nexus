@@ -10,6 +10,7 @@ import { Patients } from '@/components/Patients';
 import { Claims } from '@/components/Claims';
 import { Schedule } from '@/components/Schedule';
 import { EnhancedClaims } from '@/components/EnhancedClaims';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Map route paths to component keys
 const routeToKeyMap: Record<string, string> = {
@@ -45,8 +46,10 @@ interface MainAppLayoutProps {
 
 const MainAppLayout: React.FC<MainAppLayoutProps> = memo(({ children }) => {
   const location = useLocation();
+  const { currentCompany } = useAuth();
   const currentKey = routeToKeyMap[location.pathname] || 'dashboard';
   const currentPage = routeToPageMap[location.pathname] || 'dashboard';
+  const companyKey = currentCompany?.id ?? 'no-company';
 
   // Render all components but show only the active one
   // This preserves component state when switching routes (components stay mounted)
@@ -54,34 +57,34 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = memo(({ children }) => {
   return (
     <Layout currentPage={currentPage}>
       <div style={{ display: currentKey === 'dashboard' ? 'block' : 'none' }}>
-        <BillingWorkflow key="dashboard" />
+        <BillingWorkflow key={`dashboard-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'schedule' ? 'block' : 'none' }}>
-        <Schedule key="schedule" />
+        <Schedule key={`schedule-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'patients' ? 'block' : 'none' }}>
-        <Patients key="patients" />
+        <Patients key={`patients-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'claims' ? 'block' : 'none' }}>
-        <Claims key="claims" />
+        <Claims key={`claims-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'eligibility-verification' ? 'block' : 'none' }}>
-        <EligibilityVerification key="eligibility-verification" />
+        <EligibilityVerification key={`eligibility-verification-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'code-validation' ? 'block' : 'none' }}>
-        <CodeValidation key="code-validation" />
+        <CodeValidation key={`code-validation-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'authorization' ? 'block' : 'none' }}>
-        <AuthorizationTracking key="authorization" />
+        <AuthorizationTracking key={`authorization-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'enhanced-claims' ? 'block' : 'none' }}>
-        <EnhancedClaims key="enhanced-claims" />
+        <EnhancedClaims key={`enhanced-claims-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'billing-workflow' ? 'block' : 'none' }}>
-        <BillingWorkflow key="billing-workflow" />
+        <BillingWorkflow key={`billing-workflow-${companyKey}`} />
       </div>
       <div style={{ display: currentKey === 'quick-actions' ? 'block' : 'none' }}>
-        <QuickActions key="quick-actions" />
+        <QuickActions key={`quick-actions-${companyKey}`} />
       </div>
       {children}
     </Layout>

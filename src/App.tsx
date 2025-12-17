@@ -39,7 +39,21 @@ import CompaniesPage from "./pages/CompaniesPage";
 import CompanySelectionPage from "./pages/CompanySelectionPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
 
-const queryClient = new QueryClient();
+// IMPORTANT:
+// Prevent "tab switch/minimize → come back → everything refetches/resets" behavior in many browsers.
+// React Query defaults to refetching on window focus; we disable it globally for this app.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
 
 const App = () => (
   <ErrorBoundary>
