@@ -6,6 +6,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { aiService } from '@/services/aiService';
+import { useToast } from '@/hooks/use-toast';
 import {
   FileText,
   Download,
@@ -74,63 +76,99 @@ export function LetterGenerator({ claim, isOpen, onClose, denialReasons }: Lette
   const [generatedLetter, setGeneratedLetter] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [customContent, setCustomContent] = useState('');
+  const { toast } = useToast();
 
   if (!claim) return null;
 
   const generateLetter = async () => {
     setIsGenerating(true);
     
-    // Simulate AI letter generation
-    setTimeout(() => {
-      const mockLetter = `
+    try {
+      // If it's an appeal-related template, generate a real AI appeal packet server-side.
+      const isAppealTemplate = selectedTemplate.startsWith('appeal-');
+
+      if (isAppealTemplate) {
+        const primaryReason = denialReasons?.[0];
+        const analysis = await aiService.analyzeDenial({
+          claimId: claim.claimNumber,
+          patientName: claim.patient,
+          denialCode: primaryReason?.code || 'UNKNOWN',
+          denialReason:
+            denialReasons?.length
+              ? denialReasons.map(r => `${r.code}: ${r.description}`).join('; ')
+              : 'Denial reason not provided',
+          amount: claim.amount,
+          procedureCodes: claim.cptCodes || [],
+          diagnosisCodes: claim.icdCodes || [],
+        });
+
+        setGeneratedLetter(analysis.appealText);
+        toast({
+          title: 'Letter generated',
+          description: `Estimated success probability: ${Math.round((analysis.successProbability || 0) * 100)}%`,
+        });
+        return;
+      }
+
+      // Fallback for non-appeal templates: keep a safe local draft (can be upgraded later).
+      const draft = `
 [Date]
 
-[Insurance Company Name]
+[Recipient Name / Department]
+[Payer / Organization]
 [Address]
 
-Re: Appeal for Claim ${claim.claimNumber}
-Patient: ${claim.patient}
-Provider: ${claim.provider}
+Re: ${selectedTemplate === 'prior-auth-request' ? 'Prior Authorization Request' : 'Patient Communication'}
+Claim: ${claim.claimNumber}
 Date of Service: ${claim.dateOfService}
-Claim Amount: $${claim.amount.toFixed(2)}
 
-Dear Claims Review Team,
+Dear [Recipient],
 
-I am writing to formally appeal the denial of the above-referenced claim. Based on my review of the denial reasons and clinical documentation, I believe this claim was incorrectly denied and should be reconsidered for payment.
+${selectedTemplate === 'prior-auth-request'
+  ? `We are requesting prior authorization for the services listed below.
 
-DENIAL REASONS ADDRESSED:
-${denialReasons.map(reason => `• ${reason.code}: ${reason.description}`).join('\n')}
+Requested services (CPT): ${(claim.cptCodes || []).join(', ')}
+Diagnoses (ICD-10): ${(claim.icdCodes || []).join(', ')}
 
-CLINICAL JUSTIFICATION:
-The services provided were medically necessary and appropriate for the patient's condition. The procedure was performed according to accepted medical standards and was essential for the patient's care and treatment.
+Clinical indication:
+[Add clinical indication]
 
-SUPPORTING DOCUMENTATION:
-• Medical records from ${claim.dateOfService}
-• Provider notes supporting medical necessity
-• Relevant diagnostic codes: ${claim.icdCodes.join(', ')}
-• Procedure codes: ${claim.cptCodes.join(', ')}
+Medical necessity:
+[Add medical necessity]
+`
+  : `We are writing regarding your recent billing/insurance communication.
 
-REQUESTED ACTION:
-I respectfully request that you reverse the denial decision and process payment for this claim in the amount of $${claim.amount.toFixed(2)}. The services were appropriately rendered and meet all coverage criteria.
+Summary:
+[Add summary]
 
-If you require any additional information or documentation, please contact our office at your earliest convenience. I look forward to your prompt reconsideration of this matter.
+Next steps:
+- [Add next step 1]
+- [Add next step 2]
+`}
 
 Sincerely,
-
-[Provider Name]
-[Provider Title]
-[Practice Name]
-[Contact Information]
+[Name]
+[Title]
+[Practice]
+[Contact Info]
       `.trim();
       
-      setGeneratedLetter(mockLetter);
+      setGeneratedLetter(draft);
+    } catch (e: any) {
+      console.error('Letter generation failed:', e);
+      toast({
+        title: 'Letter generation failed',
+        description: e?.message || 'Unable to generate letter right now.',
+        variant: 'destructive',
+      });
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   const handleCopyLetter = () => {
     navigator.clipboard.writeText(generatedLetter);
-    alert('Letter copied to clipboard!');
+    toast({ title: 'Copied', description: 'Letter copied to clipboard.' });
   };
 
   const handleDownloadLetter = () => {
@@ -145,7 +183,7 @@ Sincerely,
 
   const handleSendLetter = () => {
     // Simulate sending letter
-    alert('Letter sent successfully!');
+    toast({ title: 'Sent', description: 'Letter sent successfully!' });
   };
 
   return (

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, Clock, CheckCircle, AlertTriangle, Plus, Eye, Edit, Bell, RefreshCw, Calendar, TrendingUp, XCircle, FileText, Columns3, X } from "lucide-react";
+import { Shield, Clock, CheckCircle, AlertTriangle, Plus, Eye, Edit, Bell, RefreshCw, Calendar, TrendingUp, XCircle, FileText, Columns3, X, GripVertical, ChevronUp, ChevronDown } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import AuthorizationWorkflow from "@/components/AuthorizationWorkflow";
@@ -29,7 +29,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const AuthorizationTracking = () => {
   const { toast } = useToast();
-  const { user, currentCompany } = useAuth();
+  const { user, currentCompany, isSuperAdmin, isAdmin } = useAuth();
 
   const [selectedAuth, setSelectedAuth] = useState<any>(null);
   const [viewOpen, setViewOpen] = useState(false);
@@ -53,9 +53,10 @@ const AuthorizationTracking = () => {
   const defaultWeek = (Math.floor((now.getDate() - 1) / 7) + 1).toString();
 
   const [filterYear, setFilterYear] = useState<string>(defaultYear);
-  const [filterMonth, setFilterMonth] = useState<string>(defaultMonth);
-  const [filterTimePeriod, setFilterTimePeriod] = useState<string>("week"); // wholeMonth, last15, week, today, yesterday, tomorrow
-  const [filterWeek, setFilterWeek] = useState<string>(defaultWeek); // 1-4 when week is selected
+  // Default to a wide view so older authorizations don't "disappear" by default.
+  const [filterMonth, setFilterMonth] = useState<string>(""); // all months
+  const [filterTimePeriod, setFilterTimePeriod] = useState<string>(""); // whole period (no week/day restriction)
+  const [filterWeek, setFilterWeek] = useState<string>("all"); // 1-4 when week is selected
   const [filterDay, setFilterDay] = useState<string>(""); // monday-sunday when week/day is selected
 
   // Status / scope filter for All Authorizations
@@ -64,23 +65,94 @@ const AuthorizationTracking = () => {
   >("all");
 
   // Dynamic column management for Active Authorizations table
-  const [activeVisibleColumns, setActiveVisibleColumns] = useState<string[]>([
-    "S.No",
-    "Scheduled Location",
-    "Order Date",
-    "Type of Visit",
-    "Patient Name",
-    "Primary Insurance",
-    "CPT Code",
-    "Prior Auth Required",
-    "Prior Authorization Status",
-    "Remarks",
-    "Secondary Insurance",
-    "Comments & Notes",
-    "Actions",
-  ]);
+  const ACTIVE_ALL_COLUMNS = useMemo(
+    () => [
+      "S.No",
+      "Patient Name",
+      "Scheduled Location",
+      "Order Date",
+      "Type of Visit",
+      "Primary Insurance",
+      "Secondary Insurance",
+      "CPT Code",
+      "Prior Auth Required",
+      "Prior Authorization Status",
+      "Remarks",
+      "Comments & Notes",
+      "Description",
+      "Actions",
+    ],
+    [],
+  );
 
-  const [activeAvailableColumns, setActiveAvailableColumns] = useState<string[]>([]);
+  // Default: keep the view compact; users can add more via Columns button.
+  const ACTIVE_DEFAULT_COLUMNS = useMemo(
+    () => [
+      "S.No",
+      "Patient Name",
+      "Scheduled Location",
+      "Order Date",
+      "Type of Visit",
+      "Primary Insurance",
+      "CPT Code",
+      "Prior Authorization Status",
+      "Actions",
+    ],
+    [],
+  );
+
+  const activeColumnsStorageKey = useMemo(() => {
+    const uid = user?.id ?? "anon";
+    const cid = currentCompany?.id ?? "no_company";
+    return `bw_columns:authorization_tracking:active:${uid}:${cid}`;
+  }, [user?.id, currentCompany?.id]);
+
+  const normalizeActiveColumns = (cols: unknown): string[] => {
+    const list = Array.isArray(cols) ? (cols.filter((c) => typeof c === "string") as string[]) : [];
+    const filtered = list.filter((c) => ACTIVE_ALL_COLUMNS.includes(c));
+    const unique = Array.from(new Set(filtered));
+    // Always show S.No
+    if (!unique.includes("S.No")) unique.unshift("S.No");
+    // Always show Actions (critical controls)
+    if (!unique.includes("Actions")) unique.push("Actions");
+    return unique.length > 0 ? unique : ACTIVE_DEFAULT_COLUMNS;
+  };
+
+  const [activeVisibleColumns, setActiveVisibleColumns] = useState<string[]>(ACTIVE_DEFAULT_COLUMNS);
+  const activeAvailableColumns = useMemo(
+    () => ACTIVE_ALL_COLUMNS.filter((c) => !activeVisibleColumns.includes(c)),
+    [ACTIVE_ALL_COLUMNS, activeVisibleColumns],
+  );
+
+  const [activeDragIndex, setActiveDragIndex] = useState<number | null>(null);
+  const arrayMove = <T,>(arr: T[], from: number, to: number) => {
+    const next = arr.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  };
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(activeColumnsStorageKey);
+      if (!raw) {
+        setActiveVisibleColumns(ACTIVE_DEFAULT_COLUMNS);
+        return;
+      }
+      setActiveVisibleColumns(normalizeActiveColumns(JSON.parse(raw)));
+    } catch {
+      setActiveVisibleColumns(ACTIVE_DEFAULT_COLUMNS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeColumnsStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(activeColumnsStorageKey, JSON.stringify(activeVisibleColumns));
+    } catch {
+      // ignore
+    }
+  }, [activeColumnsStorageKey, activeVisibleColumns]);
   const [showActiveColumnSelector, setShowActiveColumnSelector] = useState(false);
 
   const getActiveColumnHeader = (column: string) => column;
@@ -270,16 +342,26 @@ const AuthorizationTracking = () => {
     try {
       setLoading(true);
       
-      // CRITICAL: Filter by company_id for multi-tenant isolation
       let query = supabase
         .from('authorization_requests' as any)
         .select('*');
       
-      if (currentCompany?.id) {
-        console.log('🏢 Filtering authorizations by company_id:', currentCompany.id);
+      // Super admins should see everything (RLS permitting).
+      if (isSuperAdmin) {
+        console.log('👑 Super admin: loading authorizations without company filter');
+      } else if (currentCompany?.id) {
+        const adminForCompany = isAdmin();
+        // For admins, also include legacy/unassigned records (company_id IS NULL) so "everything shows".
+        // For non-admin users, keep strict company isolation.
+        if (adminForCompany) {
+          console.log('🏢 Admin: loading authorizations for company_id + NULL (legacy):', currentCompany.id);
+          query = query.or(`company_id.eq.${currentCompany.id},company_id.is.null`);
+        } else {
+          console.log('🏢 Loading authorizations by company_id:', currentCompany.id);
         query = query.eq('company_id', currentCompany.id);
+        }
       } else {
-        console.warn('⚠️ No company_id filter applied for authorizations - relying on RLS only');
+        console.warn('⚠️ No company selected; relying on RLS only for authorizations');
       }
       
       // Query without join to avoid relationship ambiguity
@@ -466,22 +548,19 @@ const AuthorizationTracking = () => {
     }
   };
 
-  // Track if data has been fetched to prevent unnecessary re-fetches
-  const hasFetchedRef = React.useRef(false);
-  const isInitialMountRef = React.useRef(true);
-
+  // Fetch once per user/company scope (fixes "blank data" when company loads after initial mount)
+  const lastScopeRef = React.useRef<string | null>(null);
   useEffect(() => {
-    // Only fetch on initial mount, not when switching tabs or browser visibility changes
-    if (isInitialMountRef.current && !hasFetchedRef.current) {
-      hasFetchedRef.current = true;
+    const scope = `${user?.id ?? 'anon'}:${currentCompany?.id ?? 'no_company'}`;
+    if (lastScopeRef.current === scope) return;
+    lastScopeRef.current = scope;
+
+    // If user isn't ready yet, don't spam requests.
+    if (!user?.id) return;
+
     fetchAuthorizations();
     loadExpirationData();
-      isInitialMountRef.current = false;
-    }
-
-    // No visibilitychange listener needed.
-    // If you ever want to refresh on focus, do it explicitly and safely (no hard reload).
-  }, []);
+  }, [user?.id, currentCompany?.id]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -870,13 +949,14 @@ const AuthorizationTracking = () => {
                     </SelectContent>
                   </Select>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
                     onClick={() => setShowActiveColumnSelector(true)}
                     title="Select columns"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Columns3 className="h-4 w-4" />
+                    Columns
                   </Button>
                 </div>
               </div>
@@ -1016,7 +1096,7 @@ const AuthorizationTracking = () => {
                                 return true;
                             }
                           })
-                          .map((auth) => (
+                          .map((auth, rowIndex) => (
                           <TableRow key={auth.id}>
                             {activeVisibleColumns.map((col) => {
                               if (col === "Actions") {
@@ -1073,6 +1153,14 @@ const AuthorizationTracking = () => {
                                   <CheckCircle className="h-3 w-3" />
                                 </Button>
                               </div>
+                            </TableCell>
+                                );
+                              }
+
+                              if (col === "S.No") {
+                                return (
+                                  <TableCell key={`${auth.id}-${col}`} className="font-medium">
+                                    {String(rowIndex + 1).padStart(3, "0")}
                             </TableCell>
                                 );
                               }
@@ -1791,9 +1879,6 @@ const AuthorizationTracking = () => {
                       size="sm"
                       className="h-6 w-6 p-0"
                       onClick={() => {
-                        setActiveAvailableColumns(
-                          activeAvailableColumns.filter((c) => c !== column)
-                        );
                         setActiveVisibleColumns([...activeVisibleColumns, column]);
                       }}
                     >
@@ -1806,28 +1891,75 @@ const AuthorizationTracking = () => {
 
             {/* Visible Columns */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+              <h3 className="text-lg font-semibold mb-1 text-gray-900">Visible Columns</h3>
+              <p className="text-xs text-muted-foreground mb-2">Drag to reorder. “S.No” is always shown.</p>
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {activeVisibleColumns.map((column) => (
+                {activeVisibleColumns.map((column, idx) => (
                   <div
                     key={column}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    draggable
+                    onDragStart={(e) => {
+                      setActiveDragIndex(idx);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = activeDragIndex ?? Number(e.dataTransfer.getData("text/plain"));
+                      if (!Number.isFinite(from) || from === idx) return;
+                      setActiveVisibleColumns((prev) => arrayMove(prev, from, idx));
+                      setActiveDragIndex(null);
+                    }}
                   >
-                    <span className="text-gray-900">{getActiveColumnHeader(column)}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-gray-900 truncate">{getActiveColumnHeader(column)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 w-6 p-0"
+                        disabled={idx === 0}
+                        onClick={() => setActiveVisibleColumns((prev) => arrayMove(prev, idx, idx - 1))}
+                        title="Move up"
+                      >
+                        <ChevronUp className="h-4 w-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        disabled={idx === activeVisibleColumns.length - 1}
+                        onClick={() => setActiveVisibleColumns((prev) => arrayMove(prev, idx, idx + 1))}
+                        title="Move down"
+                      >
+                        <ChevronDown className="h-4 w-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        disabled={column === "S.No" || column === "Actions"}
                       onClick={() => {
+                          if (column === "S.No" || column === "Actions") return;
                         if (activeVisibleColumns.length === 1) return;
-                        setActiveVisibleColumns(
-                          activeVisibleColumns.filter((c) => c !== column)
-                        );
-                        setActiveAvailableColumns([...activeAvailableColumns, column]);
-                      }}
+                          setActiveVisibleColumns(activeVisibleColumns.filter((c) => c !== column));
+                        }}
+                        title={
+                          column === "S.No"
+                            ? "S.No is always visible"
+                            : column === "Actions"
+                              ? "Actions is always visible"
+                              : "Remove"
+                        }
                     >
                       <X className="h-4 w-4 text-gray-600" />
                     </Button>
+                    </div>
                   </div>
                 ))}
               </div>

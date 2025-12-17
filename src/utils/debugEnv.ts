@@ -8,7 +8,6 @@ export const debugEnvironment = () => {
   console.log('\n📋 Environment Variables:');
   console.log('VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing');
   console.log('VITE_SUPABASE_PUBLISHABLE_KEY:', import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? '✅ Set' : '❌ Missing');
-  console.log('VITE_OPENAI_API_KEY:', import.meta.env.VITE_OPENAI_API_KEY ? '✅ Set' : '❌ Missing');
   console.log('VITE_APP_ENV:', import.meta.env.VITE_APP_ENV || 'Not set');
   console.log('VITE_APP_VERSION:', import.meta.env.VITE_APP_VERSION || 'Not set');
   
@@ -18,7 +17,6 @@ export const debugEnvironment = () => {
   return {
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
     supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    openaiKey: import.meta.env.VITE_OPENAI_API_KEY,
     appEnv: import.meta.env.VITE_APP_ENV,
     appVersion: import.meta.env.VITE_APP_VERSION,
   };

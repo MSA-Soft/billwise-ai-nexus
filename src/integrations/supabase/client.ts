@@ -2,9 +2,23 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
+declare global {
+  interface Window {
+    __BILLWISE_CONFIG__?: {
+      supabaseUrl?: string;
+      supabaseAnonKey?: string;
+    };
+  }
+}
+
 // Get environment variables (fail fast if missing)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
+const runtimeUrl = typeof window !== 'undefined' ? window.__BILLWISE_CONFIG__?.supabaseUrl : undefined;
+const runtimeKey = typeof window !== 'undefined' ? window.__BILLWISE_CONFIG__?.supabaseAnonKey : undefined;
+
+const SUPABASE_URL = (runtimeUrl || import.meta.env.VITE_SUPABASE_URL) as string | undefined;
+const SUPABASE_ANON_KEY = (runtimeKey ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   // Surface a clear error early instead of silently using a fallback
@@ -18,8 +32,8 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 // Log environment status (only in development)
 if (import.meta.env.DEV) {
   console.log('🔧 Supabase Configuration:');
-  console.log('URL:', SUPABASE_URL ? '✅ From .env' : '❌ Missing');
-  console.log('Key:', SUPABASE_ANON_KEY ? `✅ From .env (${SUPABASE_ANON_KEY.length} chars)` : '❌ Missing');
+  console.log('URL:', SUPABASE_URL ? `✅ Loaded (${runtimeUrl ? 'runtime-config' : 'env'})` : '❌ Missing');
+  console.log('Key:', SUPABASE_ANON_KEY ? `✅ Loaded (${runtimeKey ? 'runtime-config' : 'env'}) (${SUPABASE_ANON_KEY.length} chars)` : '❌ Missing');
   
   // Debug: Show first few chars of key to verify it's loaded (remove in production)
   if (SUPABASE_ANON_KEY) {

@@ -1,6 +1,8 @@
 // AI Service for BillWise AI Nexus
 // This service handles all AI-related functionality
 
+import { supabase } from '@/integrations/supabase/client';
+
 export interface AIAnalysis {
   score: number;
   recommendations: string[];
@@ -15,19 +17,147 @@ export interface AppealSuggestion {
   estimatedProcessingTime: string;
 }
 
+export interface PatientMessageDraft {
+  subject: string;
+  message: string;
+  channelHints?: string[];
+}
+
+type AIGatewayChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+let aiEdgeFunctionAvailable: boolean | null = null;
+
+async function extractEdgeFunctionError(error: any): Promise<{ status?: number; message: string }> {
+  const fallbackMessage = error?.message || 'AI function invoke failed';
+  const ctx = error?.context;
+
+  // In supabase-js, non-2xx returns FunctionsHttpError where `context` is a Response.
+  const status: number | undefined = typeof ctx?.status === 'number' ? ctx.status : undefined;
+
+  // Try to read structured JSON error from the Response body.
+  if (ctx && typeof ctx === 'object' && typeof ctx.clone === 'function') {
+    try {
+      const json = await ctx.clone().json();
+      const serverMsg =
+        (typeof json?.error === 'string' && json.error) ||
+        (typeof json?.message === 'string' && json.message) ||
+        undefined;
+      if (serverMsg) return { status, message: serverMsg };
+    } catch {
+      // ignore
+    }
+
+    // Fallback to text if JSON parse fails.
+    try {
+      const text = await ctx.clone().text();
+      if (text && typeof text === 'string') return { status, message: text };
+    } catch {
+      // ignore
+    }
+  }
+
+  return { status, message: fallbackMessage };
+}
+
+async function invokeAIAutomation<TOutput>(action: string, payload: any): Promise<TOutput> {
+  // Skip if we already learned the function isn't deployed/reachable.
+  if (aiEdgeFunctionAvailable === false) {
+    throw new Error(
+      'AI automation is not available (edge function not deployed/reachable). Deploy Supabase function "ai-automation".'
+    );
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-automation', {
+      body: { action, payload },
+    });
+
+    // `error` typically indicates network / function-level problems
+    if (error) {
+      const extracted = await extractEdgeFunctionError(error as any);
+      let msg = extracted.message || 'AI function invoke failed';
+
+      if (extracted.status === 401) {
+        msg = 'Unauthorized. Please sign in again and retry.';
+      }
+      if (
+        extracted.status === 429 ||
+        msg.includes('(429)') ||
+        msg.toLowerCase().includes('quota') ||
+        msg.toLowerCase().includes('rate limit')
+      ) {
+        msg =
+          'OpenAI quota/rate-limit hit (429). Add billing/credits in your OpenAI account (or use a different API key), then retry.';
+      }
+      if (msg.includes('OPENAI_API_KEY is not configured')) {
+        msg =
+          'OPENAI_API_KEY is not configured on the server. Set the Supabase secret OPENAI_API_KEY for the ai-automation Edge Function.';
+      }
+
+      // Mark unavailable only for "function missing / fetch failed" style errors
+      if (
+        extracted.status === 404 ||
+        msg.includes('Failed to fetch') ||
+        msg.includes('404') ||
+        msg.toLowerCase().includes('not found')
+      ) {
+        aiEdgeFunctionAvailable = false;
+      }
+      throw new Error(msg);
+    }
+
+    aiEdgeFunctionAvailable = true;
+
+    if (!data?.success) {
+      throw new Error(data?.error || 'AI function returned an error');
+    }
+
+    return data.output as TOutput;
+  } catch (e: any) {
+    // If this looks like a network/CORS failure, treat function as unavailable to reduce spam.
+    const msg = e?.message || String(e);
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      aiEdgeFunctionAvailable = false;
+    }
+    throw e;
+  }
+}
+
 export class AIService {
   private static instance: AIService;
-  private apiKey: string;
-
-  constructor() {
-    this.apiKey = import.meta.env.VITE_OPENAI_API_KEY || 'demo-key';
-  }
 
   static getInstance(): AIService {
     if (!AIService.instance) {
       AIService.instance = new AIService();
     }
     return AIService.instance;
+  }
+
+  /**
+   * General staff copilot chat (server-side OpenAI call via Edge Function).
+   * Never uses a browser API key.
+   */
+  async chatAssistant(text: string, history: AIGatewayChatMessage[] = []): Promise<string> {
+    const output = await invokeAIAutomation<{ text: string }>('chat', { text, history });
+    return output.text;
+  }
+
+  /**
+   * Extract structured fields from clinical notes (server-side OpenAI call via Edge Function).
+   */
+  async extractClinicalNotes(text: string): Promise<{
+    extractedData: any | null;
+    confidence: number;
+    extractionMethod: 'ai' | 'rule-based' | 'hybrid';
+    raw?: string;
+  }> {
+    const output = await invokeAIAutomation<{
+      extractedData: any | null;
+      confidence: number;
+      extractionMethod: 'ai' | 'rule-based' | 'hybrid';
+      raw?: string;
+    }>('extract_clinical_notes', { text });
+    return output;
   }
 
   // Analyze denial and suggest appeal strategy
@@ -41,7 +171,7 @@ export class AIService {
     diagnosisCodes: string[];
   }): Promise<AppealSuggestion> {
     try {
-      // Simulate AI analysis (replace with actual AI API call)
+      // Server-side AI (preferred). Falls back to templates if AI is not available.
       const analysis = await this.simulateAIAnalysis(denialData);
       return analysis;
     } catch (error) {
@@ -52,6 +182,26 @@ export class AIService {
 
   // Generate automated appeal letter
   async generateAppealLetter(denialData: any): Promise<string> {
+    // Try server-side AI first (better quality and payer-aware)
+    try {
+      const packet = await invokeAIAutomation<{
+        letter?: string;
+      }>('appeal_packet', {
+        denial: {
+          claimId: denialData.claimId,
+          denialCode: denialData.denialCode,
+          denialReason: denialData.denialReason,
+          amount: denialData.amount,
+          procedureCodes: denialData.procedureCodes,
+          diagnosisCodes: denialData.diagnosisCodes,
+        },
+      });
+
+      if (packet?.letter) return packet.letter;
+    } catch {
+      // ignore and fall back to templates below
+    }
+
     const appealTemplates = {
       'CO-11': `Dear Claims Department,
 
@@ -366,58 +516,41 @@ Billing Department`;
     } as any;
   }
 
-  // Real AI analysis using OpenAI API
+  // Server-side AI analysis using Supabase Edge Function (with fallback)
   private async simulateAIAnalysis(denialData: any): Promise<AppealSuggestion> {
     try {
-      // Use real OpenAI API if key is available
-      if (this.apiKey && this.apiKey !== 'demo-key') {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4',
-            messages: [
-              {
-                role: 'system',
-                content: `You are a medical billing expert specializing in claim denials and appeals. 
-                Analyze the denial and generate a professional appeal letter with success probability.
-                Denial Code: ${denialData.denialCode}
-                Reason: ${denialData.denialReason}
-                Amount: $${denialData.amount}
-                Patient: ${denialData.patientName}`
-              },
-              {
-                role: 'user',
-                content: `Generate an appeal letter for this denial and provide success probability.`
-              }
-            ],
-            max_tokens: 1000,
-            temperature: 0.7
-          })
+      const packet = await invokeAIAutomation<{
+        letter?: string;
+        attachments?: string[];
+        checklist?: string[];
+        risks?: string[];
+        successProbability?: number; // 0-1
+      }>('appeal_packet', {
+        denial: {
+          claimId: denialData.claimId,
+          denialCode: denialData.denialCode,
+          denialReason: denialData.denialReason,
+          amount: denialData.amount,
+          procedureCodes: denialData.procedureCodes,
+          diagnosisCodes: denialData.diagnosisCodes,
+        },
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          const aiResponse = data.choices[0].message.content;
-          
+      if (packet?.letter) {
           return {
-            appealText: aiResponse,
-            supportingDocuments: [
+          appealText: packet.letter,
+          supportingDocuments: packet.attachments || [
               'Medical records',
               'Provider notes', 
               'Insurance verification',
-              'Prior authorization (if applicable)'
+            'Prior authorization (if applicable)',
             ],
-            successProbability: 0.85, // AI-determined probability
-            estimatedProcessingTime: '7-14 business days'
+          successProbability: typeof packet.successProbability === 'number' ? packet.successProbability : 0.75,
+          estimatedProcessingTime: '7-14 business days',
           };
-        }
       }
     } catch (error) {
-      console.log('OpenAI API not available, using enhanced mock data');
+      console.log('AI edge function not available, using enhanced mock data');
     }
 
     // Enhanced mock data with more realistic responses
@@ -444,45 +577,16 @@ Billing Department`;
     };
   }
 
-  // Generate patient communication suggestions with real AI
+  // Generate patient communication suggestions (server-side AI via Edge Function)
   async generateCommunicationSuggestion(patientData: any, context: string): Promise<string> {
     try {
-      // Try to use real OpenAI API first
-      if (this.apiKey && this.apiKey !== 'demo-key') {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'gpt-4',
-            messages: [
-              {
-                role: 'system',
-                content: `You are a medical billing specialist writing patient communications. 
-                Create professional, empathetic, and clear communications for patients.
-                Patient: ${patientData.patient_name}
-                Balance: $${patientData.current_balance}
-                Context: ${context}`
-              },
-              {
-                role: 'user',
-                content: `Generate a ${context} communication for this patient.`
-              }
-            ],
-            max_tokens: 500,
-            temperature: 0.7
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices[0].message.content;
-        }
-      }
+      const out = await invokeAIAutomation<{ message?: string; subject?: string }>('patient_message', {
+        patient: patientData,
+        context,
+      });
+      if (out?.message) return out.message;
     } catch (error) {
-      console.log('OpenAI API not available, using enhanced templates');
+      console.log('AI not available, using enhanced templates');
     }
 
     // Enhanced templates with more realistic content
@@ -528,6 +632,40 @@ Collections Department`
     };
 
     return suggestions[context as keyof typeof suggestions] || suggestions['payment_reminder'];
+  }
+
+  /**
+   * Generate a patient-facing message draft (subject + message) via server-side AI.
+   * This is used for autopilot/batch workflows and for any UI that needs a subject line.
+   */
+  async generatePatientMessageDraft(patientData: any, context: string): Promise<PatientMessageDraft> {
+    try {
+      const out = await invokeAIAutomation<{ message?: string; subject?: string; channelHints?: string[] }>(
+        'patient_message',
+        {
+          patient: patientData,
+          context,
+        },
+      );
+      if (out?.message) {
+        return {
+          subject: out.subject || 'Billing message',
+          message: out.message,
+          channelHints: out.channelHints || [],
+        };
+      }
+    } catch {
+      // fall back below
+    }
+
+    const message = await this.generateCommunicationSuggestion(patientData, context);
+    const subject =
+      context === 'payment_plan'
+        ? 'Payment plan options'
+        : context === 'collections'
+          ? 'Important: account balance notice'
+          : 'Billing statement reminder';
+    return { subject, message, channelHints: [] };
   }
 
   // AI Smart Suggestions - Intelligent recommendations for improving authorization requests
@@ -656,14 +794,8 @@ Collections Department`
     }
 
     // Generate AI-powered suggestions using OpenAI if available
-    if (this.apiKey && this.apiKey !== 'demo-key') {
-      try {
-        const aiSuggestions = await this.generateAISuggestions(requestData, analysis);
-        improvementSuggestions.push(...aiSuggestions);
-      } catch (error) {
-        console.log('AI suggestion generation failed, using rule-based suggestions');
-      }
-    }
+    // NOTE: We intentionally do NOT auto-call the server AI here because this function can run
+    // frequently (typing/forms). Use `priorAuthCopilot()` for deep AI analysis on-demand.
 
     return {
       documentationSuggestions,
@@ -675,46 +807,30 @@ Collections Department`
     };
   }
 
-  // Generate AI-powered suggestions using OpenAI
-  private async generateAISuggestions(requestData: any, analysis: AIAnalysis): Promise<string[]> {
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a medical billing expert. Provide specific, actionable suggestions to improve authorization request approval chances. Be concise and practical.`
-            },
-            {
-              role: 'user',
-              content: `Authorization request has completeness score of ${analysis.score}/100. Missing elements: ${analysis.missingElements.join(', ')}. Provide 3-5 specific suggestions to improve this request.`
-            }
-          ],
-          max_tokens: 300,
-          temperature: 0.7
-        })
-      });
+  /**
+   * Deep prior-auth copilot analysis (server-side AI).
+   * Use this for "one-click" deeper analysis (not on every keystroke).
+   */
+  async priorAuthCopilot(authorization: any): Promise<any> {
+    return await invokeAIAutomation<any>('prior_auth_copilot', { authorization });
+  }
 
-      if (response.ok) {
-        const data = await response.json();
-        const suggestions = data.choices[0].message.content
-          .split('\n')
-          .filter((line: string) => line.trim().length > 0)
-          .map((line: string) => line.replace(/^[-•*]\s*/, '').trim())
-          .slice(0, 5);
-        return suggestions;
-      }
-    } catch (error) {
-      console.log('AI suggestion generation not available');
-    }
-
-    return [];
+  /**
+   * Batch denial triage (server-side AI).
+   * Use for a dashboard-level "what to work first" queue + clustering.
+   */
+  async triageDenials(denials: Array<{
+    denialId: string;
+    claimId: string;
+    denialCode?: string;
+    denialReason?: string;
+    amount?: number;
+    payerName?: string;
+    procedureCodes?: string[];
+    diagnosisCodes?: string[];
+    denialDate?: string;
+  }>): Promise<any> {
+    return await invokeAIAutomation<any>('denial_triage', { denials });
   }
 }
 

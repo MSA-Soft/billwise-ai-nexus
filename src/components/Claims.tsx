@@ -35,9 +35,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DenialTriageDashboard } from '@/components/DenialTriageDashboard';
 import { ProfessionalClaimForm } from '@/components/ProfessionalClaimForm';
 import { 
   Plus, 
+  Columns3,
   ChevronDown, 
   Search,
   FileText,
@@ -49,12 +51,15 @@ import {
   TrendingUp,
   ArrowUpDown,
   Circle,
+  GripVertical,
+  ChevronUp,
+  ChevronDown as ChevronDownIcon,
   X
 } from 'lucide-react';
 
 export function Claims() {
   const { toast } = useToast();
-  const { currentCompany } = useAuth();
+  const { currentCompany, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [exactMatchesOnly, setExactMatchesOnly] = useState(false);
   const [unpaidOnly, setUnpaidOnly] = useState(false);
@@ -99,21 +104,9 @@ export function Claims() {
   const [denialSubTab, setDenialSubTab] = useState<'active' | 'analytics' | 'ai-insights' | 'workflows'>('active');
   
   // Column management state
-  const [availableColumns, setAvailableColumns] = useState([
-    'Total Charges',
-    'Status',
-    'Entered',
-    'Facility',
-    'Primary Insurance',
-    'Provider',
-    'Service Date',
-    'Amount',
-    'Payer',
-    'AI Score',
-    'CPT Codes',
-    'Actions'
-  ]);
-  const [visibleColumns, setVisibleColumns] = useState([
+  const CLAIM_DEFAULT_COLUMNS = useMemo(
+    () => [
+      'S.No',
     'Claim ID',
     'Patient',
     'Provider',
@@ -123,8 +116,73 @@ export function Claims() {
     'Status',
     'AI Score',
     'CPT Codes',
-    'Actions'
-  ]);
+      'Actions',
+    ],
+    [],
+  );
+
+  const CLAIM_ALL_COLUMNS = useMemo(
+    () => [
+      ...CLAIM_DEFAULT_COLUMNS,
+      'Total Charges',
+      'Entered',
+      'Facility',
+      'Primary Insurance',
+      'Balance',
+      'Type',
+      'Rendering Provider',
+    ],
+    [CLAIM_DEFAULT_COLUMNS],
+  );
+
+  const columnsStorageKey = useMemo(() => {
+    const uid = user?.id ?? 'anon';
+    const cid = currentCompany?.id ?? 'no_company';
+    return `bw_columns:claims:${uid}:${cid}`;
+  }, [user?.id, currentCompany?.id]);
+
+  const normalizeColumns = (cols: unknown): string[] => {
+    const list = Array.isArray(cols) ? (cols.filter((c) => typeof c === 'string') as string[]) : [];
+    const filtered = list.filter((c) => CLAIM_ALL_COLUMNS.includes(c));
+    const unique = Array.from(new Set(filtered));
+    if (!unique.includes('S.No')) unique.unshift('S.No');
+    return unique.length > 0 ? unique : CLAIM_DEFAULT_COLUMNS;
+  };
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(CLAIM_DEFAULT_COLUMNS);
+  const availableColumns = useMemo(
+    () => CLAIM_ALL_COLUMNS.filter((c) => !visibleColumns.includes(c)),
+    [CLAIM_ALL_COLUMNS, visibleColumns],
+  );
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const arrayMove = <T,>(arr: T[], from: number, to: number) => {
+    const next = arr.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  };
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(columnsStorageKey);
+      if (!raw) {
+        setVisibleColumns(CLAIM_DEFAULT_COLUMNS);
+        return;
+      }
+      setVisibleColumns(normalizeColumns(JSON.parse(raw)));
+    } catch {
+      setVisibleColumns(CLAIM_DEFAULT_COLUMNS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnsStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(columnsStorageKey, JSON.stringify(visibleColumns));
+    } catch {
+      // ignore
+    }
+  }, [columnsStorageKey, visibleColumns]);
 
   // Fetch patients from database
   useEffect(() => {
@@ -307,6 +365,57 @@ export function Claims() {
         const facilitiesMap = new Map((facilitiesResult.data || []).map((f: any) => [f.id, f]));
         const payersMap = new Map((payersResult.data || []).map((p: any) => [p.id, p]));
 
+        // Optional fallback: fetch CPT + estimated amount from eligibility_verifications
+        // This helps when claim procedures/charges haven't been entered yet.
+        const patientExternalIds = Array.from(new Set((patientsResult.data || []).map((p: any) => p.patient_id).filter(Boolean)));
+        const eligibilityByPatientDate = new Map<string, any>();
+        const latestEligibilityByPatient = new Map<string, any>();
+
+        const toYmd = (d: any): string => {
+          if (!d) return '';
+          const s = String(d);
+          // If it's already YYYY-MM-DD...
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+          const dt = new Date(s);
+          if (Number.isNaN(dt.getTime())) return '';
+          return dt.toISOString().slice(0, 10);
+        };
+
+        if (patientExternalIds.length > 0) {
+          try {
+            let eligQuery = supabase
+              .from('eligibility_verifications' as any)
+              .select('patient_id, appointment_date, date_of_service, cpt_codes, estimated_cost, allowed_amount, patient_responsibility, collection_amount, created_at, company_id')
+              .in('patient_id', patientExternalIds)
+              .order('appointment_date', { ascending: false })
+              .limit(2000);
+
+            if (currentCompany?.id) {
+              // backward-compat: include NULL company_id if older rows exist
+              eligQuery = eligQuery.or(`company_id.eq.${currentCompany.id},company_id.is.null`);
+            }
+
+            const { data: eligRows, error: eligError } = await eligQuery;
+            if (!eligError && Array.isArray(eligRows) && eligRows.length > 0) {
+              for (const r of eligRows as any[]) {
+                const pid = String(r.patient_id || '').trim();
+                if (!pid) continue;
+                const ymd = toYmd(r.appointment_date) || toYmd(r.date_of_service) || toYmd(r.created_at);
+                if (ymd) {
+                  const key = `${pid}|${ymd}`;
+                  if (!eligibilityByPatientDate.has(key)) eligibilityByPatientDate.set(key, r);
+                }
+                if (!latestEligibilityByPatient.has(pid)) latestEligibilityByPatient.set(pid, r);
+              }
+              console.log(`✅ Loaded ${eligRows.length} eligibility_verifications for CPT/amount fallback`);
+            } else if (eligError) {
+              console.warn('⚠️ Could not load eligibility_verifications for fallback:', eligError);
+            }
+          } catch (e) {
+            console.warn('⚠️ Exception loading eligibility_verifications fallback:', e);
+          }
+        }
+
         // CRITICAL: Fetch procedures separately to ensure we ALWAYS get CPT codes
         // This is a fallback in case the join doesn't work properly
         const professionalClaimIds = claimsData
@@ -337,6 +446,37 @@ export function Claims() {
             }
           } catch (error) {
             console.warn('⚠️ Exception fetching procedures separately:', error);
+          }
+        }
+
+        // Also fetch legacy claim_procedures separately (same reason: ensure CPT codes and amounts show)
+        const legacyClaimIds = claimsData
+          .filter((c: any) => c.source === 'claims')
+          .map((c: any) => c.id)
+          .filter(Boolean);
+
+        let legacyProceduresMap = new Map<string, any[]>();
+        if (legacyClaimIds.length > 0) {
+          try {
+            const { data: allLegacyProcedures, error: legacyProcError } = await supabase
+              .from('claim_procedures' as any)
+              .select('*')
+              .in('claim_id', legacyClaimIds);
+
+            if (!legacyProcError && allLegacyProcedures && allLegacyProcedures.length > 0) {
+              allLegacyProcedures.forEach((proc: any) => {
+                const claimId = proc.claim_id;
+                if (!legacyProceduresMap.has(claimId)) legacyProceduresMap.set(claimId, []);
+                legacyProceduresMap.get(claimId)!.push(proc);
+              });
+              console.log(
+                `✅ Fetched ${allLegacyProcedures.length} legacy procedures separately for ${legacyClaimIds.length} legacy claims`,
+              );
+            } else if (legacyProcError) {
+              console.warn('⚠️ Error fetching legacy procedures separately:', legacyProcError);
+            }
+          } catch (error) {
+            console.warn('⚠️ Exception fetching legacy procedures separately:', error);
           }
         }
 
@@ -383,6 +523,11 @@ export function Claims() {
             procedures = Array.isArray(claim.claim_procedures) 
               ? claim.claim_procedures 
               : (claim.claim_procedures ? [claim.claim_procedures] : []);
+
+            // FALLBACK: If join didn't include procedures, use separate fetch map
+            if (procedures.length === 0 && claim.id && legacyProceduresMap.has(claim.id)) {
+              procedures = legacyProceduresMap.get(claim.id) || [];
+            }
             diagnoses = Array.isArray(claim.claim_diagnoses) 
               ? claim.claim_diagnoses 
               : (claim.claim_diagnoses ? [claim.claim_diagnoses] : []);
@@ -418,18 +563,43 @@ export function Claims() {
           // Get CPT codes from procedures - CRITICAL: Must extract CPT codes at any cost
           // professional_claim_procedures has cpt_code field directly
           // claim_procedures might need to join with procedure_codes table, but for now check both
-          const cptCodes = procedures
-            .map((p: any) => {
-              // professional_claim_procedures has cpt_code directly
-              if (p.cpt_code) return String(p.cpt_code).trim();
-              // claim_procedures might have it differently, check procedure_code_id or other fields
-              if (p.procedure_code) return String(p.procedure_code).trim();
-              // Try other possible fields
-              if (p.code) return String(p.code).trim();
-              if (p.cpt) return String(p.cpt).trim();
+          const extractCpt = (p: any): string | null => {
+            const candidates = [
+              p?.cpt_code,
+              p?.procedure_code,
+              p?.hcpcs_code,
+              p?.hcpcs,
+              p?.code,
+              p?.cpt,
+              p?.procedure,
+              p?.service_code,
+            ]
+              .map((v: any) => (v == null ? '' : String(v).trim()))
+              .filter(Boolean);
+
+            for (const c of candidates) {
+              // CPT/HCPCS commonly 5 chars alnum, or just 5 digits.
+              const cleaned = c.toUpperCase();
+              if (/^[A-Z0-9]{5}$/.test(cleaned)) return cleaned;
+              if (/^\d{5}$/.test(cleaned)) return cleaned;
+            }
+
+            // Last resort: scan object values for a CPT-like token
+            for (const v of Object.values(p || {})) {
+              if (typeof v !== 'string' && typeof v !== 'number') continue;
+              const s = String(v).trim().toUpperCase();
+              if (/^[A-Z0-9]{5}$/.test(s)) return s;
+            }
               return null;
-            })
-            .filter((code: string | null): code is string => Boolean(code && code.length > 0));
+          };
+
+          const cptCodes = Array.from(
+            new Set(
+              procedures
+                .map((p: any) => extractCpt(p))
+                .filter((code: string | null): code is string => Boolean(code)),
+            ),
+          );
           
           // Debug if no CPT codes found but procedures exist
           if (procedures.length > 0 && cptCodes.length === 0) {
@@ -437,13 +607,54 @@ export function Claims() {
           }
           
           // Calculate total charges from procedures if total_charges is 0 or missing
-          let totalCharges = parseFloat(claim.total_charges || 0);
+          const toNum = (v: any) => {
+            const n = typeof v === 'number' ? v : parseFloat(String(v ?? '0'));
+            return Number.isFinite(n) ? n : 0;
+          };
+
+          // Prefer claim-level totals when present, but fall back to summing procedure lines.
+          let totalCharges =
+            toNum(claim.total_charges) ||
+            toNum(claim.total_charge) ||
+            toNum(claim.totalCharges) ||
+            toNum(claim.charge_total);
+
           if (totalCharges === 0 && procedures.length > 0) {
-            // Sum up total_price from all procedures
             totalCharges = procedures.reduce((sum: number, p: any) => {
-              const price = parseFloat(p.total_price || p.total_charges || 0);
-              return sum + price;
+              const lineTotal =
+                toNum(p.total_price) ||
+                toNum(p.line_total) ||
+                toNum(p.charge_amount) ||
+                toNum(p.amount) ||
+                toNum(p.total_charges);
+
+              if (lineTotal > 0) return sum + lineTotal;
+
+              const unit = toNum(p.unit_price) || toNum(p.unit_charge) || toNum(p.charge) || toNum(p.price);
+              const units = toNum(p.units) || toNum(p.quantity) || toNum(p.unit_count) || toNum(p.service_units) || 1;
+              return sum + unit * (units || 1);
             }, 0);
+          }
+
+          // FINAL FALLBACK: If CPT codes / amount still missing, use eligibility_verifications (patient + DOS)
+          const externalPatientId = patient?.patient_id ? String(patient.patient_id) : '';
+          const claimYmd = toYmd(claim.service_date_from) || toYmd(claim.created_at);
+          const elig =
+            externalPatientId && claimYmd
+              ? (eligibilityByPatientDate.get(`${externalPatientId}|${claimYmd}`) || latestEligibilityByPatient.get(externalPatientId))
+              : (externalPatientId ? latestEligibilityByPatient.get(externalPatientId) : null);
+
+          if (cptCodes.length === 0 && Array.isArray(elig?.cpt_codes) && elig.cpt_codes.length > 0) {
+            cptCodes.push(...(elig.cpt_codes as any[]).map((x) => String(x).trim()).filter(Boolean));
+          }
+
+          if (totalCharges === 0 && elig) {
+            const fallbackAmount =
+              toNum(elig.estimated_cost) ||
+              toNum(elig.allowed_amount) ||
+              toNum(elig.patient_responsibility) ||
+              toNum(elig.collection_amount);
+            if (fallbackAmount > 0) totalCharges = fallbackAmount;
           }
           
           // Map status
@@ -507,6 +718,9 @@ export function Claims() {
   // Column mapping to data fields
   const getColumnValue = (claim: any, columnName: string) => {
     switch (columnName) {
+      case 'S.No':
+        // rendered using row index
+        return '';
       case 'Claim ID':
         return claim.id;
       case 'Patient':
@@ -527,7 +741,7 @@ export function Claims() {
       case 'AI Score':
         return claim.aiScore !== undefined ? `${claim.aiScore}%` : '—';
       case 'CPT Codes':
-        return claim.cptCodes ? claim.cptCodes.join(', ') : '—';
+        return Array.isArray(claim.cptCodes) && claim.cptCodes.length > 0 ? claim.cptCodes.join(', ') : '—';
       case 'Status':
         return claim.status;
       case 'Type':
@@ -548,6 +762,8 @@ export function Claims() {
   // Get column header display name
   const getColumnHeader = (columnName: string) => {
     switch (columnName) {
+      case 'S.No':
+        return 'S.No';
       case 'Claim ID':
         return 'Claim ID';
       case 'Patient':
@@ -1502,7 +1718,7 @@ export function Claims() {
               <div className="p-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900">Recently Opened</h2>
-                  <div className="flex items-center gap-1 group">
+                  <div className="flex items-center gap-2 group">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -1546,12 +1762,14 @@ export function Claims() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      className="h-6 w-6 p-0 hover:bg-green-50"
+                      className="h-8 px-2 py-1"
                       onClick={() => setShowColumnSelector(true)}
+                      title="Select columns"
                     >
-                      <Plus className="h-4 w-4 text-green-600" />
+                      <Columns3 className="h-4 w-4 mr-2" />
+                      Columns
                     </Button>
                   </div>
                 </div>
@@ -1584,7 +1802,7 @@ export function Claims() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {sortedClaims.map((claim) => (
+                      {sortedClaims.map((claim, rowIndex) => (
                       <TableRow 
                         key={claim.id} 
                         className="border-gray-200 hover:bg-gray-50 cursor-pointer"
@@ -1611,6 +1829,13 @@ export function Claims() {
                                     Open
                                   </Button>
                                 </div>
+                              </TableCell>
+                            );
+                          }
+                          if (columnName === 'S.No') {
+                            return (
+                              <TableCell key={`${columnName}-${idx}`} className="text-gray-900 font-medium">
+                                {String(rowIndex + 1).padStart(3, '0')}
                               </TableCell>
                             );
                           }
@@ -1726,30 +1951,8 @@ export function Claims() {
                     <div className="text-red-500">⚠️</div>
                     Denied Claims Requiring Action
                   </h3>
-
-                  <div className="mt-4 border rounded p-4 bg-gray-50">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">Denied</span>
-                          <strong>CLM-2024-003</strong>
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Patient: Mike Wilson | Provider: Dr. Brown
-                        </div>
-                        <div className="text-sm text-gray-600 mt-2">
-                          Amount: $85.00 | Service Date: 2024-01-09
-                        </div>
-                        <div className="flex gap-2 mt-3">
-                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Auth Required</span>
-                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">Missing Documentation</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Button variant="outline" className="text-sm">AI Analysis</Button>
-                        <Button className="bg-blue-600 text-white text-sm">Generate Appeal</Button>
-                      </div>
-                    </div>
+                  <div className="mt-4">
+                    <DenialTriageDashboard />
                   </div>
                 </CardContent>
               </Card>
@@ -1768,7 +1971,8 @@ export function Claims() {
               <Card className="bg-white border border-gray-200 shadow-sm">
                 <CardContent className="p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
-                  <p className="text-gray-600">AI-powered insights and recommendations for denial management will be displayed here.</p>
+                  <p className="text-gray-600 mb-4">Run AI triage to generate a priority queue and clusters.</p>
+                  <DenialTriageDashboard />
                 </CardContent>
               </Card>
             )}
@@ -1948,7 +2152,6 @@ export function Claims() {
                         size="sm"
                         className="h-6 w-6 p-0"
                         onClick={() => {
-                          setAvailableColumns(availableColumns.filter(c => c !== column));
                           setVisibleColumns([...visibleColumns, column]);
                         }}
                       >
@@ -1961,25 +2164,69 @@ export function Claims() {
 
               {/* Visible Columns */}
               <div>
-                <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+                <h3 className="text-lg font-semibold mb-1 text-gray-900">Visible Columns</h3>
+                <p className="text-xs text-muted-foreground mb-2">Drag to reorder. “S.No” is always shown.</p>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {visibleColumns.map((column) => (
+                  {visibleColumns.map((column, idx) => (
                     <div
                       key={column}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                      className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                      draggable
+                      onDragStart={(e) => {
+                        setDragIndex(idx);
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", String(idx));
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = dragIndex ?? Number(e.dataTransfer.getData("text/plain"));
+                        if (!Number.isFinite(from) || from === idx) return;
+                        setVisibleColumns((prev) => arrayMove(prev, from, idx));
+                        setDragIndex(null);
+                      }}
                     >
-                      <span className="text-gray-900">{column}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-gray-900 truncate">{column}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 w-6 p-0"
+                          disabled={idx === 0}
+                          onClick={() => setVisibleColumns((prev) => arrayMove(prev, idx, idx - 1))}
+                          title="Move up"
+                        >
+                          <ChevronUp className="h-4 w-4 text-gray-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          disabled={idx === visibleColumns.length - 1}
+                          onClick={() => setVisibleColumns((prev) => arrayMove(prev, idx, idx + 1))}
+                          title="Move down"
+                        >
+                          <ChevronDownIcon className="h-4 w-4 text-gray-600" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          disabled={column === "S.No"}
                         onClick={() => {
+                            if (column === "S.No") return;
+                            if (visibleColumns.length === 1) return;
                           setVisibleColumns(visibleColumns.filter(c => c !== column));
-                          setAvailableColumns([...availableColumns, column]);
                         }}
+                          title={column === "S.No" ? "S.No is always visible" : "Remove"}
                       >
                         <X className="h-4 w-4 text-gray-600" />
                       </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

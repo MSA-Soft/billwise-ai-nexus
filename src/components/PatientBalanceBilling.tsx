@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer, Scale } from "lucide-react";
+import { Users, DollarSign, CreditCard, Mail, Phone, Calendar, Eye, Send, Plus, Printer, Scale, Sparkles, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useBillingStatements } from "@/hooks/useBillingStatements";
 import BillingChat from "./BillingChat";
@@ -15,11 +15,20 @@ import BillingCycleConfig from "./BillingCycleConfig";
 import CommunicationPreferences from "./CommunicationPreferences";
 import PaymentPlanManagement from "./PaymentPlanManagement";
 import { CollectionsManagement } from "./CollectionsManagement";
+import { aiService } from "@/services/aiService";
+import { patientPortalService } from "@/services/patientPortalService";
 
 const PatientBalanceBilling = () => {
   const { toast } = useToast();
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [statementOpen, setStatementOpen] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftPatient, setDraftPatient] = useState<any>(null);
+  const [draftContext, setDraftContext] = useState<string>("payment_reminder");
+  const [draftSubject, setDraftSubject] = useState<string>("");
+  const [draftMessage, setDraftMessage] = useState<string>("");
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
   
   const {
     statements,
@@ -113,6 +122,83 @@ const PatientBalanceBilling = () => {
     email: `${statement.patient_name.toLowerCase().replace(/\s+/g, '.')}@email.com`,
     phone: "(555) 123-4567"
   }));
+
+  const contextForPatient = useMemo(() => {
+    return (p: any) => {
+      if (p.status === "90+ Days") return "collections";
+      if (p.status === "60+ Days") return "payment_reminder";
+      if (p.status === "30+ Days") return "payment_reminder";
+      return "payment_reminder";
+    };
+  }, []);
+
+  const openAIDraft = async (patient: any) => {
+    setDraftPatient(patient);
+    const ctx = contextForPatient(patient);
+    setDraftContext(ctx);
+    setDraftSubject("");
+    setDraftMessage("");
+    setDraftOpen(true);
+    setDraftLoading(true);
+    try {
+      const draft = await aiService.generatePatientMessageDraft(
+        {
+          patient_id: patient.id,
+          patient_name: patient.name,
+          current_balance: patient.balance,
+          days_overdue:
+            patient.status === "90+ Days" ? 90 : patient.status === "60+ Days" ? 60 : patient.status === "30+ Days" ? 30 : 0,
+          email: patient.email,
+          phone: patient.phone,
+        },
+        ctx,
+      );
+      setDraftSubject(draft.subject || "Billing message");
+      setDraftMessage(draft.message || "");
+    } catch (e: any) {
+      toast({
+        title: "AI draft failed",
+        description: e?.message || "Could not generate a draft message",
+        variant: "destructive",
+      });
+      setDraftSubject("Billing message");
+      setDraftMessage("");
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  const sendDraft = async () => {
+    if (!draftPatient) return;
+    if (!draftSubject.trim() || !draftMessage.trim()) {
+      toast({ title: "Missing subject/message", description: "Please provide both before sending.", variant: "destructive" });
+      return;
+    }
+    setSendLoading(true);
+    try {
+      const result = await patientPortalService.sendMessage({
+        patientId: draftPatient.id,
+        subject: draftSubject.trim(),
+        message: draftMessage.trim(),
+        from: "staff",
+        status: "unread",
+      });
+      if (!result.success) throw new Error(result.error || "Failed to send");
+      toast({
+        title: "Message sent",
+        description: `Sent to ${draftPatient.name} (stored in patient_messages).`,
+      });
+      setDraftOpen(false);
+    } catch (e: any) {
+      toast({
+        title: "Send failed",
+        description: e?.message || "Could not send message",
+        variant: "destructive",
+      });
+    } finally {
+      setSendLoading(false);
+    }
+  };
 
   // Calculate balances from statements
   const totalBalance = statements.reduce((sum, statement) => sum + statement.amount_due, 0);
@@ -384,6 +470,14 @@ const PatientBalanceBilling = () => {
                         <Mail className="h-4 w-4 mr-2" />
                         Send Statement
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openAIDraft(patient)}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        AI Draft
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => {
                         toast({
                           title: "Calling Patient",
@@ -443,8 +537,93 @@ const PatientBalanceBilling = () => {
         <BillingChat
           patientId={selectedPatient.id}
           patientName={selectedPatient.name}
+          patientBalance={selectedPatient.balance}
         />
       )}
+
+      {/* AI Draft Message Dialog */}
+      <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              AI Patient Message Draft
+            </DialogTitle>
+            <DialogDescription>
+              Draft to {draftPatient?.name} • Balance: ${draftPatient?.balance?.toFixed?.(2) ?? "—"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm font-medium mb-1">Context</div>
+                <Select value={draftContext} onValueChange={setDraftContext}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="payment_reminder">Payment reminder</SelectItem>
+                    <SelectItem value="payment_plan">Payment plan</SelectItem>
+                    <SelectItem value="collections">Collections</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Changing context won’t regenerate automatically—click Regenerate.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => (draftPatient ? openAIDraft(draftPatient) : null)}
+                  disabled={draftLoading}
+                >
+                  {draftLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Regenerate
+                    </>
+                  )}
+                </Button>
+                <Button type="button" onClick={sendDraft} disabled={sendLoading || draftLoading}>
+                  {sendLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Sending…
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-medium mb-1">Subject</div>
+              <Input value={draftSubject} onChange={(e) => setDraftSubject(e.target.value)} placeholder="Subject" />
+            </div>
+
+            <div>
+              <div className="text-sm font-medium mb-1">Message</div>
+              <textarea
+                className="w-full min-h-[260px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={draftMessage}
+                onChange={(e) => setDraftMessage(e.target.value)}
+                placeholder="Message body..."
+              />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Patient Statement Dialog */}
       <Dialog open={statementOpen} onOpenChange={setStatementOpen}>

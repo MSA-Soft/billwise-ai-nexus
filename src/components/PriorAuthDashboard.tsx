@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Plus, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, FileText, Columns3, X } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Plus, Clock, CheckCircle, XCircle, AlertCircle, TrendingUp, FileText, Columns3, X, GripVertical, ChevronUp, ChevronDown } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -25,6 +26,7 @@ import {
 import AuthorizationRequestDialog from "./AuthorizationRequestDialog";
 
 const PriorAuthDashboard = () => {
+  const { user, currentCompany, isSuperAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState("overview");
   const [authorizations, setAuthorizations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,25 +42,69 @@ const PriorAuthDashboard = () => {
   });
   const { toast } = useToast();
 
-  // Dynamic column management for authorization list
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([
-    "Patient",
-    "Payer",
-    "Service",
-    "Requested Date",
-    "Status",
-    "AI Score",
-    "Auth Number",
-    "Actions",
-  ]);
+  // Dynamic column management for authorization list (order + visibility)
+  const DEFAULT_COLUMNS = useMemo(
+    () => ["S.No", "Patient", "Payer", "Service", "Requested Date", "Status", "AI Score", "Auth Number", "Actions"],
+    [],
+  );
 
-  const [availableColumns, setAvailableColumns] = useState<string[]>([
-    "Urgency",
-    "Review Status",
-    "Submission Ref",
-  ]);
+  const ALL_COLUMNS = useMemo(
+    () => [...DEFAULT_COLUMNS, "Urgency", "Review Status", "Submission Ref"],
+    [DEFAULT_COLUMNS],
+  );
+
+  const storageKey = useMemo(() => {
+    const uid = user?.id ?? "anon";
+    const cid = currentCompany?.id ?? "no_company";
+    return `bw_columns:prior_auth_dashboard:${uid}:${cid}`;
+  }, [user?.id, currentCompany?.id]);
+
+  const normalizeColumns = (cols: unknown): string[] => {
+    const list = Array.isArray(cols) ? (cols.filter((c) => typeof c === "string") as string[]) : [];
+    const filtered = list.filter((c) => ALL_COLUMNS.includes(c));
+    const unique = Array.from(new Set(filtered));
+    // Always show S.No
+    if (!unique.includes("S.No")) unique.unshift("S.No");
+    return unique.length > 0 ? unique : DEFAULT_COLUMNS;
+  };
+
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
+  const availableColumns = useMemo(
+    () => ALL_COLUMNS.filter((c) => !visibleColumns.includes(c)),
+    [ALL_COLUMNS, visibleColumns],
+  );
 
   const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) {
+        setVisibleColumns(DEFAULT_COLUMNS);
+        return;
+      }
+      setVisibleColumns(normalizeColumns(JSON.parse(raw)));
+    } catch {
+      setVisibleColumns(DEFAULT_COLUMNS);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(visibleColumns));
+    } catch {
+      // ignore
+    }
+  }, [storageKey, visibleColumns]);
+
+  const arrayMove = <T,>(arr: T[], from: number, to: number) => {
+    const next = arr.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  };
 
   const handleAIAnalysis = async () => {
     try {
@@ -110,14 +156,22 @@ const PriorAuthDashboard = () => {
 
   const fetchAuthorizations = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('authorization_requests' as any)
         .select(`
           *,
           insurance_payers(name, payer_id_code),
           ai_approval_suggestions(completeness_score, medical_necessity_score, approval_probability, analyzed_at)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      // Keep behaviour consistent with AuthorizationTracking:
+      // - Super admin: no company filter (RLS permitting)
+      // - Otherwise: company + legacy NULL records
+      if (!isSuperAdmin && currentCompany?.id) {
+        query = query.or(`company_id.eq.${currentCompany.id},company_id.is.null`);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -165,6 +219,8 @@ const PriorAuthDashboard = () => {
 
   const getColumnHeader = (column: string) => {
     switch (column) {
+      case "S.No":
+        return "S.No";
       case "Patient":
         return "Patient";
       case "Payer":
@@ -194,6 +250,9 @@ const PriorAuthDashboard = () => {
 
   const getColumnValue = (auth: any, column: string) => {
     switch (column) {
+      case "S.No":
+        // Rendered using row index
+        return "";
       case "Patient":
         return auth.patient_name || "Unknown Patient";
       case "Payer":
@@ -466,7 +525,7 @@ This is a mock workflow for demonstration purposes.
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {authorizations.map((auth) => (
+                      {authorizations.map((auth, rowIndex) => (
                         <TableRow key={auth.id}>
                           {visibleColumns.map((col) => {
                             if (col === "Actions") {
@@ -500,7 +559,7 @@ This is a mock workflow for demonstration purposes.
                             const value = getColumnValue(auth, col);
                             return (
                               <TableCell key={`${auth.id}-${col}`}>
-                                {value}
+                                {col === "S.No" ? String(rowIndex + 1).padStart(3, "0") : value}
                               </TableCell>
                             );
                           })}
@@ -573,7 +632,6 @@ This is a mock workflow for demonstration purposes.
                       size="sm"
                       className="h-6 w-6 p-0"
                       onClick={() => {
-                        setAvailableColumns(availableColumns.filter((c) => c !== column));
                         setVisibleColumns([...visibleColumns, column]);
                       }}
                     >
@@ -586,27 +644,69 @@ This is a mock workflow for demonstration purposes.
 
             {/* Visible Columns */}
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+              <h3 className="text-lg font-semibold mb-1 text-gray-900">Visible Columns</h3>
+              <p className="text-xs text-muted-foreground mb-2">Drag to reorder. “S.No” is always shown.</p>
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {visibleColumns.map((column) => (
+                {visibleColumns.map((column, idx) => (
                   <div
                     key={column}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                    draggable
+                    onDragStart={(e) => {
+                      setDragIndex(idx);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", String(idx));
+                    }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = dragIndex ?? Number(e.dataTransfer.getData("text/plain"));
+                      if (!Number.isFinite(from) || from === idx) return;
+                      setVisibleColumns((prev) => arrayMove(prev, from, idx));
+                      setDragIndex(null);
+                    }}
                   >
-                    <span className="text-gray-900">{getColumnHeader(column)}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="text-gray-900 truncate">{getColumnHeader(column)}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        disabled={idx === 0}
+                        onClick={() => setVisibleColumns((prev) => arrayMove(prev, idx, idx - 1))}
+                        title="Move up"
+                      >
+                        <ChevronUp className="h-4 w-4 text-gray-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        disabled={idx === visibleColumns.length - 1}
+                        onClick={() => setVisibleColumns((prev) => arrayMove(prev, idx, idx + 1))}
+                        title="Move down"
+                      >
+                        <ChevronDown className="h-4 w-4 text-gray-600" />
+                      </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 w-6 p-0"
+                        disabled={column === "S.No"}
                       onClick={() => {
-                        // Prevent removing the last column entirely
+                          if (column === "S.No") return;
                         if (visibleColumns.length === 1) return;
                         setVisibleColumns(visibleColumns.filter((c) => c !== column));
-                        setAvailableColumns([...availableColumns, column]);
                       }}
+                        title={column === "S.No" ? "S.No is always visible" : "Remove"}
                     >
                       <X className="h-4 w-4 text-gray-600" />
                     </Button>
+                    </div>
                   </div>
                 ))}
               </div>

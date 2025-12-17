@@ -45,6 +45,10 @@ export class NotificationService {
     textBody?: string
   ): Promise<boolean> {
     try {
+      if (!to || !to.trim()) {
+        console.warn('Email notification skipped (missing recipient).', { subject });
+        return false;
+      }
       // Option 1: Use Supabase Edge Function
       const { data, error } = await supabase.functions.invoke('send-email', {
         body: {
@@ -77,6 +81,10 @@ export class NotificationService {
     message: string
   ): Promise<boolean> {
     try {
+      if (!to || !to.trim()) {
+        console.warn('SMS notification skipped (missing recipient).');
+        return false;
+      }
       // Option 1: Use Supabase Edge Function
       const { data, error } = await supabase.functions.invoke('send-sms', {
         body: {

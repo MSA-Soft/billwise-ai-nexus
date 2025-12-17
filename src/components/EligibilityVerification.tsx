@@ -36,6 +36,7 @@ import {
   MapPin,
   Building,
   Plus,
+  Columns3,
   Trash2,
   Eye,
   Edit,
@@ -51,7 +52,11 @@ import {
   CreditCard as CreditCardIcon,
   FileCheck,
   Save,
-  X
+  X,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  ChevronRight
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -62,6 +67,8 @@ import { eligibilityAuditService } from "@/services/eligibilityAuditService";
 import { useAuth } from "@/contexts/AuthContext";
 import AuthorizationRequestDialog from "@/components/AuthorizationRequestDialog";
 //#endregion
+
+type HistoryDownloadFormat = "xlsx" | "csv" | "pdf" | "json";
 
 //#region Component
 const EligibilityVerification = () => {
@@ -92,6 +99,7 @@ const EligibilityVerification = () => {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   // Dynamic columns for verification history
   const [historyVisibleColumns, setHistoryVisibleColumns] = useState<string[]>([
+    "S.No",
     "Patient",
     "Payer",
     "Plan Type",
@@ -110,6 +118,15 @@ const EligibilityVerification = () => {
     "Current Visit Amount",
   ]);
   const [showHistoryColumnSelector, setShowHistoryColumnSelector] = useState(false);
+  const [historyDragIndex, setHistoryDragIndex] = useState<number | null>(null);
+  const [expandedHistoryRows, setExpandedHistoryRows] = useState<Record<string, boolean>>({});
+  const [historyDownloadFormat, setHistoryDownloadFormat] = useState<HistoryDownloadFormat>("xlsx");
+  const historyArrayMove = <T,>(arr: T[], from: number, to: number) => {
+    const next = arr.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  };
   //#endregion
 
   //#region State - Patient Management
@@ -134,6 +151,8 @@ const EligibilityVerification = () => {
 
   const getHistoryColumnHeader = (column: string) => {
     switch (column) {
+      case "S.No":
+        return "S.No";
       case "Patient":
         return "Patient";
       case "Payer":
@@ -143,7 +162,7 @@ const EligibilityVerification = () => {
       case "Network Status":
         return "Network";
       case "Eligible":
-        return "Eligible";
+        return "Eligibility";
       case "Deductible Remaining":
         return "Deductible Remaining";
       case "Out-of-Pocket Remaining":
@@ -169,6 +188,9 @@ const EligibilityVerification = () => {
 
   const getHistoryColumnValue = (entry: any, column: string) => {
     switch (column) {
+      case "S.No":
+        // rendered using row index
+        return "—";
       case "Patient":
         return entry.patientId || "—";
       case "Payer":
@@ -178,7 +200,7 @@ const EligibilityVerification = () => {
       case "Network Status":
         return entry.inNetworkStatus || "—";
       case "Eligible":
-        return entry.isEligible ? "Yes" : "No";
+        return entry.isEligible ? "Eligible" : "InEligible";
       case "Deductible Remaining":
         return entry.deductibleRemaining ?? "—";
       case "Out-of-Pocket Remaining":
@@ -884,7 +906,7 @@ const EligibilityVerification = () => {
     const estimated = entry.estimatedResponsibility;
     const fallbackTotal = (entry.coverage?.copay ?? 0) + (entry.coverage?.deductible ?? 0);
     const total = estimated ?? entry.totalCollectible ?? fallbackTotal;
-    const text = `Eligibility for ${entry.patientName || entry.patientId}\nS.No: ${entry.serialNo || '-'}\nPayer: ${entry.payerId}\nStatus: ${entry.isEligible ? 'Eligible' : 'Not Eligible'}\nPlan: ${entry.planType || '-'}\nNetwork: ${entry.inNetworkStatus || '-'}\nAppointment Location: ${entry.appointmentLocation || '-'}\nDOS/Appt Date: ${entry.appointmentDate || '-'}\nType of Visit: ${entry.typeOfVisit || '-'}\nCopay: $${entry.coverage?.copay ?? 0}\nDeductible: $${entry.coverage?.deductible ?? 0}\nCoinsurance: ${entry.coverage?.coinsurance ?? '-'}\nAllowed Amount: $${entry.allowedAmount ?? '-'}\nEstimated Responsibility: $${estimated ?? '-'}\nTotal Collectible: $${total}\nEffective: ${entry.effectiveDate || '-'}\nTermination: ${entry.terminationDate || '-'}`;
+    const text = `Eligibility for ${entry.patientName || entry.patientId}\nS.No: ${entry.serialNo || '-'}\nPayer: ${entry.payerId}\nStatus: ${entry.isEligible ? 'Eligible' : 'InEligible'}\nPlan: ${entry.planType || '-'}\nNetwork: ${entry.inNetworkStatus || '-'}\nAppointment Location: ${entry.appointmentLocation || '-'}\nDOS/Appt Date: ${entry.appointmentDate || '-'}\nType of Visit: ${entry.typeOfVisit || '-'}\nCopay: $${entry.coverage?.copay ?? 0}\nDeductible: $${entry.coverage?.deductible ?? 0}\nCoinsurance: ${entry.coverage?.coinsurance ?? '-'}\nAllowed Amount: $${entry.allowedAmount ?? '-'}\nEstimated Responsibility: $${estimated ?? '-'}\nTotal Collectible: $${total}\nEffective: ${entry.effectiveDate || '-'}\nTermination: ${entry.terminationDate || '-'}`;
     try { await navigator.clipboard.writeText(text); toast({ title: 'Copied', description: 'Summary copied to clipboard' }); } catch {}
   };
 
@@ -3214,7 +3236,7 @@ const EligibilityVerification = () => {
     const csvContent = [
       "Patient ID,Payer,Date,Status,Copay,Deductible,Coinsurance,Allowed Amount,Estimated Responsibility,Copay Before Deductible",
       ...verificationHistory.map(entry => 
-        `${entry.patientId},${entry.payerId},${entry.timestamp ? new Date(entry.timestamp).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : ''},${entry.isEligible ? 'Eligible' : 'Not Eligible'},${entry.coverage?.copay ?? ''},${entry.coverage?.deductible ?? ''},${entry.coverage?.coinsurance ?? ''},${entry.allowedAmount ?? ''},${entry.estimatedResponsibility ?? ''},${entry.copayBeforeDeductible ?? ''}`
+        `${entry.patientId},${entry.payerId},${entry.timestamp ? new Date(entry.timestamp).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : ''},${entry.isEligible ? 'Eligible' : 'InEligible'},${entry.coverage?.copay ?? ''},${entry.coverage?.deductible ?? ''},${entry.coverage?.coinsurance ?? ''},${entry.allowedAmount ?? ''},${entry.estimatedResponsibility ?? ''},${entry.copayBeforeDeductible ?? ''}`
       ).join('\n')
     ].join('\n');
 
@@ -3407,6 +3429,324 @@ const EligibilityVerification = () => {
     
     return matchesSearch && matchesFilter && matchesDate && matchesPatient;
   });
+
+  const allHistoryExpanded =
+    filteredHistory.length > 0 &&
+    filteredHistory.every((e: any) => !!expandedHistoryRows[e.id]);
+
+  const toggleHistoryRow = (id: string) => {
+    setExpandedHistoryRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const expandAllHistory = () => {
+    const next: Record<string, boolean> = {};
+    filteredHistory.forEach((e: any) => {
+      if (e?.id) next[e.id] = true;
+    });
+    setExpandedHistoryRows(next);
+  };
+
+  const collapseAllHistory = () => setExpandedHistoryRows({});
+
+  const safeFilePart = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    const slug = raw
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 60);
+    return slug || "record";
+  };
+
+  const getHistoryEntryExportRows = (entry: any): Array<{ Field: string; Value: string }> => {
+    const cptCodes = Array.isArray(entry?.cptCodes)
+      ? entry.cptCodes
+      : Array.isArray(entry?.cpt_codes)
+        ? entry.cpt_codes
+        : [];
+    const icdCodes = Array.isArray(entry?.icdCodes)
+      ? entry.icdCodes
+      : Array.isArray(entry?.icd_codes)
+        ? entry.icd_codes
+        : [];
+
+    const serviceDate =
+      entry?.appointmentDate ??
+      entry?.timestamp ??
+      entry?.serviceDate ??
+      entry?.service_date ??
+      entry?.created_at ??
+      null;
+
+    const serviceDateLabel = serviceDate ? new Date(serviceDate).toISOString().split("T")[0] : "";
+
+    const rows: Array<{ Field: string; Value: string }> = [
+      { Field: "Record ID", Value: String(entry?.id ?? "") },
+      { Field: "Date", Value: serviceDateLabel },
+      { Field: "Patient", Value: String(entry?.patientName ?? entry?.patient_name ?? entry?.patientId ?? entry?.patient_id ?? "") },
+      { Field: "Patient ID", Value: String(entry?.patientId ?? entry?.patient_id ?? "") },
+      { Field: "Payer", Value: String(entry?.payerId ?? entry?.payer_id ?? entry?.payer_name ?? "") },
+      { Field: "Plan Type", Value: String(entry?.planType ?? entry?.plan_type ?? "") },
+      { Field: "Network Status", Value: String(entry?.inNetworkStatus ?? entry?.in_network_status ?? "") },
+      { Field: "Eligibility", Value: entry?.isEligible ? "Eligible" : "InEligible" },
+      { Field: "Appointment Location", Value: String(entry?.appointmentLocation ?? entry?.scheduled_location ?? "") },
+      { Field: "Type of Visit", Value: String(entry?.typeOfVisit ?? entry?.type_of_visit ?? "") },
+      { Field: "Verification Method", Value: String(entry?.verificationMethod ?? entry?.verification_method ?? "") },
+      { Field: "CPT Codes", Value: cptCodes.length ? cptCodes.join(", ") : "" },
+      { Field: "ICD Codes", Value: icdCodes.length ? icdCodes.join(", ") : "" },
+      { Field: "Prior Auth Required", Value: entry?.preAuthorizationRequired ? "Yes" : "No" },
+      { Field: "Prior Auth #", Value: String(entry?.priorAuthNumber ?? entry?.prior_auth_number ?? "") },
+      { Field: "Referral Required", Value: entry?.referralRequired ? "Yes" : "No" },
+      { Field: "Referral #", Value: String(entry?.referralNumber ?? entry?.referral_number ?? "") },
+      { Field: "Copay", Value: String(entry?.coverage?.copay ?? entry?.coPay ?? entry?.copay ?? "") },
+      { Field: "Deductible", Value: String(entry?.coverage?.deductible ?? entry?.deductible ?? "") },
+      { Field: "Out-of-Pocket Remaining", Value: String(entry?.outOfPocketRemaining ?? entry?.out_of_pocket_remaining ?? "") },
+      { Field: "Allowed Amount", Value: String(entry?.allowedAmount ?? entry?.allowed_amount ?? "") },
+      { Field: "Estimated Cost", Value: String(entry?.estimatedCost ?? entry?.estimated_cost ?? "") },
+    ];
+
+    return rows
+      .map((r) => ({
+        Field: r.Field,
+        Value:
+          r.Value === "undefined" || r.Value === "null"
+            ? ""
+            : String(r.Value ?? ""),
+      }))
+      .filter((r) => r.Field);
+  };
+
+  const downloadTextFile = (filename: string, mimeType: string, content: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const downloadHistoryEntry = async (entry: any) => {
+    try {
+      const rows = getHistoryEntryExportRows(entry);
+      const datePart = (() => {
+        const d = entry?.appointmentDate ?? entry?.timestamp ?? entry?.serviceDate ?? entry?.created_at;
+        try {
+          return d ? new Date(d).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+        } catch {
+          return new Date().toISOString().split("T")[0];
+        }
+      })();
+
+      const namePart = safeFilePart(entry?.patientName ?? entry?.patient_name ?? entry?.patientId ?? entry?.patient_id ?? "eligibility");
+      const baseName = `eligibility-verification-${namePart}-${datePart}`;
+
+      if (historyDownloadFormat === "json") {
+        let json = "";
+        try {
+          json = JSON.stringify(entry, null, 2);
+        } catch {
+          json = JSON.stringify({ error: "Unable to stringify record", recordId: entry?.id ?? null }, null, 2);
+        }
+        downloadTextFile(`${baseName}.json`, "application/json", json);
+        return;
+      }
+
+      if (historyDownloadFormat === "csv") {
+        const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const csv = ["Field,Value", ...rows.map((r) => `${escape(r.Field)},${escape(r.Value)}`)].join("\n");
+        downloadTextFile(`${baseName}.csv`, "text/csv", csv);
+        return;
+      }
+
+      if (historyDownloadFormat === "xlsx") {
+        const XLSX = await import("xlsx");
+        const ws = XLSX.utils.json_to_sheet(rows);
+        (ws as any)["!cols"] = [{ wch: 28 }, { wch: 80 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Verification");
+        XLSX.writeFile(wb, `${baseName}.xlsx`);
+        return;
+      }
+
+      if (historyDownloadFormat === "pdf") {
+        const { jsPDF } = await import("jspdf");
+        const doc = new jsPDF();
+        const marginX = 12;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let y = 14;
+
+        doc.setFontSize(12);
+        doc.text("Eligibility Verification Record", marginX, y);
+        y += 8;
+
+        doc.setFontSize(9);
+        for (const row of rows) {
+          const line = `${row.Field}: ${row.Value || "—"}`;
+          const wrapped = doc.splitTextToSize(line, 180);
+          for (const part of wrapped) {
+            if (y > pageHeight - 12) {
+              doc.addPage();
+              y = 14;
+            }
+            doc.text(part, marginX, y);
+            y += 5;
+          }
+        }
+
+        doc.save(`${baseName}.pdf`);
+        return;
+      }
+    } catch (err: any) {
+      console.error("Download record failed:", err);
+      toast({
+        title: "Download failed",
+        description: err?.message || "Unable to download this record.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const downloadHistoryList = async (entries: any[]) => {
+    try {
+      if (!entries || entries.length === 0) {
+        toast({
+          title: "Nothing to download",
+          description: "No verification records found for the current filter.",
+          variant: "default",
+        });
+        return;
+      }
+
+      const datePart = new Date().toISOString().split("T")[0];
+      const baseName = `eligibility-verification-history-${datePart}`;
+
+      if (historyDownloadFormat === "json") {
+        downloadTextFile(`${baseName}.json`, "application/json", JSON.stringify(entries, null, 2));
+        return;
+      }
+
+      const listRows = entries.map((e: any) => {
+        const cptCodes = Array.isArray(e?.cptCodes)
+          ? e.cptCodes
+          : Array.isArray(e?.cpt_codes)
+            ? e.cpt_codes
+            : [];
+        const icdCodes = Array.isArray(e?.icdCodes)
+          ? e.icdCodes
+          : Array.isArray(e?.icd_codes)
+            ? e.icd_codes
+            : [];
+
+        const when =
+          e?.appointmentDate ??
+          e?.timestamp ??
+          e?.serviceDate ??
+          e?.service_date ??
+          e?.created_at ??
+          null;
+        let date = "";
+        try {
+          date = when ? new Date(when).toISOString().split("T")[0] : "";
+        } catch {
+          date = "";
+        }
+
+        return {
+          Date: date,
+          Patient: String(e?.patientName ?? e?.patient_name ?? ""),
+          Patient_ID: String(e?.patientId ?? e?.patient_id ?? ""),
+          Payer: String(e?.payerId ?? e?.payer_id ?? ""),
+          Plan_Type: String(e?.planType ?? e?.plan_type ?? ""),
+          Network_Status: String(e?.inNetworkStatus ?? e?.in_network_status ?? ""),
+        Eligibility: e?.isEligible ? "Eligible" : "InEligible",
+          Location: String(e?.appointmentLocation ?? e?.scheduled_location ?? ""),
+          Type_Of_Visit: String(e?.typeOfVisit ?? e?.type_of_visit ?? ""),
+          Method: String(e?.verificationMethod ?? e?.verification_method ?? ""),
+          CPT_Codes: cptCodes.length ? cptCodes.join(", ") : "",
+          ICD_Codes: icdCodes.length ? icdCodes.join(", ") : "",
+          Prior_Auth_Required: e?.preAuthorizationRequired ? "Yes" : "No",
+          Prior_Auth_Number: String(e?.priorAuthNumber ?? e?.prior_auth_number ?? ""),
+          Referral_Required: e?.referralRequired ? "Yes" : "No",
+          Referral_Number: String(e?.referralNumber ?? e?.referral_number ?? ""),
+          Copay: String(e?.coverage?.copay ?? e?.coPay ?? e?.copay ?? ""),
+          Deductible: String(e?.coverage?.deductible ?? e?.deductible ?? ""),
+          OOP_Remaining: String(e?.outOfPocketRemaining ?? e?.out_of_pocket_remaining ?? ""),
+          Allowed_Amount: String(e?.allowedAmount ?? e?.allowed_amount ?? ""),
+          Estimated_Cost: String(e?.estimatedCost ?? e?.estimated_cost ?? ""),
+        };
+      });
+
+      if (historyDownloadFormat === "csv") {
+        const headers = Object.keys(listRows[0] || {});
+        const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+        const csv = [
+          headers.join(","),
+          ...listRows.map((row) => headers.map((h) => escape((row as any)[h])).join(",")),
+        ].join("\n");
+        downloadTextFile(`${baseName}.csv`, "text/csv", csv);
+        return;
+      }
+
+      if (historyDownloadFormat === "xlsx") {
+        const XLSX = await import("xlsx");
+        const ws = XLSX.utils.json_to_sheet(listRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "History");
+        XLSX.writeFile(wb, `${baseName}.xlsx`);
+        return;
+      }
+
+      if (historyDownloadFormat === "pdf") {
+        const { jsPDF } = await import("jspdf");
+        const doc = new jsPDF({ orientation: "landscape" });
+        const marginX = 10;
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let y = 12;
+
+        doc.setFontSize(12);
+        doc.text("Eligibility Verification History", marginX, y);
+        y += 8;
+        doc.setFontSize(8);
+
+        const cols = ["Date", "Patient", "Patient_ID", "Payer", "Eligibility", "CPT_Codes", "Allowed_Amount"];
+        const colWidths = [22, 45, 28, 32, 18, 60, 30];
+        const drawRow = (values: string[]) => {
+          let x = marginX;
+          const lineHeight = 4.2;
+          const wrapped = values.map((v, i) => doc.splitTextToSize(v || "—", colWidths[i] - 2));
+          const rowHeight = Math.max(...wrapped.map((w) => w.length)) * lineHeight + 2;
+
+          if (y + rowHeight > pageHeight - 10) {
+            doc.addPage();
+            y = 12;
+          }
+
+          wrapped.forEach((lines, i) => {
+            doc.text(lines, x + 1, y + 4);
+            x += colWidths[i];
+          });
+          y += rowHeight;
+        };
+
+        // Header
+        drawRow(cols);
+        // Data
+        listRows.forEach((r: any) => {
+          drawRow(cols.map((c) => String(r[c] ?? "")));
+        });
+
+        doc.save(`${baseName}.pdf`);
+      }
+    } catch (err: any) {
+      console.error("Download history failed:", err);
+      toast({
+        title: "Download failed",
+        description: err?.message || "Unable to download verification history.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -6823,7 +7163,7 @@ const EligibilityVerification = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Not Eligible</p>
+                <p className="text-sm font-medium text-muted-foreground">InEligible</p>
                 <p className="text-2xl font-bold text-red-600">
                   {verificationHistory.filter(h => !h.isEligible).length}
                 </p>
@@ -6864,15 +7204,50 @@ const EligibilityVerification = () => {
                   <Clock className="h-5 w-5" />
                   Verification History
                 </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={historyDownloadFormat}
+                    onValueChange={(v) => setHistoryDownloadFormat(v as HistoryDownloadFormat)}
+                  >
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue placeholder="Download format" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="xlsx">XLSX</SelectItem>
+                      <SelectItem value="csv">CSV</SelectItem>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                    </SelectContent>
+                  </Select>
                 <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadHistoryList(filteredHistory)}
+                    disabled={filteredHistory.length === 0}
+                    title={`Download filtered history as ${historyDownloadFormat.toUpperCase()}`}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => (allHistoryExpanded ? collapseAllHistory() : expandAllHistory())}
+                    disabled={filteredHistory.length === 0}
+                    title={allHistoryExpanded ? "Collapse all rows" : "Expand all rows"}
+                  >
+                    {allHistoryExpanded ? "Collapse All" : "Expand All"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                   onClick={() => setShowHistoryColumnSelector(true)}
                   title="Select columns"
                 >
-                  <Plus className="h-4 w-4" />
+                    <Columns3 className="h-4 w-4 mr-2" />
+                    Columns
                 </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -6896,7 +7271,7 @@ const EligibilityVerification = () => {
                   <SelectContent>
                     <SelectItem value="all">All Results</SelectItem>
                     <SelectItem value="eligible">Eligible Only</SelectItem>
-                    <SelectItem value="ineligible">Not Eligible</SelectItem>
+                    <SelectItem value="ineligible">InEligible</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -6913,10 +7288,32 @@ const EligibilityVerification = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredHistory.map((entry) => (
-                        <TableRow key={entry.id}>
+                      {filteredHistory.flatMap((entry: any, rowIndex: number) => {
+                        const isExpanded = !!expandedHistoryRows[entry.id];
+                        const mainRow = (
+                          <TableRow
+                            key={entry.id}
+                            className="cursor-pointer hover:bg-muted/30"
+                            onClick={() => toggleHistoryRow(entry.id)}
+                            title="Click to expand/collapse"
+                          >
                           {historyVisibleColumns.map((col) => {
                             const value = getHistoryColumnValue(entry, col);
+
+                            if (col === "S.No") {
+                              return (
+                                <TableCell key={col} className="font-medium">
+                                  <div className="flex items-center gap-1">
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                    {String(rowIndex + 1).padStart(3, "0")}
+                                  </div>
+                                </TableCell>
+                              );
+                            }
 
                             if (col === "Eligible") {
                               return (
@@ -6924,7 +7321,7 @@ const EligibilityVerification = () => {
                                   <Badge
                                     variant={entry.isEligible ? "secondary" : "destructive"}
                                   >
-                                    {entry.isEligible ? "Eligible" : "Not Eligible"}
+                                    {entry.isEligible ? "Eligible" : "InEligible"}
                                   </Badge>
                                 </TableCell>
                               );
@@ -6951,7 +7348,10 @@ const EligibilityVerification = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => openEdit(entry)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(entry);
+                                }}
                                 title="Edit"
                               >
                                 <Edit className="h-4 w-4" />
@@ -6959,7 +7359,10 @@ const EligibilityVerification = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => reverifyEntry(entry)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  reverifyEntry(entry);
+                                }}
                                 disabled={verifyingIds.includes(entry.id)}
                                 title="Re-verify"
                               >
@@ -6972,7 +7375,10 @@ const EligibilityVerification = () => {
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => duplicateToForm(entry)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  duplicateToForm(entry);
+                                }}
                                 title="Copy to form"
                               >
                                 <Copy className="h-4 w-4" />
@@ -6980,7 +7386,125 @@ const EligibilityVerification = () => {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+
+                        const detailRow = isExpanded ? (
+                          <TableRow key={`${entry.id}-details`} className="bg-muted/10">
+                            <TableCell colSpan={historyVisibleColumns.length + 1}>
+                              <div className="p-3 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-sm font-semibold">Full details</div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleHistoryRow(entry.id);
+                                    }}
+                                  >
+                                    Collapse
+                                  </Button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Patient</div>
+                                    <div className="font-medium">{entry.patientName || entry.patientId || "—"}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Payer / Plan</div>
+                                    <div className="font-medium">{entry.payerId || "—"}</div>
+                                    <div className="text-xs text-muted-foreground">{entry.planType || "—"}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Network</div>
+                                    <div className="font-medium">{entry.inNetworkStatus || "—"}</div>
+                                  </div>
+
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Appointment</div>
+                                    <div className="font-medium">{entry.appointmentLocation || "—"}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {(entry.appointmentDate || entry.timestamp)
+                                        ? new Date(entry.appointmentDate || entry.timestamp).toLocaleString()
+                                        : "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Type of Visit</div>
+                                    <div className="font-medium">{entry.typeOfVisit || "—"}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Method</div>
+                                    <div className="font-medium">{entry.verificationMethod || "—"}</div>
+                                  </div>
+
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">CPT Codes</div>
+                                    <div className="font-medium">
+                                      {Array.isArray(entry.cptCodes) ? entry.cptCodes.join(", ") :
+                                        Array.isArray(entry.cpt_codes) ? entry.cpt_codes.join(", ") : "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">ICD Codes</div>
+                                    <div className="font-medium">
+                                      {Array.isArray(entry.icdCodes) ? entry.icdCodes.join(", ") :
+                                        Array.isArray(entry.icd_codes) ? entry.icd_codes.join(", ") : "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Prior Auth / Referral</div>
+                                    <div className="font-medium">
+                                      PA: {entry.preAuthorizationRequired ? "Yes" : "No"} · Referral: {entry.referralRequired ? "Yes" : "No"}
+                                    </div>
+                                    {(entry.referralNumber || entry.priorAuthNumber) && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {entry.referralNumber ? `Referral #: ${entry.referralNumber}` : ""}
+                                        {entry.priorAuthNumber ? `  PA #: ${entry.priorAuthNumber}` : ""}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Copay / Deductible</div>
+                                    <div className="font-medium">
+                                      Copay: {entry.coverage?.copay ?? entry.coPay ?? "—"} · Deductible: {entry.coverage?.deductible ?? entry.deductible ?? "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">OOP Remaining</div>
+                                    <div className="font-medium">{entry.outOfPocketRemaining ?? entry.out_of_pocket_remaining ?? "—"}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-xs text-muted-foreground">Estimates</div>
+                                    <div className="font-medium">
+                                      Allowed: {entry.allowedAmount ?? entry.allowed_amount ?? "—"} · Est: {entry.estimatedCost ?? entry.estimated_cost ?? "—"}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      downloadHistoryEntry(entry);
+                                    }}
+                                    title={`Download this record as ${historyDownloadFormat.toUpperCase()}`}
+                                  >
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Download
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : null;
+
+                        return detailRow ? [mainRow, detailRow] : [mainRow];
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -7040,28 +7564,70 @@ const EligibilityVerification = () => {
 
                 {/* Visible Columns */}
                 <div>
-                  <h3 className="text-lg font-semibold mb-3 text-gray-900">Visible Columns</h3>
+                  <h3 className="text-lg font-semibold mb-1 text-gray-900">Visible Columns</h3>
+                  <p className="text-xs text-muted-foreground mb-2">Drag to reorder. “S.No” is always shown.</p>
                   <div className="space-y-2 max-h-80 overflow-y-auto">
-                    {historyVisibleColumns.map((column) => (
+                    {historyVisibleColumns.map((column, idx) => (
                       <div
                         key={column}
-                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                        className="flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors"
+                        draggable
+                        onDragStart={(e) => {
+                          setHistoryDragIndex(idx);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", String(idx));
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = historyDragIndex ?? Number(e.dataTransfer.getData("text/plain"));
+                          if (!Number.isFinite(from) || from === idx) return;
+                          setHistoryVisibleColumns((prev) => historyArrayMove(prev, from, idx));
+                          setHistoryDragIndex(null);
+                        }}
                       >
-                        <span className="text-gray-900">{getHistoryColumnHeader(column)}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="text-gray-900 truncate">{getHistoryColumnHeader(column)}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-6 w-6 p-0"
+                            disabled={idx === 0}
+                            onClick={() => setHistoryVisibleColumns((prev) => historyArrayMove(prev, idx, idx - 1))}
+                            title="Move up"
+                          >
+                            <ChevronUp className="h-4 w-4 text-gray-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            disabled={idx === historyVisibleColumns.length - 1}
+                            onClick={() => setHistoryVisibleColumns((prev) => historyArrayMove(prev, idx, idx + 1))}
+                            title="Move down"
+                          >
+                            <ChevronDown className="h-4 w-4 text-gray-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            disabled={column === "S.No"}
                           onClick={() => {
+                              if (column === "S.No") return;
                             if (historyVisibleColumns.length === 1) return;
-                            setHistoryVisibleColumns(
-                              historyVisibleColumns.filter((c) => c !== column)
-                            );
+                              setHistoryVisibleColumns(historyVisibleColumns.filter((c) => c !== column));
                             setHistoryAvailableColumns([...historyAvailableColumns, column]);
                           }}
+                            title={column === "S.No" ? "S.No is always visible" : "Remove"}
                         >
                           <X className="h-4 w-4 text-gray-600" />
                         </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -7204,81 +7770,6 @@ const EligibilityVerification = () => {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* History column selector */}
-      <Dialog open={showHistoryColumnSelector} onOpenChange={setShowHistoryColumnSelector}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-semibold">Select History Columns</DialogTitle>
-            <DialogDescription>
-              Choose which fields from the eligibility form you want to see in the Recent Activity table.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-6 py-4">
-            <div>
-              <h3 className="text-sm font-medium mb-2">Available Columns</h3>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {historyAvailableColumns.map((column) => (
-                  <div
-                    key={column}
-                    className="flex items-center justify-between p-2 border rounded-md bg-muted/40"
-                  >
-                    <span className="text-sm">{getHistoryColumnHeader(column)}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        setHistoryAvailableColumns((prev) => prev.filter((c) => c !== column));
-                        setHistoryVisibleColumns((prev) => [...prev, column]);
-                      }}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-                {historyAvailableColumns.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    All columns are currently visible.
-                  </p>
-                )}
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium mb-2">Visible Columns</h3>
-              <div className="space-y-2 max-h-80 overflow-y-auto">
-                {historyVisibleColumns.map((column) => (
-                  <div
-                    key={column}
-                    className="flex items-center justify-between p-2 border rounded-md bg-muted/40"
-                  >
-                    <span className="text-sm">{getHistoryColumnHeader(column)}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => {
-                        setHistoryVisibleColumns((prev) => prev.filter((c) => c !== column));
-                        setHistoryAvailableColumns((prev) => [...prev, column]);
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-                {historyVisibleColumns.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Select at least one column to display.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end pt-2">
-            <Button onClick={() => setShowHistoryColumnSelector(false)}>Done</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Edit Verification Entry Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
@@ -7824,6 +8315,10 @@ const EligibilityVerification = () => {
           icdCodes: verificationForm.icdCodes.map(c => c.code).filter(Boolean),
           providerId: verificationForm.providerId,
           providerNpi: providers.find(p => p.id === verificationForm.providerId)?.npi || "",
+          facilityId: verificationForm.appointmentLocation || undefined,
+          facilityName: facilities.find(f => f.id === verificationForm.appointmentLocation)?.name || undefined,
+          appointmentDate: verificationForm.appointmentDate || verificationForm.dateOfService || undefined,
+          appointmentType: verificationForm.typeOfVisit || undefined,
         }}
       />
     </div>

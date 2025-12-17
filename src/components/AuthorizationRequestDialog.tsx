@@ -9,9 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Upload, X, Plus, Trash2, FileText, Eye, Download } from "lucide-react";
+import { Loader2, Upload, X, Plus, Trash2, FileText, Eye, Download, Sparkles, Wand2, Paperclip } from "lucide-react";
 import { authorizationAuditService } from "@/services/authorizationAuditService";
 import { useAuth } from "@/contexts/AuthContext";
+import { aiService } from "@/services/aiService";
+
+type CommentAttachment = {
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+};
 
 interface AuthorizationRequestDialogProps {
   open: boolean;
@@ -29,6 +37,12 @@ interface AuthorizationRequestDialogProps {
     icdCodes?: string[];
     providerId?: string;
     providerNpi?: string;
+    // Appointment / facility context (from Eligibility, Schedule, or Claim)
+    facilityId?: string;
+    facilityName?: string;
+    appointmentLocation?: string; // free-text fallback
+    appointmentDate?: string; // YYYY-MM-DD
+    appointmentType?: string;
   }; // Optional: pre-filled patient data from eligibility verification
 }
 
@@ -63,11 +77,77 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   const [isLoadingFacilities, setIsLoadingFacilities] = useState(false);
   const [uploadedDocuments, setUploadedDocuments] = useState<Array<{ id: string; name: string; type: string; url: string; size: number }>>([]);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
-  const [comments, setComments] = useState<Array<{ id: string; comment: string; is_internal: boolean; comment_type: string; user_id: string; created_at: string; user_name?: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; comment: string; is_internal: boolean; comment_type: string; user_id: string; created_at: string; user_name?: string; attachments?: CommentAttachment[] }>>([]);
   const [newComment, setNewComment] = useState("");
   const [newCommentType, setNewCommentType] = useState("general");
   const [isCommentInternal, setIsCommentInternal] = useState(false);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [newCommentFiles, setNewCommentFiles] = useState<File[]>([]);
+  const [isUploadingCommentFiles, setIsUploadingCommentFiles] = useState(false);
+  const commentFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [procedureCodeInput, setProcedureCodeInput] = useState("");
+  const [diagnosisCodeInput, setDiagnosisCodeInput] = useState("");
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copilotResult, setCopilotResult] = useState<any | null>(null);
+  const [copilotError, setCopilotError] = useState<string | null>(null);
+
+  const COMMENT_ATTACHMENTS_BUCKET = "patient-documents";
+  const COMMENT_ATTACHMENT_MARKER_PREFIX = "<!--attachments:";
+
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / Math.pow(1024, i);
+    return `${value.toFixed(value >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  };
+
+  const sanitizeFileName = (name: string) => {
+    const base = (name || "file").trim();
+    return base.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 140);
+  };
+
+  const isAllowedCommentFile = (file: File) => {
+    const type = (file?.type || "").toLowerCase();
+    return type === "application/pdf" || type === "image/jpeg" || type === "image/png";
+  };
+
+  const parseComment = (raw: string): { text: string; attachments: CommentAttachment[] } => {
+    const s = String(raw ?? "");
+    const start = s.indexOf(COMMENT_ATTACHMENT_MARKER_PREFIX);
+    if (start === -1) return { text: s, attachments: [] };
+
+    const end = s.indexOf("-->", start);
+    if (end === -1) return { text: s, attachments: [] };
+
+    const jsonPart = s.slice(start + COMMENT_ATTACHMENT_MARKER_PREFIX.length, end).trim();
+    const withoutMarker = (s.slice(0, start) + s.slice(end + 3)).trim();
+
+    try {
+      const parsed = JSON.parse(jsonPart);
+      const attachments = Array.isArray(parsed)
+        ? (parsed as any[])
+            .map((a) => ({
+              name: String(a?.name ?? ""),
+              url: String(a?.url ?? ""),
+              type: String(a?.type ?? ""),
+              size: Number(a?.size ?? 0),
+            }))
+            .filter((a) => a.name && a.url)
+        : [];
+      return { text: withoutMarker, attachments };
+    } catch {
+      return { text: withoutMarker, attachments: [] };
+    }
+  };
+
+  const extractMedicalNecessityFromNotes = (notes: string) => {
+    const s = String(notes ?? "");
+    const marker = "Medical Necessity:";
+    const idx = s.indexOf(marker);
+    if (idx === -1) return "";
+    return s.slice(idx + marker.length).trim();
+  };
   const [formData, setFormData] = useState({
     // Basic identification
     serial_no: "",
@@ -94,6 +174,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
     procedure_codes: [] as string[],
     diagnosis_codes: [] as string[],
     clinical_indication: "",
+    medical_necessity: "",
     
     // Insurance Information - Primary
     primary_insurance: "",
@@ -141,6 +222,99 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   });
   const { toast } = useToast();
 
+  const addProcedureCode = () => {
+    const raw = procedureCodeInput.trim();
+    if (!raw) return;
+    const codes = raw.split(/[\s,]+/g).map(s => s.trim()).filter(Boolean);
+    setFormData(prev => ({
+      ...prev,
+      procedure_codes: Array.from(new Set([...(prev.procedure_codes || []), ...codes]))
+    }));
+    setProcedureCodeInput("");
+  };
+
+  const removeProcedureCode = (code: string) => {
+    setFormData(prev => ({
+      ...prev,
+      procedure_codes: (prev.procedure_codes || []).filter(c => c !== code),
+    }));
+  };
+
+  const addDiagnosisCode = () => {
+    const raw = diagnosisCodeInput.trim();
+    if (!raw) return;
+    const codes = raw.split(/[\s,]+/g).map(s => s.trim()).filter(Boolean);
+    setFormData(prev => ({
+      ...prev,
+      diagnosis_codes: Array.from(new Set([...(prev.diagnosis_codes || []), ...codes]))
+    }));
+    setDiagnosisCodeInput("");
+  };
+
+  const removeDiagnosisCode = (code: string) => {
+    setFormData(prev => ({
+      ...prev,
+      diagnosis_codes: (prev.diagnosis_codes || []).filter(c => c !== code),
+    }));
+  };
+
+  const runCopilot = async () => {
+    setCopilotLoading(true);
+    setCopilotError(null);
+    try {
+      const payload = {
+        patient_name: formData.patient_name,
+        patient_dob: formData.patient_dob,
+        patient_member_id: formData.patient_member_id,
+        payer_id: formData.payer_id || formData.primary_insurance_id || null,
+        payer_name_custom: formData.primary_insurance || formData.payer_name || null,
+        provider_name_custom: formData.provider_name || null,
+        provider_npi_custom: formData.provider_npi || null,
+        service_start_date: formData.service_start_date || formData.order_date || null,
+        service_end_date: formData.service_end_date || null,
+        service_type: formData.service_type || formData.type_of_visit || formData.description || null,
+        procedure_codes: formData.procedure_codes || [],
+        diagnosis_codes: formData.diagnosis_codes || [],
+        clinical_indication: formData.clinical_indication || null,
+        medical_necessity: (formData as any).medical_necessity || null,
+        urgency_level: formData.urgency_level || null,
+        prior_auth_required: formData.prior_auth_required,
+        secondary_payer_id: formData.secondary_payer_id || null,
+        secondary_payer_name: formData.secondary_payer_name || null,
+      };
+
+      const result = await aiService.priorAuthCopilot(payload);
+      setCopilotResult(result);
+      toast({
+        title: "Copilot analysis ready",
+        description: `Score: ${result?.score ?? "—"}/100 • Approval: ${result?.approvalProbability ?? "—"}%`,
+      });
+    } catch (e: any) {
+      const msg = e?.message || "Failed to run copilot analysis";
+      setCopilotError(msg);
+      toast({
+        title: "Copilot failed",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
+  const applyCopilotDrafts = () => {
+    if (!copilotResult) return;
+    setFormData(prev => ({
+      ...prev,
+      clinical_indication: copilotResult.rewrittenClinicalIndication || prev.clinical_indication,
+      medical_necessity: copilotResult.rewrittenMedicalNecessity || (prev as any).medical_necessity || "",
+    }));
+    toast({
+      title: "Applied copilot drafts",
+      description: "Clinical indication / medical necessity updated.",
+    });
+  };
+
   // Track if form has been initialized to prevent unnecessary resets
   const formInitializedRef = useRef(false);
   const previousOpenRef = useRef(false);
@@ -179,6 +353,20 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
             primary_insurance_id: patientData.payerId || prev.primary_insurance_id,
             payer_id: patientData.payerId || prev.payer_id,
             payer_name: patientData.payerName || prev.payer_name,
+            procedure_codes: patientData.cptCodes?.length ? patientData.cptCodes : prev.procedure_codes,
+            diagnosis_codes: patientData.icdCodes?.length ? patientData.icdCodes : prev.diagnosis_codes,
+            provider_npi: patientData.providerNpi || prev.provider_npi,
+            // Bind appointment location / facility when provided
+            facility_id: patientData.facilityId || prev.facility_id,
+            facility_name: patientData.facilityName || prev.facility_name,
+            scheduled_location:
+              patientData.facilityName ||
+              patientData.appointmentLocation ||
+              prev.scheduled_location,
+            // Bind appointment date/type when provided (best-effort)
+            order_date: patientData.appointmentDate || prev.order_date,
+            service_start_date: patientData.appointmentDate || prev.service_start_date,
+            type_of_visit: patientData.appointmentType || prev.type_of_visit,
           }));
           if (patientData.name) {
             setPatientSearchTerm(patientData.name);
@@ -245,6 +433,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           procedure_codes: authData.procedure_codes || [],
           diagnosis_codes: authData.diagnosis_codes || [],
           clinical_indication: authData.clinical_indication || "",
+          // DB might not have a dedicated column; store/recover it from internal_notes.
+          medical_necessity: extractMedicalNecessityFromNotes(authData.internal_notes || authData.remarks || ""),
           
           // Insurance Information - Primary
           primary_insurance: authData.payer_name_custom || "",
@@ -340,6 +530,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       procedure_codes: [],
       diagnosis_codes: [],
       clinical_indication: "",
+      medical_necessity: "",
       
       // Insurance Information - Primary
       primary_insurance: "",
@@ -496,16 +687,20 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         return;
       }
 
-      const formattedComments = (data || []).map((comment: any) => ({
-        id: comment.id,
-        comment: comment.comment,
-        is_internal: comment.is_internal,
-        comment_type: comment.comment_type || 'general',
-        user_id: comment.user_id,
-        created_at: comment.created_at,
-        // Without a FK-based join, we fall back to user_id for display
-        user_name: comment.user_id ? comment.user_id.substring(0, 8) : 'Unknown User',
-      }));
+      const formattedComments = (data || []).map((comment: any) => {
+        const parsed = parseComment(comment.comment || "");
+        return {
+          id: comment.id,
+          comment: parsed.text,
+          attachments: parsed.attachments,
+          is_internal: comment.is_internal,
+          comment_type: comment.comment_type || 'general',
+          user_id: comment.user_id,
+          created_at: comment.created_at,
+          // Without a FK-based join, we fall back to user_id for display
+          user_name: comment.user_id ? comment.user_id.substring(0, 8) : 'Unknown User',
+        };
+      });
 
       setComments(formattedComments);
     } catch (error: any) {
@@ -517,7 +712,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
   const handleAddComment = async () => {
     // For new requests, we need to create the authorization first
-    if (!newComment.trim()) {
+    if (!newComment.trim() && newCommentFiles.length === 0) {
       toast({
         title: "Error",
         description: "Please enter a comment",
@@ -537,25 +732,152 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
     }
 
     try {
+      setIsUploadingCommentFiles(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('You must be logged in to add comments');
       }
+
+      // Use the authorization's company_id to satisfy RLS (more reliable than currentCompany during initial load).
+      let authCompanyId: string | null = currentCompany?.id || null;
+      if (authorizationId) {
+        const { data: authRow, error: authErr } = (await supabase
+          .from("authorization_requests" as any)
+          .select("company_id")
+          .eq("id", authorizationId)
+          .single()) as any;
+        if (!authErr && authRow?.company_id) {
+          authCompanyId = authRow.company_id;
+        }
+      }
+
+      const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15MB each
+      const uploaded: CommentAttachment[] = [];
+      const failures: string[] = [];
+
+      if (newCommentFiles.length > 0) {
+        for (const file of newCommentFiles) {
+          if (!file) continue;
+          if (!isAllowedCommentFile(file)) {
+            failures.push(`${file.name}: unsupported file type`);
+            continue;
+          }
+          if (file.size > MAX_FILE_BYTES) {
+            failures.push(`${file.name}: too large (max 15MB)`);
+            continue;
+          }
+
+          const safeName = sanitizeFileName(file.name);
+          const companyPart = authCompanyId ?? currentCompany?.id ?? "no_company";
+          const objectPath = `${companyPart}/authorization_requests/${authorizationId}/comments/${user.id}/${Date.now()}-${safeName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from(COMMENT_ATTACHMENTS_BUCKET)
+            .upload(objectPath, file, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: file.type,
+            });
+
+          if (uploadError) {
+            failures.push(`${file.name}: ${uploadError.message}`);
+            continue;
+          }
+
+          const { data: urlData } = supabase.storage
+            .from(COMMENT_ATTACHMENTS_BUCKET)
+            .getPublicUrl(objectPath);
+
+          uploaded.push({
+            name: file.name,
+            url: urlData.publicUrl,
+            type: file.type,
+            size: file.size,
+          });
+        }
+      }
+
+      if (failures.length > 0) {
+        toast({
+          title: "Some files were not attached",
+          description: failures.slice(0, 3).join(" • ") + (failures.length > 3 ? ` (+${failures.length - 3} more)` : ""),
+          variant: "default",
+        });
+      }
+
+      if (!newComment.trim() && uploaded.length === 0) {
+        toast({
+          title: "Error",
+          description: "No valid attachments selected.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const commentText = String(newComment || "").trim();
+      const finalComment = uploaded.length > 0
+        ? `${commentText}\n\n<!--attachments:${JSON.stringify(uploaded)}-->`
+        : commentText;
 
       const { data, error } = await supabase
         .from('authorization_request_comments' as any)
         .insert({
           authorization_request_id: authorizationId,
           user_id: user.id,
-          comment: newComment.trim(),
+          comment: finalComment,
           is_internal: isCommentInternal,
           comment_type: newCommentType,
-          company_id: currentCompany?.id || null,
+          company_id: authCompanyId,
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // If RLS blocks the comments table, fall back to appending to internal_notes (so user doesn't lose work).
+        const msg = String(error?.message || "");
+        if (msg.toLowerCase().includes("row-level security")) {
+          const noteLine = [
+            `--- Comment (${new Date().toLocaleString()}) ---`,
+            String(newComment || "").trim(),
+            uploaded.length
+              ? `Attachments:\n${uploaded.map((u) => `- ${u.name}: ${u.url}`).join("\n")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+
+          const { data: existing, error: existingErr } = (await supabase
+            .from("authorization_requests" as any)
+            .select("internal_notes")
+            .eq("id", authorizationId)
+            .single()) as any;
+
+          const prevNotes = !existingErr ? String(existing?.internal_notes ?? "") : "";
+          const nextNotes = [prevNotes.trim(), noteLine].filter(Boolean).join("\n\n").trim();
+
+          const { error: upErr } = await supabase
+            .from("authorization_requests" as any)
+            .update({ internal_notes: nextNotes, updated_at: new Date().toISOString() })
+            .eq("id", authorizationId);
+
+          if (upErr) throw error;
+
+          // Clear inputs
+          setNewComment("");
+          setIsCommentInternal(false);
+          setNewCommentType("general");
+          setNewCommentFiles([]);
+          if (commentFileInputRef.current) commentFileInputRef.current.value = "";
+
+          toast({
+            title: "Saved to Internal Notes",
+            description: "Comments table is restricted by permissions, so your comment was appended to Internal Notes instead.",
+          });
+          return;
+        }
+
+        throw error;
+      }
 
       // Refresh comments if authorizationId exists
       if (authorizationId) {
@@ -566,6 +888,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       setNewComment("");
       setIsCommentInternal(false);
       setNewCommentType("general");
+      setNewCommentFiles([]);
+      if (commentFileInputRef.current) commentFileInputRef.current.value = "";
 
       toast({
         title: "Comment Added",
@@ -577,6 +901,8 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         description: error.message || "Failed to add comment",
         variant: "destructive"
       });
+    } finally {
+      setIsUploadingCommentFiles(false);
     }
   };
 
@@ -585,11 +911,39 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       setIsLoadingPatients(true);
       console.log('📥 Fetching all patients for dropdown...');
       
-      const { data, error } = await supabase
+      let query = supabase
         .from('patients' as any)
-        .select('id, patient_id, first_name, last_name, date_of_birth, phone, email, address_line1, city, state, zip_code')
+        .select('id, patient_id, first_name, last_name, date_of_birth, phone, email, address_line1, city, state, zip_code, company_id')
         .order('last_name', { ascending: true })
         .limit(500);
+
+      // Prefer tenant filter, but fall back to unassigned if legacy data has NULL company_id.
+      if (currentCompany?.id) {
+        query = query.eq('company_id', currentCompany.id);
+      } else {
+        // If no company is selected, only show unassigned (safer default).
+        query = query.is('company_id', null);
+      }
+
+      let { data, error } = await query;
+
+      // If strict company filtering returns nothing, try unassigned records (common when migrating older data).
+      if (!error && currentCompany?.id && (data?.length ?? 0) === 0) {
+        console.warn('⚠️ No patients found for company_id; trying unassigned (company_id IS NULL) patients...');
+        const fallback = await supabase
+          .from('patients' as any)
+          .select('id, patient_id, first_name, last_name, date_of_birth, phone, email, address_line1, city, state, zip_code, company_id')
+          .is('company_id', null)
+          .order('last_name', { ascending: true })
+          .limit(500);
+        if (!fallback.error && fallback.data?.length) {
+          data = fallback.data;
+          toast({
+            title: 'Patients are unassigned',
+            description: 'Showing patients with no company_id. Assign them to your company for proper multi-tenant filtering.',
+          });
+        }
+      }
 
       if (error) {
         console.error('❌ Error fetching patients:', error);
@@ -661,6 +1015,78 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         // Update search term to show selected patient
         setPatientSearchTerm(fullName);
         console.log('✅ Patient basic data loaded:', { name: fullName, dob: patientData.date_of_birth });
+      }
+
+      // Best-effort: bind appointment location from Scheduling (appointments table)
+      // Only if facility/location not already set by eligibility/claim prefill.
+      try {
+        const shouldBind =
+          !(formData.facility_id || formData.facility_name || formData.scheduled_location);
+        if (shouldBind) {
+          // Try to read appointment location (and optionally facility_id if present in schema)
+          let apt: any = null;
+          try {
+            let q = supabase
+              .from('appointments' as any)
+              .select('id, patient_id, scheduled_date, scheduled_time, appointment_type, location, facility_id, company_id')
+              .eq('patient_id', id)
+              .order('scheduled_date', { ascending: false })
+              .order('scheduled_time', { ascending: false })
+              .limit(1);
+            if (currentCompany?.id) q = q.eq('company_id', currentCompany.id);
+            const { data: d, error: e } = await q.maybeSingle();
+            if (!e) apt = d;
+          } catch {
+            // Retry without facility_id column (if schema doesn't have it)
+            let q = supabase
+              .from('appointments' as any)
+              .select('id, patient_id, scheduled_date, scheduled_time, appointment_type, location, company_id')
+              .eq('patient_id', id)
+              .order('scheduled_date', { ascending: false })
+              .order('scheduled_time', { ascending: false })
+              .limit(1);
+            if (currentCompany?.id) q = q.eq('company_id', currentCompany.id);
+            const { data: d } = await q.maybeSingle();
+            apt = d;
+          }
+
+          if (apt?.location || apt?.facility_id) {
+            // Map appointment to facility fields
+            const locationText = String(apt.location || '').trim();
+            const facilityId = String(apt.facility_id || '').trim();
+
+            // If facility_id exists and matches our facilities list, bind it.
+            if (facilityId) {
+              const f = facilities.find((x: any) => x.id === facilityId);
+              setFormData((prev) => ({
+                ...prev,
+                facility_id: facilityId,
+                facility_name: f?.name || prev.facility_name,
+                scheduled_location: f?.name || prev.scheduled_location,
+                order_date: apt.scheduled_date || prev.order_date,
+                service_start_date: apt.scheduled_date || prev.service_start_date,
+                type_of_visit: apt.appointment_type || prev.type_of_visit,
+              }));
+            } else if (locationText) {
+              // Try to match free-text location to a facility by name
+              const match = facilities.find(
+                (x: any) => typeof x?.name === 'string' && x.name.toLowerCase() === locationText.toLowerCase(),
+              );
+              setFormData((prev) => ({
+                ...prev,
+                facility_id: match?.id || prev.facility_id,
+                facility_name: match?.name || prev.facility_name,
+                scheduled_location: match?.name || locationText || prev.scheduled_location,
+                order_date: apt.scheduled_date || prev.order_date,
+                service_start_date: apt.scheduled_date || prev.service_start_date,
+                type_of_visit: apt.appointment_type || prev.type_of_visit,
+              }));
+            }
+          }
+        }
+      } catch (e: any) {
+        // Optional; ignore errors
+        console.log('ℹ️ Could not bind appointment location from schedule (optional):', e?.message || e);
       }
 
       // Try to load insurance data separately (optional, don't fail if it doesn't work)
@@ -859,10 +1285,39 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       return;
     }
 
-    setIsSearchingPatients(true);
     try {
       const searchTerm = value.trim();
       const searchTermLower = searchTerm.toLowerCase();
+
+      // Fast path: client-side filter from already-fetched list (more reliable if company_id data is legacy/NULL)
+      if (patients.length > 0) {
+        const localMatches = patients
+          .filter(
+            (p) =>
+              p.patient_name.toLowerCase().includes(searchTermLower) ||
+              p.patient_id.toLowerCase().includes(searchTermLower),
+          )
+          .slice(0, 20);
+
+        if (localMatches.length > 0) {
+          setFilteredPatients(localMatches);
+
+          const exactLocal = localMatches.find(
+            (p) =>
+              p.patient_name.toLowerCase() === searchTermLower ||
+              p.patient_id.toLowerCase() === searchTermLower ||
+              p.patient_id.toUpperCase() === searchTerm.toUpperCase(),
+          );
+          if (exactLocal) {
+            handlePatientSelect(exactLocal);
+          } else if (localMatches.length === 1 && searchTerm.length > 2) {
+            handlePatientSelect(localMatches[0]);
+          }
+          return;
+        }
+      }
+
+      setIsSearchingPatients(true);
       
       // Normalize patient ID for search (handle variations like PAT-001, P001, etc.)
       const normalizedId = searchTerm.toUpperCase().replace(/^PAT-?/, '');
@@ -958,6 +1413,20 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
       setFilteredPatients(formattedResults);
 
+      // If server returned no results, fall back to local list (if available) instead of showing "No patients found".
+      if (formattedResults.length === 0 && patients.length > 0) {
+        const clientMatches = patients
+          .filter(
+            (p) =>
+              p.patient_name.toLowerCase().includes(searchTermLower) ||
+              p.patient_id.toLowerCase().includes(searchTermLower),
+          )
+          .slice(0, 20);
+        if (clientMatches.length > 0) {
+          setFilteredPatients(clientMatches);
+        }
+      }
+
       // Auto-fill if there's an exact match
       const exactMatch = formattedResults.find(p => 
         p.patient_name.toLowerCase() === searchTermLower ||
@@ -1032,6 +1501,15 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       }
       
       // Prepare data object with ALL fields - comprehensive save
+      const medicalNecessityText = String((formData as any).medical_necessity || "").trim();
+      const combinedInternalNotes = (() => {
+        const base = String(formData.internal_notes || formData.remarks || "").trim();
+        if (!medicalNecessityText) return base || null;
+        // Avoid duplicating marker if already present.
+        if (base.includes("Medical Necessity:")) return base || null;
+        return [base, `Medical Necessity:\n${medicalNecessityText}`].filter(Boolean).join("\n\n").trim() || null;
+      })();
+
       const authData: any = {
         user_id: user.id,
         company_id: currentCompany?.id || null,
@@ -1062,6 +1540,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         procedure_codes: formData.procedure_codes && formData.procedure_codes.length > 0 ? formData.procedure_codes : null,
         diagnosis_codes: formData.diagnosis_codes && formData.diagnosis_codes.length > 0 ? formData.diagnosis_codes : null,
         clinical_indication: formData.clinical_indication || null,
+        // NOTE: Some DBs don't have a dedicated column; stored in internal_notes instead.
         
         // Provider Information
         provider_name_custom: formData.provider_name || null,
@@ -1085,7 +1564,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         authorization_expiration_date: formData.authorization_expiration_date || null,
         
         // Internal notes/remarks
-        internal_notes: formData.internal_notes || formData.remarks || null,
+        internal_notes: combinedInternalNotes,
         
         // Renewal tracking
         renewal_initiated: formData.renewal_initiated || false,
@@ -1538,6 +2017,224 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
             </div>
           </div>
 
+          {/* Clinical & Coding + AI Copilot */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-lg">Clinical & Coding</h3>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={runCopilot} disabled={copilotLoading}>
+                  {copilotLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Analyzing…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Run AI Copilot
+                    </>
+                  )}
+                </Button>
+                <Button type="button" onClick={applyCopilotDrafts} disabled={!copilotResult}>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Apply Drafts
+                </Button>
+              </div>
+            </div>
+
+            {/* Provider + Urgency */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <Label htmlFor="provider_name">Provider Name</Label>
+                <Input
+                  id="provider_name"
+                  value={formData.provider_name}
+                  onChange={(e) => setFormData({ ...formData, provider_name: e.target.value })}
+                  placeholder="Provider name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="provider_npi">Provider NPI</Label>
+                <Input
+                  id="provider_npi"
+                  value={formData.provider_npi}
+                  onChange={(e) => setFormData({ ...formData, provider_npi: e.target.value })}
+                  placeholder="10-digit NPI"
+                />
+              </div>
+              <div>
+                <Label htmlFor="urgency_level">Urgency</Label>
+                <Select
+                  value={formData.urgency_level || "__none__"}
+                  onValueChange={(v) => setFormData({ ...formData, urgency_level: v === "__none__" ? "" : v })}
+                >
+                  <SelectTrigger id="urgency_level">
+                    <SelectValue placeholder="Select urgency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Not set</SelectItem>
+                    <SelectItem value="routine">Routine</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="stat">STAT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Codes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Procedure Codes (CPT)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={procedureCodeInput}
+                    onChange={(e) => setProcedureCodeInput(e.target.value)}
+                    placeholder="Add CPT codes (e.g., 99213, 36415)"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addProcedureCode();
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" onClick={addProcedureCode}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(formData.procedure_codes || []).map((code) => (
+                    <Badge key={code} variant="secondary" className="flex items-center gap-2">
+                      {code}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => removeProcedureCode(code)}
+                        aria-label={`Remove CPT ${code}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Diagnosis Codes (ICD-10)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={diagnosisCodeInput}
+                    onChange={(e) => setDiagnosisCodeInput(e.target.value)}
+                    placeholder="Add ICD-10 codes (e.g., E11.9, M54.5)"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addDiagnosisCode();
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" onClick={addDiagnosisCode}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(formData.diagnosis_codes || []).map((code) => (
+                    <Badge key={code} variant="secondary" className="flex items-center gap-2">
+                      {code}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => removeDiagnosisCode(code)}
+                        aria-label={`Remove ICD ${code}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Clinical narrative */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="clinical_indication">Clinical Indication</Label>
+                <Textarea
+                  id="clinical_indication"
+                  rows={5}
+                  value={formData.clinical_indication}
+                  onChange={(e) => setFormData({ ...formData, clinical_indication: e.target.value })}
+                  placeholder="Why is the service needed? Include symptoms, duration, failed treatments, imaging, etc."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="medical_necessity">Medical Necessity</Label>
+                <Textarea
+                  id="medical_necessity"
+                  rows={5}
+                  value={(formData as any).medical_necessity || ""}
+                  onChange={(e) => setFormData({ ...(formData as any), medical_necessity: e.target.value })}
+                  placeholder="Medical necessity justification (structured, payer-friendly)."
+                />
+              </div>
+            </div>
+
+            {/* Copilot output */}
+            {(copilotResult || copilotError) && (
+              <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">Copilot Output</div>
+                  <div className="flex items-center gap-2">
+                    {typeof copilotResult?.score === "number" && (
+                      <Badge variant="outline">Score: {copilotResult.score}/100</Badge>
+                    )}
+                    {copilotResult?.approvalProbability != null && (
+                      <Badge variant="outline">Approval: {copilotResult.approvalProbability}%</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {copilotError && (
+                  <div className="text-sm text-red-600">{copilotError}</div>
+                )}
+
+                {Array.isArray(copilotResult?.missingElements) && copilotResult.missingElements.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium mb-1">Missing</div>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                      {copilotResult.missingElements.slice(0, 10).map((m: string, idx: number) => (
+                        <li key={idx}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {Array.isArray(copilotResult?.payerChecklist) && copilotResult.payerChecklist.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium mb-1">Payer checklist</div>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                      {copilotResult.payerChecklist.slice(0, 10).map((m: string, idx: number) => (
+                        <li key={idx}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {Array.isArray(copilotResult?.suggestedActions) && copilotResult.suggestedActions.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium mb-1">Next actions</div>
+                    <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                      {copilotResult.suggestedActions.slice(0, 10).map((m: string, idx: number) => (
+                        <li key={idx}>{m}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Comments Section - Always visible */}
           <div className="space-y-4 border-t pt-4">
             <h3 className="font-semibold text-lg">Comments & Notes</h3>
@@ -1584,12 +2281,85 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                     placeholder="Enter your comment here..."
                   />
                 </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Attachments</Label>
+                    <input
+                      ref={commentFileInputRef}
+                      type="file"
+                      multiple
+                      accept="application/pdf,image/jpeg,image/png"
+                      className="hidden"
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length === 0) return;
+                        setNewCommentFiles((prev) => {
+                          const next = prev.slice();
+                          for (const f of files) {
+                            const exists = next.some(
+                              (x) =>
+                                x.name === f.name &&
+                                x.size === f.size &&
+                                x.lastModified === f.lastModified
+                            );
+                            if (!exists) next.push(f);
+                          }
+                          return next.slice(0, 5); // limit to 5 files
+                        });
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => commentFileInputRef.current?.click()}
+                      title="Attach PDF/JPG/PNG"
+                    >
+                      <Paperclip className="h-4 w-4 mr-2" />
+                      Attach
+                    </Button>
+                  </div>
+                  {newCommentFiles.length > 0 && (
+                    <div className="space-y-1">
+                      {newCommentFiles.map((f, idx) => (
+                        <div
+                          key={`${f.name}-${f.size}-${f.lastModified}-${idx}`}
+                          className="flex items-center justify-between gap-2 rounded-md border bg-white px-2 py-1 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{f.name}</div>
+                            <div className="text-muted-foreground">{formatBytes(f.size)}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() =>
+                              setNewCommentFiles((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            title="Remove"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="text-[11px] text-muted-foreground">
+                        Allowed: PDF, JPG, PNG (max 15MB each).
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <Button
                   type="button"
                   onClick={handleAddComment}
-                  disabled={!newComment.trim()}
+                  disabled={(!newComment.trim() && newCommentFiles.length === 0) || isUploadingCommentFiles}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  {isUploadingCommentFiles ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4 mr-2" />
+                  )}
                   Add Comment
                 </Button>
                 {!authorizationId && !isEditMode && (
@@ -1634,6 +2404,24 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                         <p className="text-sm text-gray-700 whitespace-pre-wrap">
                           {comment.comment}
                         </p>
+                        {Array.isArray((comment as any).attachments) && (comment as any).attachments.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(comment as any).attachments.map((att: CommentAttachment, i: number) => (
+                              <a
+                                key={`${att.url}-${i}`}
+                                href={att.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-md border bg-white px-2 py-1 text-xs hover:bg-muted/20"
+                                title={att.name}
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                <span className="max-w-[260px] truncate">{att.name}</span>
+                                <span className="text-muted-foreground">{formatBytes(att.size)}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './Sidebar';
 import { Button } from './ui/button';
+import AIChatBot from './AIChatBot';
 import { Bell, Settings, User, LogOut, Menu } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
@@ -162,12 +163,12 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar currentPage={detectedPage} />
-      <main className="flex-1 overflow-y-auto px-4 lg:px-6 py-4 custom-scrollbar" style={{
+      <main className="flex-1 overflow-y-auto px-3 lg:px-4 py-3 custom-scrollbar" style={{
         scrollbarWidth: 'thin',
         scrollbarColor: '#cbd5e1 #f1f5f9'
       }}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-4 lg:px-6 py-4">
+        <header className="bg-white border-b border-gray-200 px-3 lg:px-4 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {isMobile && (
@@ -179,7 +180,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
-              <h1 className="text-xl lg:text-2xl font-semibold text-gray-900">
+              <h1 className="text-lg lg:text-xl font-semibold text-gray-900">
                 BillWise AI Nexus
               </h1>
             </div>
@@ -190,6 +191,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
                   <CompanySelector />
                 </div>
               )}
+              {user && <AIChatBot />}
               <Button variant="ghost" size="sm" className="hidden sm:flex">
                 <Bell className="h-5 w-5" />
               </Button>
@@ -209,7 +211,7 @@ const Layout: React.FC<LayoutProps> = ({ children, currentPage }) => {
         </header>
         
         {/* Main Content */}
-        <div className="px-4 lg:px-6 py-4">
+        <div className="px-3 lg:px-4 py-3">
           {children}
         </div>
       </main>

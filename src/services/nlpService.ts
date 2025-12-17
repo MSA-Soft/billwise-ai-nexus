@@ -54,67 +54,29 @@ export class NLPService {
   // Extract data from clinical notes
   async extractFromClinicalNotes(text: string): Promise<ExtractionResult> {
     try {
-      const extractedData: ExtractedData = {};
-      const fieldsExtracted: string[] = [];
-      const fieldsMissing: string[] = [];
-
-      // Use AI for extraction if available
-      if (this.hasAICapability()) {
+      // Prefer server-side AI extraction (Edge Function), then fall back to rules.
         return await this.extractWithAI(text);
-      }
-
-      // Fallback to rule-based extraction
-      return await this.extractWithRules(text);
     } catch (error: any) {
       console.error('Error extracting from clinical notes:', error);
       throw new Error(error.message || 'Failed to extract data from clinical notes');
     }
   }
 
-  // Extract using AI (OpenAI)
+  // Extract using AI (server-side via Supabase Edge Function)
   private async extractWithAI(text: string): Promise<ExtractionResult> {
     try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      
-      if (!apiKey || apiKey === 'demo-key') {
-        // Fallback to rule-based
-        return await this.extractWithRules(text);
-      }
+      const output = await aiService.extractClinicalNotes(text);
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: `You are a medical data extraction expert. Extract structured data from clinical notes. Return JSON with: patientInfo (name, dob, age, gender), diagnosis (primary, secondary, icdCodes), procedures (codes, descriptions, dates), medications (name, dosage, frequency), clinicalIndication, medicalNecessity, symptoms, treatmentPlan.`
-            },
-            {
-              role: 'user',
-              content: `Extract medical data from this clinical note:\n\n${text}`
-            }
-          ],
-          response_format: { type: 'json_object' },
-          max_tokens: 2000,
-          temperature: 0.3
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const extracted = JSON.parse(data.choices[0].message.content);
-
+      const extracted = (output as any)?.extractedData;
+      if (extracted && typeof extracted === 'object') {
         return {
           extractedData: extracted,
-          confidence: 85, // High confidence for AI extraction
+          confidence: output.confidence ?? 80,
           sourceText: text,
           extractionMethod: 'ai',
-          fieldsExtracted: Object.keys(extracted).filter(key => extracted[key] !== null && extracted[key] !== undefined),
+          fieldsExtracted: Object.keys(extracted).filter(
+            (key) => extracted[key] !== null && extracted[key] !== undefined
+          ),
           fieldsMissing: [],
         };
       }
@@ -267,12 +229,6 @@ export class NLPService {
     const total = extracted + missing;
     if (total === 0) return 0;
     return Math.round((extracted / total) * 100);
-  }
-
-  // Check if AI capability is available
-  private hasAICapability(): boolean {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    return !!(apiKey && apiKey !== 'demo-key');
   }
 
   // Auto-populate form from extracted data

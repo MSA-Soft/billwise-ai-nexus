@@ -30,5 +30,4 @@ export const getEnvironmentInfo = () => ({
   prod: import.meta.env.PROD,
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? '✅ Set' : '❌ Missing',
   supabaseKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ? '✅ Set' : '❌ Missing',
-  openaiKey: import.meta.env.VITE_OPENAI_API_KEY ? '✅ Set' : '❌ Missing',
 });

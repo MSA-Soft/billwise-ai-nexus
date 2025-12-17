@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { aiService } from "@/services/aiService";
 
 interface Message {
   id: string;
@@ -18,9 +19,10 @@ interface Message {
 interface BillingChatProps {
   patientId: string;
   patientName: string;
+  patientBalance?: number;
 }
 
-const BillingChat = ({ patientId, patientName }: BillingChatProps) => {
+const BillingChat = ({ patientId, patientName, patientBalance = 0 }: BillingChatProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -148,13 +150,15 @@ const BillingChat = ({ patientId, patientName }: BillingChatProps) => {
 
       if (userError) throw userError;
 
-      // Generate AI response using our AI service
-      const { aiService } = await import('@/services/aiService');
-      
-      // Generate contextual AI response
-      const aiResponse = await aiService.generateCommunicationSuggestion(
-        { patient_name: patientName, current_balance: 1250.00 },
-        'payment_reminder'
+      const draft = await aiService.generatePatientMessageDraft(
+        {
+          patient_id: patientId,
+          patient_name: patientName,
+          current_balance: patientBalance,
+          inquiry: messageText,
+          channel: "billing_chat",
+        },
+        "billing_chat_reply",
       );
 
       // Save AI response
@@ -162,7 +166,7 @@ const BillingChat = ({ patientId, patientName }: BillingChatProps) => {
         .from("chat_messages")
         .insert({
           conversation_id: conversationId,
-          message: aiResponse,
+          message: draft.message,
           is_ai: true,
           sender_name: "AI Assistant",
         });
