@@ -397,9 +397,9 @@ export const CollectionAgencies: React.FC = () => {
 
   const handleDownloadSampleCSV = () => {
     const csvContent = [
-      'Name,Agency Type,Status,Phone,Email,Commission Rate,Address,City,State,Zip Code,Fax',
-      'ABC Collections,Medical Collections,active,(555) 123-4567,contact@abccollections.com,15.5,123 Main St,New York,NY,10001,(555) 123-4568',
-      'XYZ Recovery,Healthcare Collections,active,(555) 987-6543,info@xyzrecovery.com,18.0,456 Oak Ave,Los Angeles,CA,90001,(555) 987-6544'
+      'Name,Agency Type,Status,Phone,Email,Commission Rate,Address,Address Line 2,City,State,Zip Code,Fax,Notes',
+      'ABC Collections,Medical Collections,active,(555) 123-4567,contact@abccollections.com,15.5,123 Main St,Suite 100,New York,NY,10001,(555) 123-4568,Primary collection agency',
+      'XYZ Recovery,Healthcare Collections,active,(555) 987-6543,info@xyzrecovery.com,18.0,456 Oak Ave,,Los Angeles,CA,90001,(555) 987-6544,Secondary collection agency'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -443,10 +443,12 @@ export const CollectionAgencies: React.FC = () => {
               email: values[headers.indexOf('email')] || '',
               commissionRate: parseFloat(values[headers.indexOf('commission rate')] || values[headers.indexOf('commissionrate')] || '0') || 0,
               address: values[headers.indexOf('address')] || '',
+              addressLine2: values[headers.indexOf('address line 2')] || values[headers.indexOf('addressline2')] || values[headers.indexOf('address_line2')] || '',
               city: values[headers.indexOf('city')] || '',
               state: values[headers.indexOf('state')] || '',
               zipCode: values[headers.indexOf('zip code')] || values[headers.indexOf('zipcode')] || '',
               fax: values[headers.indexOf('fax')] || '',
+              notes: values[headers.indexOf('notes')] || '',
             };
 
             if (agencyData.name) {

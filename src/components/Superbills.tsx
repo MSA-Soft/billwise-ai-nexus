@@ -362,9 +362,9 @@ export const Superbills: React.FC = () => {
 
   const handleDownloadSampleCSV = () => {
     const csvContent = [
-      'Name,Type,Status,Description',
-      'Standard Superbill,form-based,active,Standard form-based superbill template',
-      'Custom Template,template-based,active,Custom template-based superbill'
+      'Name,Type,Status,Description,File Path,File Name',
+      'Standard Superbill,form-based,active,Standard form-based superbill template,,',
+      'Custom Template,template-based,active,Custom template-based superbill,/templates/custom.pdf,Custom Template.pdf'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -405,6 +405,8 @@ export const Superbills: React.FC = () => {
               type: (values[headers.indexOf('type')] as 'form-based' | 'template-based' | 'custom') || 'form-based',
               status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
               description: values[headers.indexOf('description')] || '',
+              filePath: values[headers.indexOf('file path')] || values[headers.indexOf('filepath')] || values[headers.indexOf('file_path')] || '',
+              fileName: values[headers.indexOf('file name')] || values[headers.indexOf('filename')] || values[headers.indexOf('file_name')] || 'No File Selected',
             };
 
             if (superbillData.name) {
