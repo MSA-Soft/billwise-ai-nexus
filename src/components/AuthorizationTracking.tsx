@@ -594,8 +594,8 @@ const AuthorizationTracking = () => {
     !auth.expired_at
   );
 
-  // Controls which view is shown below (Active, Pending, Expiring, Denied, Analytics)
-  const [viewFilter, setViewFilter] = useState<'active' | 'pending' | 'expiring' | 'denied' | 'analytics'>('active');
+  // Controls which view is shown below (Active, Pending, Expiring, Expired, Denied, Analytics)
+  const [viewFilter, setViewFilter] = useState<'active' | 'pending' | 'expiring' | 'expired' | 'denied' | 'analytics'>('active');
 
   return (
     <div className="space-y-6">
@@ -617,7 +617,7 @@ const AuthorizationTracking = () => {
         value={viewFilter}
         onValueChange={(value) =>
           setViewFilter(
-            value as "active" | "pending" | "expiring" | "denied" | "analytics"
+            value as "active" | "pending" | "expiring" | "expired" | "denied" | "analytics"
           )
         }
         className="space-y-6"
@@ -816,9 +816,9 @@ const AuthorizationTracking = () => {
           </Card>
 
           <Card
-            onClick={() => setViewFilter('denied')}
+            onClick={() => setViewFilter('expired')}
             className={`cursor-pointer transition-shadow ${
-              viewFilter === 'denied' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+              viewFilter === 'expired' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
             }`}
           >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -833,7 +833,12 @@ const AuthorizationTracking = () => {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            onClick={() => setViewFilter('denied')}
+            className={`cursor-pointer transition-shadow ${
+              viewFilter === 'denied' ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+            }`}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Denied</CardTitle>
               <XCircle className="h-4 w-4 text-red-500" />
@@ -1630,64 +1635,66 @@ const AuthorizationTracking = () => {
               </CardContent>
             </Card>
 
-            {/* Expired */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <AlertTriangle className="h-5 w-5 text-red-500" />
-                    <CardTitle>Expired Authorizations</CardTitle>
-                  </div>
-                  <Badge variant="destructive">{expiredAuthorizations.length}</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {expiredAuthorizations.length > 0 ? (
-                  <div className="space-y-3">
-                    {expiredAuthorizations.map((auth) => {
-                      const authData = authorizations.find(a => a.id === auth.id);
-                      return (
-                        <div key={auth.id} className="border rounded-lg p-3 bg-red-50 border-red-200">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="font-semibold text-sm">{auth.patient_name}</div>
-                              <div className="text-xs text-gray-600">{auth.service_type}</div>
-                              <div className="flex items-center gap-2 mt-1">
-                                <Badge variant="destructive">EXPIRED</Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  Expired {Math.abs(auth.days_until_expiry)} days ago
-                                </span>
-                              </div>
-                            </div>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                // Create new authorization from expired one
-                                const expiredAuth = authorizations.find(a => a.id === auth.id);
-                                if (expiredAuth) {
-                                  setSelectedAuth(expiredAuth);
-                                  setShowNewAuthForm(true);
-                                }
-                              }}
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              New Auth
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No expired authorizations.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="expired" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  <CardTitle>Expired Authorizations</CardTitle>
+                </div>
+                <Badge variant="destructive">{expiredAuthorizations.length}</Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {expiredAuthorizations.length > 0 ? (
+                <div className="space-y-3">
+                  {expiredAuthorizations.map((auth) => {
+                    const authData = authorizations.find(a => a.id === auth.id);
+                    return (
+                      <div key={auth.id} className="border rounded-lg p-3 bg-red-50 border-red-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-semibold text-sm">{auth.patient_name}</div>
+                            <div className="text-xs text-gray-600">{auth.service_type}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="destructive">EXPIRED</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                Expired {Math.abs(auth.days_until_expiry)} days ago
+                              </span>
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              // Create new authorization from expired one
+                              const expiredAuth = authorizations.find(a => a.id === auth.id);
+                              if (expiredAuth) {
+                                setSelectedAuth(expiredAuth);
+                                setShowNewAuthForm(true);
+                              }
+                            }}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            New Auth
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <CheckCircle className="h-10 w-10 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No expired authorizations.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="denied" className="space-y-6">
@@ -2274,6 +2281,7 @@ const AuthorizationTracking = () => {
 
       {/* New/Edit Authorization Form */}
       <AuthorizationRequestDialog
+        key={selectedAuth?.id || 'new'} // Force remount when authorizationId changes
         open={showNewAuthForm}
         authorizationId={selectedAuth?.id}
         onOpenChange={(open) => {
@@ -2283,8 +2291,16 @@ const AuthorizationTracking = () => {
             fetchAuthorizations(); // Refresh when dialog closes
           }
         }}
-        onSuccess={() => {
-          setSelectedAuth(null);
+        onSuccess={(newAuthId) => {
+          // If a new authorization was created, set it as selected so user can see/edit it
+          if (newAuthId && !selectedAuth?.id) {
+            // Find the newly created authorization in the list
+            fetchAuthorizations().then(() => {
+              // The new auth will be in the list, user can edit it
+            });
+          } else {
+            setSelectedAuth(null);
+          }
           fetchAuthorizations(); // Refresh after successful creation/update
           loadExpirationData(); // Refresh expiration data
         }}

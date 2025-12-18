@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, FileText, Settings, CheckCircle, XCircle, Mail, Printer } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, FileText, Settings, CheckCircle, XCircle, Mail, Printer, FileDown } from 'lucide-react';
 
 interface StatementTemplate {
   id: string;
@@ -198,17 +198,101 @@ export const Statements: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportTemplates = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Name,Type,Format,Status,Description',
+      'Standard Statement,automatic,enhanced,enabled,Standard automatic statement generation',
+      'Manual Print Statement,user-print,enhanced,enabled,User print statement template'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'statement-templates-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportTemplates = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing templates from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedTemplates: Partial<StatementTemplate>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const templateData: Partial<StatementTemplate> = {
+              name: values[headers.indexOf('name')] || '',
+              type: (values[headers.indexOf('type')] as 'automatic' | 'user-print' | 'estimate') || 'automatic',
+              format: (values[headers.indexOf('format')] as 'enhanced' | 'plain-text' | 'electronic') || 'enhanced',
+              status: (values[headers.indexOf('status')] as 'enabled' | 'disabled') || 'enabled',
+              description: values[headers.indexOf('description')] || '',
+            };
+
+            if (templateData.name) {
+              importedTemplates.push(templateData);
+            }
+          }
+        }
+
+        // Insert templates into database or state
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const templateData of importedTemplates) {
+          try {
+            const newTemplate: StatementTemplate = {
+              id: Date.now().toString() + Math.random(),
+              name: templateData.name!,
+              type: templateData.type || 'automatic',
+              format: templateData.format || 'enhanced',
+              status: templateData.status || 'enabled',
+              description: templateData.description || '',
+              templateContent: templateData.templateContent || '',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+
+            setTemplates(prev => [...prev, newTemplate]);
+            successCount++;
+          } catch (error) {
+            console.error('Error importing template:', error);
+            errorCount++;
+          }
+        }
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} statement templates imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -265,6 +349,10 @@ export const Statements: React.FC = () => {
               <Button variant="outline" onClick={handleExportTemplates}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

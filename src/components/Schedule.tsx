@@ -57,7 +57,7 @@ interface Appointment {
 }
 
 export function Schedule() {
-  const { user, currentCompany } = useAuth();
+  const { user, currentCompany, isSuperAdmin } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -99,11 +99,15 @@ export function Schedule() {
       }
 
       // CRITICAL: Filter by company_id for multi-tenant isolation
+      // Super admins can see all appointments, regular users see only their company's appointments
       let appointmentsQuery = supabase
         .from('appointments' as any)
         .select('*');
       
-      if (currentCompany?.id) {
+      if (isSuperAdmin) {
+        console.log('👑 Super admin - fetching all appointments (no company filter)');
+        // Super admin sees everything - no filter needed
+      } else if (currentCompany?.id) {
         console.log('🏢 Filtering appointments by company_id:', currentCompany.id);
         appointmentsQuery = appointmentsQuery.eq('company_id', currentCompany.id);
       } else {
@@ -500,13 +504,58 @@ export function Schedule() {
           status: appointmentData.status || 'scheduled',
           location: appointmentData.location || null,
           notes: appointmentData.notes || null,
+          // CRITICAL: Include company_id for RLS policy
+          company_id: currentCompany?.id || null,
         };
 
-        // Remove null values for optional fields
+        // Remove null values for optional fields (but keep company_id if it exists)
         Object.keys(insertData).forEach(key => {
           if (insertData[key] === null || insertData[key] === undefined) {
-            delete insertData[key];
+            // Keep company_id even if null (RLS might need it)
+            if (key !== 'company_id') {
+              delete insertData[key];
+            }
           }
+        });
+
+        // Ensure company_id is present for RLS
+        // For super admins, use currentCompany if available, or fetch first available company
+        // For regular users, company_id is required
+        if (!insertData.company_id) {
+          if (currentCompany?.id) {
+            insertData.company_id = currentCompany.id;
+          } else if (isSuperAdmin) {
+            // For super admins, try to get the first available company
+            try {
+              const { data: companies } = await supabase
+                .from('companies' as any)
+                .select('id')
+                .limit(1)
+                .single();
+              
+              if (companies?.id) {
+                insertData.company_id = companies.id;
+                console.log('👑 Super admin: Using first available company_id:', companies.id);
+              } else {
+                console.warn('⚠️ Super admin: No companies found in database');
+              }
+            } catch (error) {
+              console.error('⚠️ Super admin: Could not fetch company for appointment:', error);
+            }
+          } else {
+            // Regular users must have a company
+            throw new Error(
+              'No company selected. Please select a company from the dropdown in the header before creating an appointment.'
+            );
+          }
+        }
+
+        console.log('📝 Inserting appointment with data:', {
+          ...insertData,
+          company_id: insertData.company_id || (isSuperAdmin ? 'NULL (super admin)' : 'MISSING'),
+          isSuperAdmin,
+          currentCompanyId: currentCompany?.id || 'NONE',
+          userEmail: user?.email || 'UNKNOWN'
         });
 
         const { data: created, error } = await supabase
@@ -517,6 +566,31 @@ export function Schedule() {
 
         if (error) {
           console.error('❌ Error creating appointment:', error);
+          console.error('❌ Error details:', {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            insertData: {
+              ...insertData,
+              company_id: insertData.company_id || 'NULL',
+              isSuperAdmin,
+              currentCompanyId: currentCompany?.id || 'NONE'
+            }
+          });
+          
+          // Provide more helpful error message for RLS violations
+          if (error.code === '42501' || error.message?.includes('row-level security') || error.message?.includes('permission denied')) {
+            let errorMsg = 'Permission denied. ';
+            if (!insertData.company_id && !isSuperAdmin) {
+              errorMsg += 'Company ID is missing. Please select a company from the dropdown in the header. ';
+            } else if (isSuperAdmin) {
+              errorMsg += 'Super admin access may be restricted by database RLS policies. ';
+            }
+            errorMsg += 'Please contact your administrator or check your database RLS policies.';
+            throw new Error(errorMsg);
+          }
+          
           throw new Error(error.message || 'Failed to create appointment');
         }
 

@@ -24,7 +24,7 @@ type CommentAttachment = {
 interface AuthorizationRequestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess: () => void;
+  onSuccess: (authorizationId?: string) => void; // Now receives the new authorization ID
   authorizationId?: string; // Optional: if provided, we're editing an existing authorization
   patientId?: string; // Optional: if provided, pre-populate patient data
   patientData?: {
@@ -318,6 +318,26 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
   // Track if form has been initialized to prevent unnecessary resets
   const formInitializedRef = useRef(false);
   const previousOpenRef = useRef(false);
+  const lastLoadedAuthIdRef = useRef<string | null>(null);
+
+  // Debug: Log formData changes to see what's actually in state
+  useEffect(() => {
+    if (isEditMode && authorizationId) {
+      console.log('📊 Current formData state:', {
+        patient_name: formData.patient_name,
+        patient_id: formData.patient_id,
+        order_date: formData.order_date,
+        type_of_visit: formData.type_of_visit,
+        primary_insurance_id: formData.primary_insurance_id,
+        payer_id: formData.payer_id,
+        facility_id: formData.facility_id,
+        description: formData.description,
+        service_type: formData.service_type,
+        procedure_codes: formData.procedure_codes,
+        diagnosis_codes: formData.diagnosis_codes,
+      });
+    }
+  }, [formData, isEditMode, authorizationId]);
 
   useEffect(() => {
     // Only reset if dialog was closed and is now opening (not just switching tabs)
@@ -326,17 +346,21 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
     previousOpenRef.current = open;
 
     if (open) {
-      // Only fetch data if not already loaded (prevent unnecessary API calls)
-      if (!formInitializedRef.current || wasClosed) {
+      // Always fetch dropdown data when dialog opens
       fetchPayers();
       fetchPatients();
       fetchFacilities();
-      }
 
       if (authorizationId) {
         setIsEditMode(true);
-        loadAuthorizationData(authorizationId);
-        loadComments(authorizationId);
+        // Always reload data when authorizationId is provided
+        // This ensures data is fresh when editing an existing authorization
+        console.log('🔄 useEffect: Loading authorization data for edit, ID:', authorizationId, 'Dialog open:', open);
+        if (lastLoadedAuthIdRef.current !== authorizationId) {
+          lastLoadedAuthIdRef.current = authorizationId;
+          loadAuthorizationData(authorizationId);
+          loadComments(authorizationId);
+        }
         formInitializedRef.current = true;
       } else {
         setIsEditMode(false);
@@ -387,34 +411,87 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       }
       }
     } else {
-      // Dialog closed - reset the initialization flag
+      // Dialog closed - reset the initialization flag and last loaded ID
       // But don't clear form data yet (preserve for when reopening)
       formInitializedRef.current = false;
+      lastLoadedAuthIdRef.current = null;
     }
   }, [open, authorizationId, patientId, patientData]);
 
+  // Separate effect to handle authorizationId changes when dialog is already open
+  useEffect(() => {
+    if (open && authorizationId && lastLoadedAuthIdRef.current !== authorizationId) {
+      console.log('🔄 authorizationId changed while dialog open, reloading data:', authorizationId);
+      setIsEditMode(true);
+      lastLoadedAuthIdRef.current = authorizationId;
+      loadAuthorizationData(authorizationId);
+      loadComments(authorizationId);
+    }
+  }, [authorizationId, open]); // Watch both authorizationId and open
+
   const loadAuthorizationData = async (id: string) => {
     try {
+      console.log('📥 Loading authorization data for ID:', id);
+      setLoading(true);
+      
       const { data, error } = await supabase
         .from('authorization_requests' as any)
         .select('*')
         .eq('id', id)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error loading authorization:', error);
+        throw error;
+      }
 
       if (data) {
+        console.log('✅ Authorization data loaded:', data);
+        console.log('📋 All database fields:', Object.keys(data));
         const authData = data as any;
+        
+        // Log key fields to see what we're getting
+        console.log('🔍 Key fields from DB:', {
+          patient_name: authData.patient_name,
+          patient_id: authData.patient_id,
+          patient_dob: authData.patient_dob,
+          payer_id: authData.payer_id,
+          payer_name_custom: authData.payer_name_custom,
+          facility_id: authData.facility_id,
+          facility_name: authData.facility_name,
+          service_start_date: authData.service_start_date,
+          service_type: authData.service_type,
+          type_of_visit: authData.type_of_visit,
+          procedure_codes: authData.procedure_codes,
+          diagnosis_codes: authData.diagnosis_codes,
+          clinical_indication: authData.clinical_indication,
+        });
+        
+        // Map service_type label back to type_of_visit value for Select component
+        // The database stores service_type as a label (e.g., "Consultation"), but Select needs the value (e.g., "consultation")
+        const serviceTypeLabel = authData.service_type || authData.type_of_visit || "";
+        const matchedVisitType = visitTypeOptions.find(opt => 
+          opt.label.toLowerCase() === serviceTypeLabel.toLowerCase() || 
+          opt.value === serviceTypeLabel.toLowerCase()
+        );
+        const typeOfVisitValue = matchedVisitType?.value || authData.type_of_visit || "";
+        
+        console.log('🔍 Service type mapping:', {
+          serviceTypeLabel,
+          matchedVisitType,
+          typeOfVisitValue,
+        });
+        
         // Map ALL database fields to form fields - comprehensive loading
-        setFormData(prev => ({
-          ...prev,
+        // Build the updated form data object
+        const updatedData: any = {
           // Basic identification
           serial_no: authData.id ? authData.id.substring(0, 8).toUpperCase() : `AUTH-${Date.now().toString().slice(-8)}`,
           
           // Patient Information - load ALL patient fields
-          patient_name: authData.patient_name || "",
+          patient_name: authData.patient_name || (authData.patient_first_name && authData.patient_last_name ? `${authData.patient_first_name} ${authData.patient_last_name}` : "") || "",
           patient_id: authData.patient_id || "",
-          patient_dob: authData.patient_dob || "",
+          patient_dob: authData.patient_dob ? (typeof authData.patient_dob === 'string' ? authData.patient_dob.split('T')[0] : new Date(authData.patient_dob).toISOString().split('T')[0]) : "",
           patient_member_id: authData.patient_member_id || "",
           
           // Facility Information
@@ -423,24 +500,24 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           facility_name: authData.facility_name || "",
           
           // Service Information - load ALL service fields
-          order_date: authData.service_start_date || authData.order_date || (authData.created_at ? new Date(authData.created_at).toISOString().split('T')[0] : ""),
-          type_of_visit: authData.service_type || authData.type_of_visit || "",
+          order_date: authData.service_start_date ? (typeof authData.service_start_date === 'string' ? authData.service_start_date.split('T')[0] : new Date(authData.service_start_date).toISOString().split('T')[0]) : (authData.order_date ? (typeof authData.order_date === 'string' ? authData.order_date.split('T')[0] : new Date(authData.order_date).toISOString().split('T')[0]) : (authData.created_at ? new Date(authData.created_at).toISOString().split('T')[0] : "")),
+          type_of_visit: typeOfVisitValue, // Use mapped value for Select component
           service_type: authData.service_type || "",
-          service_start_date: authData.service_start_date || "",
-          service_end_date: authData.service_end_date || "",
+          service_start_date: authData.service_start_date ? (typeof authData.service_start_date === 'string' ? authData.service_start_date.split('T')[0] : new Date(authData.service_start_date).toISOString().split('T')[0]) : "",
+          service_end_date: authData.service_end_date ? (typeof authData.service_end_date === 'string' ? authData.service_end_date.split('T')[0] : new Date(authData.service_end_date).toISOString().split('T')[0]) : "",
           description: authData.procedure_description || authData.service_type || authData.description || "",
           procedure_description: authData.procedure_description || "",
-          procedure_codes: authData.procedure_codes || [],
-          diagnosis_codes: authData.diagnosis_codes || [],
+          procedure_codes: Array.isArray(authData.procedure_codes) ? authData.procedure_codes : (authData.procedure_codes ? [authData.procedure_codes] : []),
+          diagnosis_codes: Array.isArray(authData.diagnosis_codes) ? authData.diagnosis_codes : (authData.diagnosis_codes ? [authData.diagnosis_codes] : []),
           clinical_indication: authData.clinical_indication || "",
           // DB might not have a dedicated column; store/recover it from internal_notes.
           medical_necessity: extractMedicalNecessityFromNotes(authData.internal_notes || authData.remarks || ""),
           
           // Insurance Information - Primary
-          primary_insurance: authData.payer_name_custom || "",
+          primary_insurance: authData.payer_name_custom || authData.payer_name || "",
           primary_insurance_id: authData.payer_id || "",
           payer_id: authData.payer_id || "",
-          payer_name: authData.payer_name_custom || "",
+          payer_name: authData.payer_name_custom || authData.payer_name || "",
           
           // Insurance Information - Secondary
           secondary_insurance: authData.secondary_payer_name || "",
@@ -471,7 +548,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           // Visit Tracking
           visits_authorized: authData.visits_authorized || authData.units_requested || 0,
           units_requested: authData.units_requested || 0,
-          authorization_expiration_date: authData.authorization_expiration_date || authData.expires_at || authData.service_end_date || "",
+          authorization_expiration_date: authData.authorization_expiration_date ? (typeof authData.authorization_expiration_date === 'string' ? authData.authorization_expiration_date.split('T')[0] : new Date(authData.authorization_expiration_date).toISOString().split('T')[0]) : (authData.expires_at ? (typeof authData.expires_at === 'string' ? authData.expires_at.split('T')[0] : new Date(authData.expires_at).toISOString().split('T')[0]) : (authData.service_end_date ? (typeof authData.service_end_date === 'string' ? authData.service_end_date.split('T')[0] : new Date(authData.service_end_date).toISOString().split('T')[0]) : "")),
           
           // Notes and Remarks
           remarks: authData.internal_notes || authData.remarks || "",
@@ -479,23 +556,104 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           
           // Renewal tracking
           renewal_initiated: authData.renewal_initiated || false,
-        }));
+        };
+        
+        console.log('📝 Updated form data object:', updatedData);
+        console.log('📝 Setting form data with keys:', Object.keys(updatedData));
+        
+        // Use functional update to ensure we merge properly
+        setFormData(prev => {
+          const merged = { ...prev, ...updatedData };
+          console.log('📝 Merged form data:', merged);
+          console.log('🔍 Key merged fields:', {
+            patient_name: merged.patient_name,
+            patient_id: merged.patient_id,
+            patient_dob: merged.patient_dob,
+            order_date: merged.order_date,
+            type_of_visit: merged.type_of_visit,
+            service_type: merged.service_type,
+            primary_insurance_id: merged.primary_insurance_id,
+            payer_id: merged.payer_id,
+            facility_id: merged.facility_id,
+            facility_name: merged.facility_name,
+            scheduled_location: merged.scheduled_location,
+            description: merged.description,
+            procedure_description: merged.procedure_description,
+            procedure_codes: merged.procedure_codes,
+            diagnosis_codes: merged.diagnosis_codes,
+            clinical_indication: merged.clinical_indication,
+          });
+          return merged;
+        });
+        
+        console.log('✅ Form data update initiated - React will re-render with new data');
+        
+        // IMPORTANT: Set selectedPatientId FIRST, then clear filteredPatients, then set search term
+        // This prevents the dropdown from showing "No patients found" when loading edit data
+        // Clear filtered patients to close dropdown immediately
+        setFilteredPatients([]);
+        
+        // Set selected patient ID if patient_id exists - do this BEFORE setting search term
+        // Note: patient_id from authData might be external ID (like "PAT-001") or UUID
+        if (authData.patient_id) {
+          // Try to find the patient in the patients list by external ID or UUID
+          const matchingPatient = patients.find(p => 
+            p.patient_id === authData.patient_id || 
+            p.id === authData.patient_id
+          );
+          
+          if (matchingPatient) {
+            // Use the UUID from the patients list
+            setSelectedPatientId(matchingPatient.id);
+            console.log('✅ Found matching patient, setting selectedPatientId to:', matchingPatient.id);
+          } else {
+            // If not found in list, use the patient_id directly (might be UUID already)
+            // The key is to set it to a truthy value so the dropdown doesn't show
+            setSelectedPatientId(authData.patient_id);
+            console.log('⚠️ Patient not in list, using patient_id directly:', authData.patient_id);
+          }
+        } else if (authData.patient_name) {
+          // If no patient_id but we have patient_name, don't set selectedPatientId
+          // Instead, we'll rely on formData.patient_id being set from authData
+          // The dropdown won't show because we're not setting a search term that triggers it
+          console.log('✅ Patient loaded from auth data (no ID), using formData.patient_id only');
+        }
+        
+        // NOW set patient search term - only if we have a valid selectedPatientId
+        // This prevents the dropdown from showing "No patients found" when loading edit data
+        if (authData.patient_name) {
+          // Only set search term if we have a valid selectedPatientId, otherwise just show the name
+          // The input will display the name but won't trigger dropdown search
+          if (selectedPatientId && selectedPatientId !== 'loaded-from-auth') {
+            setPatientSearchTerm(authData.patient_name);
+          } else {
+            // Set search term but immediately clear filteredPatients to prevent dropdown
+            setPatientSearchTerm(authData.patient_name);
+            setFilteredPatients([]);
+          }
+        }
         
         // If patient_id exists, try to load patient data
         if (authData.patient_id) {
           try {
+            console.log('📥 Loading patient data for patient_id:', authData.patient_id);
             await loadPatientData(authData.patient_id);
           } catch (err) {
-            console.log('Could not load additional patient data:', err);
+            console.log('⚠️ Could not load additional patient data:', err);
           }
         }
+      } else {
+        console.warn('⚠️ No data returned from database for authorization ID:', id);
       }
     } catch (error: any) {
+      console.error('❌ Error in loadAuthorizationData:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to load authorization data",
         variant: "destructive"
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -712,10 +870,11 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
 
   const handleAddComment = async () => {
     // For new requests, we need to create the authorization first
+    // Allow both comment and attachments, or either one
     if (!newComment.trim() && newCommentFiles.length === 0) {
       toast({
         title: "Error",
-        description: "Please enter a comment",
+        description: "Please enter a comment or attach a file (or both)",
         variant: "destructive"
       });
       return;
@@ -805,19 +964,30 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         });
       }
 
+      // Allow comment with attachments, comment only, or attachments only
       if (!newComment.trim() && uploaded.length === 0) {
         toast({
           title: "Error",
-          description: "No valid attachments selected.",
+          description: "Please enter a comment or attach a file (or both)",
           variant: "destructive",
         });
         return;
       }
 
+      // Combine comment text with attachments if both exist
       const commentText = String(newComment || "").trim();
-      const finalComment = uploaded.length > 0
-        ? `${commentText}\n\n<!--attachments:${JSON.stringify(uploaded)}-->`
-        : commentText;
+      let finalComment = commentText;
+      
+      // If there are attachments, append them to the comment
+      if (uploaded.length > 0) {
+        if (commentText) {
+          // Both comment and attachments
+          finalComment = `${commentText}\n\n<!--attachments:${JSON.stringify(uploaded)}-->`;
+        } else {
+          // Only attachments (no comment text)
+          finalComment = `<!--attachments:${JSON.stringify(uploaded)}-->`;
+        }
+      }
 
       const { data, error } = await supabase
         .from('authorization_request_comments' as any)
@@ -1515,7 +1685,26 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
         company_id: currentCompany?.id || null,
         
         // Patient Information - ALL fields
-        patient_id: formData.patient_id || selectedPatientId || null,
+        // Only use selectedPatientId if it's a valid UUID format
+        // Validate UUID format to prevent database errors
+        patient_id: (() => {
+          // First try formData.patient_id
+          if (formData.patient_id) {
+            // Check if it's a valid UUID format
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(formData.patient_id)) {
+              return formData.patient_id;
+            }
+          }
+          // Then try selectedPatientId if it's a valid UUID
+          if (selectedPatientId) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(selectedPatientId)) {
+              return selectedPatientId;
+            }
+          }
+          return null;
+        })(),
         patient_name: formData.patient_name || null,
         patient_dob: formData.patient_dob || null,
         patient_member_id: formData.patient_member_id || null,
@@ -1579,17 +1768,48 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           .single();
 
         // Update existing authorization
-        const { data: updatedAuth, error } = await supabase
-          .from('authorization_requests' as any)
-          .update({
-            ...authData,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', authorizationId)
-          .select()
-          .single();
+        let updatedAuth: any = null;
+        let updateError: any = null;
 
-        if (error) throw error;
+        const runUpdate = async (payload: any) => {
+          const { data, error } = await supabase
+            .from('authorization_requests' as any)
+            .update({
+              ...payload,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', authorizationId)
+            .select()
+            .single();
+          return { data, error };
+        };
+
+        // Try update; if schema complains about a missing column, strip that field and retry (up to 3 times)
+        let updatePayload: any = { ...authData };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          ({ data: updatedAuth, error: updateError } = await runUpdate(updatePayload));
+          if (!updateError) break;
+
+          const msg = String(updateError.message || "");
+          // Try to extract problematic column name from multiple possible error formats:
+          // - column "procedure_description"
+          // - "procedure_description" column
+          // - the 'procedure_description' column
+          const match = msg.match(/column \"([a-zA-Z0-9_]+)\"/);
+          const legacyMatch = msg.match(/\"([a-zA-Z0-9_]+)\" column/);
+          const singleQuoted = msg.match(/'([a-zA-Z0-9_]+)'\s+column/);
+          const col = (match?.[1] || legacyMatch?.[1] || singleQuoted?.[1]) as string | undefined;
+
+          if (col && col in updatePayload) {
+            console.warn(`⚠️ authorization_requests table is missing column "${col}". Retrying update without this field.`);
+            const { [col]: _removed, ...rest } = updatePayload;
+            updatePayload = rest;
+          } else {
+            break;
+          }
+        }
+
+        if (updateError) throw updateError;
 
         // Log update action
         if (oldAuth && updatedAuth) {
@@ -1608,13 +1828,44 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
       } else {
         // Create new authorization
         // Keep the status coming from the form (defaults to "pending")
-        const { data: newAuth, error } = await supabase
-          .from('authorization_requests' as any)
-          .insert(authData)
-          .select()
-          .single();
+        let newAuth: any = null;
+        let insertError: any = null;
 
-        if (error) throw error;
+        const runInsert = async (payload: any) => {
+          const { data, error } = await supabase
+            .from('authorization_requests' as any)
+            .insert(payload)
+            .select()
+            .single();
+          return { data, error };
+        };
+
+        // Try insert; if schema complains about a missing column, strip that field and retry (up to 3 times)
+        let insertPayload: any = { ...authData };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          ({ data: newAuth, error: insertError } = await runInsert(insertPayload));
+          if (!insertError) break;
+
+          const msg = String(insertError.message || "");
+          // Try to extract problematic column name from multiple possible error formats:
+          // - column "procedure_description"
+          // - "procedure_description" column
+          // - the 'procedure_description' column
+          const match = msg.match(/column \"([a-zA-Z0-9_]+)\"/);
+          const legacyMatch = msg.match(/\"([a-zA-Z0-9_]+)\" column/);
+          const singleQuoted = msg.match(/'([a-zA-Z0-9_]+)'\s+column/);
+          const col = (match?.[1] || legacyMatch?.[1] || singleQuoted?.[1]) as string | undefined;
+
+          if (col && col in insertPayload) {
+            console.warn(`⚠️ authorization_requests table is missing column "${col}". Retrying insert without this field.`);
+            const { [col]: _removed, ...rest } = insertPayload;
+            insertPayload = rest;
+          } else {
+            break;
+          }
+        }
+
+        if (insertError) throw insertError;
 
         // Log creation action
         if (newAuth) {
@@ -1639,9 +1890,26 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
           title: "Authorization Created",
           description: "Prior authorization request has been created successfully."
         });
+        
+        // Pass the new authorization ID to onSuccess callback
+        const newAuthId = (newAuth as any)?.id;
+        
+        // After creating, automatically reload the data so all fields are populated
+        // This ensures when user opens it again, all data is visible
+        if (newAuthId) {
+          setIsEditMode(true);
+          await loadAuthorizationData(newAuthId);
+          await loadComments(newAuthId);
+        }
+        
+        onSuccess(newAuthId);
+        
+        // Keep dialog open after creation so user can see saved data and add comments
+        // User can close manually when done
+        return;
       }
 
-      onSuccess();
+      // Only close and reset for updates (new creations return early above)
       onOpenChange(false);
       resetForm();
 
@@ -1744,7 +2012,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                 )}
                 {patientSearchTerm && !selectedPatientId && !isSearchingPatients && filteredPatients.length === 0 && patientSearchTerm.length > 0 && (
                   <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg">
-                    <div className="p-2 text-sm text-gray-500">No patients found</div>
+                    <div className="p-2 text-sm text-gray-500">No patients found. Try searching by name or ID.</div>
                   </div>
                 )}
               </div>
@@ -1806,7 +2074,7 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
               <div>
                 <Label htmlFor="type_of_visit">Type of Visit *</Label>
                 <Select
-                  value={formData.type_of_visit}
+                  value={formData.type_of_visit || ""}
                   onValueChange={(value) => {
                     const selected = visitTypeOptions.find(v => v.value === value);
                     setFormData({
@@ -1818,7 +2086,9 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                   required
                 >
                   <SelectTrigger id="type_of_visit">
-                    <SelectValue placeholder="Select type of visit" />
+                    <SelectValue placeholder="Select type of visit">
+                      {formData.type_of_visit ? visitTypeOptions.find(v => v.value === formData.type_of_visit)?.label : "Select type of visit"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {visitTypeOptions.map((option) => (
@@ -2354,13 +2624,18 @@ const AuthorizationRequestDialog = ({ open, onOpenChange, onSuccess, authorizati
                   type="button"
                   onClick={handleAddComment}
                   disabled={(!newComment.trim() && newCommentFiles.length === 0) || isUploadingCommentFiles}
+                  title={(!newComment.trim() && newCommentFiles.length === 0) ? "Enter a comment or attach a file (or both)" : "Add comment with optional attachments"}
                 >
                   {isUploadingCommentFiles ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
                     <Plus className="h-4 w-4 mr-2" />
                   )}
-                  Add Comment
+                  {newCommentFiles.length > 0 && newComment.trim() 
+                    ? `Add Comment & ${newCommentFiles.length} File${newCommentFiles.length > 1 ? 's' : ''}`
+                    : newCommentFiles.length > 0
+                    ? `Add ${newCommentFiles.length} File${newCommentFiles.length > 1 ? 's' : ''}`
+                    : "Add Comment"}
                 </Button>
                 {!authorizationId && !isEditMode && (
                   <p className="text-xs text-muted-foreground mt-2">

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Bell, Calendar, User, Filter } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Bell, Calendar, User, Filter, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -443,17 +443,115 @@ export const AlertControl: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportAlerts = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Alert Type,Patient,Message,Create User,Status,Is Global,Patient Section,Claim Section,Payment Section,Appointment Section',
+      'Patient,John Doe,Patient requires follow-up appointment,Me,active,false,true,false,false,false',
+      'Claim,Jane Smith,Claim needs additional documentation,Admin,active,false,false,true,false,false'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'alerts-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportAlerts = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing alerts from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedAlerts: Partial<Alert>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const alertData: Partial<Alert> = {
+              alertType: values[headers.indexOf('alert type')] || values[headers.indexOf('alerttype')] || 'Patient',
+              patient: values[headers.indexOf('patient')] || '',
+              message: values[headers.indexOf('message')] || '',
+              createUser: values[headers.indexOf('create user')] || values[headers.indexOf('createuser')] || 'Me',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+              isGlobal: values[headers.indexOf('is global')]?.toLowerCase() === 'true' || false,
+              patientSection: values[headers.indexOf('patient section')]?.toLowerCase() === 'true' || false,
+              claimSection: values[headers.indexOf('claim section')]?.toLowerCase() === 'true' || false,
+              paymentSection: values[headers.indexOf('payment section')]?.toLowerCase() === 'true' || false,
+              appointmentSection: values[headers.indexOf('appointment section')]?.toLowerCase() === 'true' || false,
+            };
+
+            if (alertData.patient && alertData.message) {
+              importedAlerts.push(alertData);
+            }
+          }
+        }
+
+        // Insert alerts into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const alertData of importedAlerts) {
+          try {
+            const insertData: any = {
+              alert_type: alertData.alertType || null,
+              patient: alertData.patient!.trim(),
+              message: alertData.message!.trim(),
+              create_user: alertData.createUser || null,
+              is_global: alertData.isGlobal || false,
+              patient_section: alertData.patientSection || false,
+              claim_section: alertData.claimSection || false,
+              payment_section: alertData.paymentSection || false,
+              appointment_section: alertData.appointmentSection || false,
+              status: (alertData.status || 'active') as 'active' | 'inactive',
+              is_active: (alertData.status || 'active') === 'active'
+            };
+
+            const { error } = await supabase
+              .from('alert_controls' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing alert:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the alerts list
+        await fetchAlertsFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} alerts imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -499,6 +597,10 @@ export const AlertControl: React.FC = () => {
               <Button variant="outline" onClick={handleExportAlerts}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

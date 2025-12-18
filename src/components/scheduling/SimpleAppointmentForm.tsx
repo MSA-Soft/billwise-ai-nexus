@@ -18,7 +18,7 @@ interface SimpleAppointmentFormProps {
 }
 
 export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppointment }: SimpleAppointmentFormProps) {
-  const { user } = useAuth();
+  const { user, currentCompany, isSuperAdmin } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredPatients, setFilteredPatients] = useState<any[]>([]);
@@ -74,11 +74,20 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
         
         // Search in patients table by first_name, last_name, and patient_id
         // Use ilike for case-insensitive search
-        const { data: patientsData, error } = await supabase
+        let patientsQuery = supabase
           .from('patients' as any)
           .select('id, patient_id, first_name, last_name, phone, email, date_of_birth')
-          .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%`)
-          .limit(20);
+          .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%,patient_id.ilike.%${searchTerm}%`);
+        
+        // Super admins can see all patients, regular users see only their company's patients
+        if (!isSuperAdmin && currentCompany?.id) {
+          console.log('🏢 Filtering patient search by company_id:', currentCompany.id);
+          patientsQuery = patientsQuery.eq('company_id', currentCompany.id);
+        } else if (isSuperAdmin) {
+          console.log('👑 Super admin - searching all patients (no company filter)');
+        }
+        
+        const { data: patientsData, error } = await patientsQuery.limit(20);
 
         if (error) {
           console.error('Search error:', error);
@@ -222,11 +231,17 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
         // If patient data not loaded, fetch it
         const fetchPatient = async () => {
           try {
-            const { data: patientData, error } = await supabase
+            let patientQuery = supabase
               .from('patients' as any)
               .select('id, patient_id, first_name, last_name, phone, email, date_of_birth')
-              .eq('id', existingAppointment.patient_id)
-              .single();
+              .eq('id', existingAppointment.patient_id);
+            
+            // Super admins can see all patients, regular users see only their company's patients
+            if (!isSuperAdmin && currentCompany?.id) {
+              patientQuery = patientQuery.eq('company_id', currentCompany.id);
+            }
+            
+            const { data: patientData, error } = await patientQuery.single();
 
             if (patientData && !error) {
               const patient = patientData as any;
@@ -314,16 +329,23 @@ export function SimpleAppointmentForm({ isOpen, onClose, onSave, existingAppoint
       const patientId = await generatePatientId();
       
       // Create patient record in patients table
+      const insertData: any = {
+        patient_id: patientId,
+        user_id: user.id,
+        first_name: quickAddData.firstName.trim(),
+        last_name: quickAddData.lastName.trim(),
+        date_of_birth: quickAddData.dob,
+        status: 'active'
+      };
+      
+      // Add company_id for multi-tenant isolation (super admins can still access all)
+      if (currentCompany?.id) {
+        insertData.company_id = currentCompany.id;
+      }
+      
       const { data: newPatient, error: patientError } = await supabase
         .from('patients' as any)
-        .insert({
-          patient_id: patientId,
-          user_id: user.id,
-          first_name: quickAddData.firstName.trim(),
-          last_name: quickAddData.lastName.trim(),
-          date_of_birth: quickAddData.dob,
-          status: 'active'
-        })
+        .insert(insertData)
         .select()
         .single();
 

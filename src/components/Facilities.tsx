@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Building, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -490,17 +490,117 @@ export const Facilities: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportFacilities = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Name,NPI,Specialty,Status,Phone,Email,Address,City,State,Zip Code',
+      'Main Medical Center,1234567890,Hospital,active,(555) 111-0000,info@mainmedical.com,789 Hospital Dr,Chicago,IL,60601',
+      'Outpatient Clinic,0987654321,Clinic,active,(555) 222-0000,contact@outpatient.com,456 Clinic Ave,Houston,TX,77001'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'facilities-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFacilities = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing facilities from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedFacilities: Partial<Facility>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const facilityData: Partial<Facility> = {
+              name: values[headers.indexOf('name')] || '',
+              npi: values[headers.indexOf('npi')] || '',
+              taxonomySpecialty: values[headers.indexOf('specialty')] || values[headers.indexOf('taxonomy specialty')] || '',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+              phone: values[headers.indexOf('phone')] || '',
+              email: values[headers.indexOf('email')] || '',
+              address: values[headers.indexOf('address')] || '',
+              city: values[headers.indexOf('city')] || '',
+              state: values[headers.indexOf('state')] || '',
+              zipCode: values[headers.indexOf('zip code')] || values[headers.indexOf('zipcode')] || '',
+            };
+
+            if (facilityData.name) {
+              importedFacilities.push(facilityData);
+            }
+          }
+        }
+
+        // Insert facilities into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const facilityData of importedFacilities) {
+          try {
+            const addressParts = (facilityData.address || '').split(',').map(p => p.trim());
+            const insertData: any = {
+              name: facilityData.name!.trim(),
+              npi: facilityData.npi || null,
+              taxonomy_specialty: facilityData.taxonomySpecialty || null,
+              address_line1: addressParts[0] || null,
+              address_line2: addressParts[1] || null,
+              city: facilityData.city || null,
+              state: facilityData.state || null,
+              zip_code: facilityData.zipCode || null,
+              phone: facilityData.phone || null,
+              email: facilityData.email || null,
+              status: (facilityData.status || 'active') as 'active' | 'inactive',
+              is_active: (facilityData.status || 'active') === 'active',
+            };
+
+            const { error } = await supabase
+              .from('facilities' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing facility:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the facilities list
+        await fetchFacilitiesFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} facilities imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -546,6 +646,10 @@ export const Facilities: React.FC = () => {
               <Button variant="outline" onClick={handleExportFacilities}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

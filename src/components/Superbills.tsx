@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, FileText, Upload as UploadIcon, Info, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, FileText, Upload as UploadIcon, Info, AlertCircle, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -360,17 +360,105 @@ export const Superbills: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportSuperbills = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Name,Type,Status,Description',
+      'Standard Superbill,form-based,active,Standard form-based superbill template',
+      'Custom Template,template-based,active,Custom template-based superbill'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'superbills-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportSuperbills = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing superbills from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedSuperbills: Partial<Superbill>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const superbillData: Partial<Superbill> = {
+              name: values[headers.indexOf('name')] || '',
+              type: (values[headers.indexOf('type')] as 'form-based' | 'template-based' | 'custom') || 'form-based',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+              description: values[headers.indexOf('description')] || '',
+            };
+
+            if (superbillData.name) {
+              importedSuperbills.push(superbillData);
+            }
+          }
+        }
+
+        // Insert superbills into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const superbillData of importedSuperbills) {
+          try {
+            const insertData: any = {
+              name: superbillData.name!.trim(),
+              type: superbillData.type || 'form-based',
+              file_path: superbillData.filePath || null,
+              file_name: superbillData.fileName || 'No File Selected',
+              description: superbillData.description || null,
+              status: (superbillData.status || 'active') as 'active' | 'inactive',
+              is_active: (superbillData.status || 'active') === 'active'
+            };
+
+            const { error } = await supabase
+              .from('superbills' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing superbill:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the superbills list
+        await fetchSuperbillsFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} superbills imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -427,6 +515,10 @@ export const Superbills: React.FC = () => {
               <Button variant="outline" onClick={handleExportSuperbills}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

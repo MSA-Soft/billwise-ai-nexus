@@ -727,7 +727,10 @@ This is a mock workflow for demonstration purposes.
       <AuthorizationRequestDialog
         open={showNewDialog}
         onOpenChange={setShowNewDialog}
-        onSuccess={fetchAuthorizations}
+        onSuccess={(newAuthId) => {
+          fetchAuthorizations();
+          // If a new authorization was created, you could optionally set it as selected here
+        }}
       />
 
       {/* View Details Dialog */}

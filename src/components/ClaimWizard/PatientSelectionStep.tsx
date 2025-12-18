@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, User, Phone, Calendar, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface PatientSelectionStepProps {
   data: any;
@@ -15,6 +16,7 @@ interface PatientSelectionStepProps {
 
 export function PatientSelectionStep({ data, onUpdate }: PatientSelectionStepProps) {
   const { toast } = useToast();
+  const { currentCompany, isSuperAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<any[]>([]);
   const [filteredPatients, setFilteredPatients] = useState<any[]>([]);
@@ -24,15 +26,27 @@ export function PatientSelectionStep({ data, onUpdate }: PatientSelectionStepPro
   // Fetch patients from database
   useEffect(() => {
     fetchPatients();
-  }, []);
+  }, [currentCompany?.id, isSuperAdmin]);
 
   const fetchPatients = async () => {
     try {
       setIsLoading(true);
-      const { data: patientsData, error } = await supabase
+      let patientsQuery = supabase
         .from('patients' as any)
-        .select('*')
-        .order('last_name', { ascending: true });
+        .select('*');
+      
+      // Super admins can see all patients, regular users see only their company's patients
+      if (isSuperAdmin) {
+        console.log('👑 Super admin - fetching all patients (no company filter)');
+        // Super admin sees everything - no filter needed
+      } else if (currentCompany?.id) {
+        console.log('🏢 Filtering patients by company_id:', currentCompany.id);
+        patientsQuery = patientsQuery.eq('company_id', currentCompany.id);
+      } else {
+        console.warn('⚠️ No company_id filter applied - may show limited results');
+      }
+      
+      const { data: patientsData, error } = await patientsQuery.order('last_name', { ascending: true });
 
       if (error) {
         console.error('Error fetching patients:', error);

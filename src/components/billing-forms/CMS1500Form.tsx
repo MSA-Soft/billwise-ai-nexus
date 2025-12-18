@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Save, Send, Plus, Trash2, Search } from "lucide-react";
+import { Save, Send, Plus, Trash2, Search, Upload, FileDown, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Modern CMS-1500 Form - User-Friendly Digital Interface
@@ -148,6 +148,107 @@ const CMS1500Form = () => {
     });
   };
 
+  const handleExportCSV = () => {
+    const csvContent = [
+      'Patient Last Name,Patient First Name,Patient Middle Initial,Patient Date of Birth,Patient Gender,Patient Address,Patient City,Patient State,Patient Zip,Patient Phone,Insured Last Name,Insured First Name,Insured ID,Group Number,Service Start Date,Service End Date,Provider Name,Provider NPI',
+      `${formData.patientLastName || ''},${formData.patientFirstName || ''},${formData.patientMiddleInitial || ''},${formData.patientDob || ''},${formData.patientGender || ''},${formData.patientAddress || ''},${formData.patientCity || ''},${formData.patientState || ''},${formData.patientZip || ''},${formData.patientPhone || ''},${formData.insuredLastName || ''},${formData.insuredFirstName || ''},${formData.insuredId || ''},${formData.groupNumber || ''},${formData.serviceStartDate || ''},${formData.serviceEndDate || ''},${formData.providerName || ''},${formData.providerNpi || ''}`
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cms1500-claim-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Complete",
+      description: "CMS-1500 claim data has been exported to CSV.",
+    });
+  };
+
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Patient Last Name,Patient First Name,Patient Middle Initial,Patient Date of Birth,Patient Gender,Patient Address,Patient City,Patient State,Patient Zip,Patient Phone,Insured Last Name,Insured First Name,Insured ID,Group Number,Service Start Date,Service End Date,Provider Name,Provider NPI',
+      'Doe,John,M,1990-01-15,Male,123 Main St,New York,NY,10001,(555) 123-4567,Doe,John,ABC123456789,GRP001,2024-01-15,2024-01-15,Dr. Smith,1234567890',
+      'Smith,Jane,A,1985-05-20,Female,456 Oak Ave,Los Angeles,CA,90001,(555) 234-5678,Smith,Jane,DEF987654321,GRP002,2024-02-01,2024-02-01,Dr. Johnson,0987654321'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cms1500-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const values = lines[1].split(',').map(v => v.trim());
+
+        const getValue = (headerName: string) => {
+          const index = headers.indexOf(headerName);
+          return index >= 0 ? values[index] : '';
+        };
+
+        // Populate form data from CSV
+        setFormData(prev => ({
+          ...prev,
+          patientLastName: getValue('patient last name') || getValue('patientlastname') || prev.patientLastName,
+          patientFirstName: getValue('patient first name') || getValue('patientfirstname') || prev.patientFirstName,
+          patientMiddleInitial: getValue('patient middle initial') || prev.patientMiddleInitial,
+          patientDob: getValue('patient dob') || getValue('patient date of birth') || prev.patientDob,
+          patientGender: getValue('patient gender') || prev.patientGender,
+          patientAddress: getValue('patient address') || prev.patientAddress,
+          patientCity: getValue('patient city') || prev.patientCity,
+          patientState: getValue('patient state') || prev.patientState,
+          patientZip: getValue('patient zip') || getValue('patient zip code') || prev.patientZip,
+          patientPhone: getValue('patient phone') || prev.patientPhone,
+          insuredLastName: getValue('insured last name') || getValue('insuredlastname') || prev.insuredLastName,
+          insuredFirstName: getValue('insured first name') || getValue('insuredfirstname') || prev.insuredFirstName,
+          insuredId: getValue('insured id') || getValue('member id') || prev.insuredId,
+          groupNumber: getValue('group number') || getValue('groupnumber') || prev.groupNumber,
+          serviceStartDate: getValue('service start date') || getValue('service start') || prev.serviceStartDate,
+          serviceEndDate: getValue('service end date') || getValue('service end') || prev.serviceEndDate,
+          providerName: getValue('provider name') || prev.providerName,
+          providerNpi: getValue('provider npi') || prev.providerNpi,
+        }));
+
+        toast({
+          title: "CSV Imported",
+          description: "Claim data has been loaded from CSV. Please review and complete any missing fields.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   const addServiceLine = () => {
     if (currentServiceLine.procedureCode && currentServiceLine.charges > 0) {
       setFormData(prev => ({
@@ -187,6 +288,53 @@ const CMS1500Form = () => {
             Complete medical claim information for insurance submission
           </p>
         </CardHeader>
+        
+        {/* CSV Import/Export Actions - Prominent Section */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mx-6 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">CSV Operations</h3>
+              <p className="text-sm text-blue-700">Import claim data from CSV or export current form data</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleExportCSV}
+                className="bg-white"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadSampleCSV}
+                className="bg-white"
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
+              </Button>
+              <Button
+                variant="default"
+                size="default"
+                asChild
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <label className="cursor-pointer">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportCSV}
+                    className="hidden"
+                  />
+                </label>
+              </Button>
+            </div>
+          </div>
+        </div>
         <CardContent className="space-y-8">
           {/* INSURANCE TYPE */}
           <div className="space-y-6">

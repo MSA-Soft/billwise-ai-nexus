@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Tag, Minus, ChevronUp, ChevronDown as ChevronDownIcon, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Tag, Minus, ChevronUp, ChevronDown as ChevronDownIcon, X, FileDown } from 'lucide-react';
 
 interface LabelColumn {
   id: string;
@@ -441,17 +441,109 @@ export const Labels: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportLabels = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Name,Label Type,Printer Type,Status',
+      'Patient Address Label,Address,Dymo Single Label Printer,active',
+      'Insurance Card Label,Insurance Card,Dymo Single Label Printer,active'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'labels-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportLabels = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing labels from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedLabels: Partial<LabelTemplate>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const labelData: Partial<LabelTemplate> = {
+              name: values[headers.indexOf('name')] || '',
+              labelType: values[headers.indexOf('label type')] || values[headers.indexOf('labeltype')] || 'Address',
+              printerType: values[headers.indexOf('printer type')] || values[headers.indexOf('printertype')] || 'Dymo Single Label Printer',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+            };
+
+            if (labelData.name) {
+              importedLabels.push(labelData);
+            }
+          }
+        }
+
+        // Insert labels into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const labelData of importedLabels) {
+          try {
+            const insertData: any = {
+              name: labelData.name!.trim(),
+              label_type: labelData.labelType || 'Address',
+              printer_type: labelData.printerType || 'Dymo Single Label Printer',
+              label_size: labelData.labelSize || 'Single Label - 1 1/8 x 3 1/2',
+              font: labelData.font || 'Courier New',
+              font_size: labelData.fontSize || '8',
+              bold: labelData.bold || false,
+              italics: labelData.italics || false,
+              column_spacing: labelData.columnSpacing || 15,
+              status: (labelData.status || 'active') as 'active' | 'inactive',
+              is_active: (labelData.status || 'active') === 'active',
+            };
+
+            const { error } = await supabase
+              .from('label_templates' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing label:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the labels list
+        await fetchLabelsFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} labels imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -508,6 +600,10 @@ export const Labels: React.FC = () => {
               <Button variant="outline" onClick={handleExportLabels}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

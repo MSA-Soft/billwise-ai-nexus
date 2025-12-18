@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Users, Copy, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Users, Copy, X, FileDown } from 'lucide-react';
 
 interface PayerAgreement {
   id: string;
@@ -205,17 +205,115 @@ export const PayerAgreements: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportAgreements = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Provider Name,First Name,Last Name,Phone Number,Contact Email,Agreement Type,Status,Start Date,End Date',
+      'UNITED DIAGNOSTIC SERVICES LLC [10042142],John,Smith,(555) 123-4567,john.smith@uniteddiagnostic.com,Standard Agreement,active,2024-01-01,2024-12-31',
+      'ABC MEDICAL GROUP [20053153],Jane,Doe,(555) 987-6543,jane.doe@abcmedical.com,Premium Agreement,active,2024-01-01,2024-12-31'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'payer-agreements-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportAgreements = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing payer agreements from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedAgreements: Partial<PayerAgreement>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const agreementData: Partial<PayerAgreement> = {
+              providerName: values[headers.indexOf('provider name')] || values[headers.indexOf('providername')] || '',
+              firstName: values[headers.indexOf('first name')] || values[headers.indexOf('firstname')] || '',
+              lastName: values[headers.indexOf('last name')] || values[headers.indexOf('lastname')] || '',
+              phoneNumber: values[headers.indexOf('phone number')] || values[headers.indexOf('phonenumber')] || '',
+              contactEmail: values[headers.indexOf('contact email')] || values[headers.indexOf('contactemail')] || '',
+              agreementType: values[headers.indexOf('agreement type')] || values[headers.indexOf('agreementtype')] || 'Standard Agreement',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive' | 'pending') || 'active',
+              startDate: values[headers.indexOf('start date')] || values[headers.indexOf('startdate')] || '',
+              endDate: values[headers.indexOf('end date')] || values[headers.indexOf('enddate')] || '',
+            };
+
+            if (agreementData.providerName) {
+              importedAgreements.push(agreementData);
+            }
+          }
+        }
+
+        // Insert agreements into database (or state if no database)
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const agreementData of importedAgreements) {
+          try {
+            // If using database, insert here
+            // For now, add to state
+            const newAgreement: PayerAgreement = {
+              id: Date.now().toString() + Math.random(),
+              providerType: agreementData.providerType || 'individual',
+              providerName: agreementData.providerName!,
+              npiType: agreementData.npiType || 'practice',
+              practiceNpi: agreementData.practiceNpi || '',
+              otherNpi: agreementData.otherNpi || '',
+              firstName: agreementData.firstName || '',
+              lastName: agreementData.lastName || '',
+              phoneNumber: agreementData.phoneNumber || '',
+              contactEmail: agreementData.contactEmail || '',
+              agreementType: agreementData.agreementType || 'Standard Agreement',
+              status: (agreementData.status || 'active') as 'active' | 'inactive' | 'pending',
+              startDate: agreementData.startDate || '',
+              endDate: agreementData.endDate || '',
+              notes: agreementData.notes || '',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+
+            setPayerAgreements(prev => [...prev, newAgreement]);
+            successCount++;
+          } catch (error) {
+            console.error('Error importing payer agreement:', error);
+            errorCount++;
+          }
+        }
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} payer agreements imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   const handleCopyFromUserProfile = () => {
@@ -273,6 +371,10 @@ export const PayerAgreements: React.FC = () => {
               <Button variant="outline" onClick={handleExportAgreements}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

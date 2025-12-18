@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, User } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, User, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -524,17 +524,113 @@ export const ReferringProviders: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportProviders = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'First Name,Last Name,NPI,Specialty,Status,Phone,Email',
+      'Robert,Johnson,1234567890,Cardiology,active,(555) 111-2222,robert.johnson@example.com',
+      'Sarah,Williams,0987654321,Orthopedics,active,(555) 333-4444,sarah.williams@example.com'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'referring-providers-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportProviders = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing referring providers from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedProviders: Partial<ReferringProvider>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const providerData: Partial<ReferringProvider> = {
+              firstName: values[headers.indexOf('first name')] || values[headers.indexOf('firstname')] || '',
+              lastName: values[headers.indexOf('last name')] || values[headers.indexOf('lastname')] || '',
+              npi: values[headers.indexOf('npi')] || '',
+              taxonomySpecialty: values[headers.indexOf('specialty')] || values[headers.indexOf('taxonomy specialty')] || '',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+              phone: values[headers.indexOf('phone')] || '',
+              email: values[headers.indexOf('email')] || '',
+              providerType: (values[headers.indexOf('provider type')] || 'individual') as 'individual' | 'organization',
+            };
+
+            if (providerData.firstName && providerData.lastName) {
+              importedProviders.push(providerData);
+            }
+          }
+        }
+
+        // Insert providers into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const providerData of importedProviders) {
+          try {
+            const insertData: any = {
+              first_name: providerData.firstName!.trim(),
+              last_name: providerData.lastName!.trim(),
+              middle_initial: providerData.middleInitial || null,
+              credentials: providerData.credentials || null,
+              provider_type: (providerData.providerType || 'individual') as 'individual' | 'organization',
+              npi: providerData.npi || null,
+              taxonomy_specialty: providerData.taxonomySpecialty || null,
+              phone: providerData.phone || null,
+              email: providerData.email || null,
+              status: (providerData.status || 'active') as 'active' | 'inactive',
+              is_active: (providerData.status || 'active') === 'active',
+            };
+
+            const { error } = await supabase
+              .from('referring_providers' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing referring provider:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the referring providers list
+        await fetchReferringProvidersFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} referring providers imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -580,6 +676,10 @@ export const ReferringProviders: React.FC = () => {
               <Button variant="outline" onClick={handleExportProviders}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>

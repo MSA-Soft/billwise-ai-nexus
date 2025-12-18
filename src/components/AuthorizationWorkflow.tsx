@@ -25,7 +25,8 @@ import {
   Edit, 
   Trash2, 
   Download, 
-  Upload, 
+  Upload,
+  FileDown, 
   Send, 
   Eye, 
   Copy, 
@@ -395,6 +396,163 @@ const AuthorizationWorkflow = () => {
     });
   };
 
+  const handleExportAuthRequestCSV = () => {
+    const csvContent = [
+      'Patient ID,Patient Name,Patient Date of Birth,Insurance Company,Member ID,Group Number,Service Type,Service Date,Authorization Type,Urgency,Diagnosis,Clinical Notes',
+      `${authRequest.patientId || ''},${authRequest.patientName || ''},${authRequest.patientDob || ''},${authRequest.payerName || ''},${authRequest.memberId || ''},${authRequest.groupNumber || ''},${authRequest.serviceType || ''},${authRequest.serviceDate || ''},${authRequest.authType || ''},${authRequest.urgency || ''},${authRequest.diagnosis || ''},${authRequest.clinicalNotes || ''}`
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `authorization-request-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Complete",
+      description: "Authorization request data has been exported to CSV.",
+    });
+  };
+
+  const handleDownloadAuthSampleCSV = () => {
+    const csvContent = [
+      'Patient ID,Patient Name,Patient Date of Birth,Insurance Company,Member ID,Group Number,Service Type,Service Date,Authorization Type,Urgency,Diagnosis,Clinical Notes',
+      'PAT-001,John Doe,1990-01-15,Blue Cross Blue Shield,ABC123456789,GRP001,MRI Brain,2024-12-20,prior,routine,Headache and dizziness,Patient experiencing persistent headaches and dizziness requiring diagnostic imaging',
+      'PAT-002,Jane Smith,1985-05-20,Aetna,DEF987654321,GRP002,Physical Therapy,2024-12-21,prior,routine,Lower back pain,Patient requires physical therapy for chronic lower back pain'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'authorization-request-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Helper function to parse CSV line properly (handles quoted values)
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i++;
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // End of field
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim());
+    return result;
+  };
+
+  const handleImportAuthRequestCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Parse headers and first data row properly
+        const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const values = parseCSVLine(lines[1]).map(v => v.trim().replace(/^"|"$/g, ''));
+
+        const getValue = (headerName: string) => {
+          const index = headers.indexOf(headerName);
+          return index >= 0 && values[index] ? values[index] : '';
+        };
+
+        // Get all possible header variations
+        const patientId = getValue('patient id') || getValue('patientid') || getValue('patient_id');
+        const patientName = getValue('patient name') || getValue('patientname') || getValue('patient_name');
+        const patientDob = getValue('patient date of birth') || getValue('patient dob') || getValue('patientdateofbirth') || getValue('dob');
+        const payerName = getValue('insurance company') || getValue('insurancecompany') || getValue('payer') || getValue('payer name');
+        const memberId = getValue('member id') || getValue('memberid') || getValue('member_id') || getValue('insurance id') || getValue('subscriber id');
+        const groupNumber = getValue('group number') || getValue('groupnumber') || getValue('group_number');
+        const serviceType = getValue('service type') || getValue('servicetype') || getValue('service_type');
+        const serviceDate = getValue('service date') || getValue('servicedate') || getValue('service_date') || getValue('appointment date');
+        const authType = getValue('authorization type') || getValue('authorizationtype') || getValue('auth type') || getValue('auth_type');
+        const urgency = getValue('urgency') || getValue('priority');
+        const diagnosis = getValue('diagnosis') || getValue('primary diagnosis');
+        const clinicalNotes = getValue('clinical notes') || getValue('clinicalnotes') || getValue('notes') || getValue('medical necessity');
+
+        // Populate authorization request form from CSV - force update
+        setAuthRequest(prev => {
+          const updated = {
+            ...prev,
+            patientId: patientId || prev.patientId,
+            patientName: patientName || prev.patientName,
+            patientDob: patientDob || prev.patientDob,
+            payerName: payerName || prev.payerName,
+            memberId: memberId || prev.memberId,
+            groupNumber: groupNumber || prev.groupNumber,
+            serviceType: serviceType || prev.serviceType,
+            serviceDate: serviceDate || prev.serviceDate,
+            authType: authType || prev.authType,
+            urgency: urgency || prev.urgency,
+            diagnosis: diagnosis || prev.diagnosis,
+            clinicalNotes: clinicalNotes || prev.clinicalNotes,
+          };
+          
+          // Log for debugging
+          console.log('CSV Import - Updating authorization form with:', {
+            patientId,
+            patientName,
+            patientDob,
+            payerName,
+            memberId,
+            serviceDate
+          });
+          
+          return updated;
+        });
+
+        toast({
+          title: "CSV Imported Successfully",
+          description: `Authorization request form populated with data from CSV. ${patientId ? 'Patient ID: ' + patientId : ''} Please review and complete any missing fields.`,
+        });
+      } catch (error: any) {
+        console.error('CSV Import Error:', error);
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format and try again.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   const handleSubmitAuthRequest = async () => {
     setIsLoading(true);
     try {
@@ -554,6 +712,54 @@ const AuthorizationWorkflow = () => {
                 New Authorization Request
               </CardTitle>
             </CardHeader>
+            
+            {/* CSV Import/Export Actions - Prominent Section */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mx-6 mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-blue-900 mb-1">CSV Operations</h3>
+                  <p className="text-sm text-blue-700">Import authorization data from CSV or export current form data</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="default"
+                    onClick={handleExportAuthRequestCSV}
+                    className="bg-white"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    onClick={handleDownloadAuthSampleCSV}
+                    className="bg-white"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Sample CSV
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="default"
+                    asChild
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <label className="cursor-pointer">
+                      <Upload className="w-4 h-4 mr-2" />
+                      Import CSV
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleImportAuthRequestCSV}
+                        className="hidden"
+                      />
+                    </label>
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
             <CardContent className="space-y-6">
               {/* Simple Patient Selection */}
               <div>

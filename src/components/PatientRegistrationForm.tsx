@@ -20,7 +20,10 @@ import {
   CreditCard,
   Users,
   Check,
-  X
+  X,
+  Upload,
+  FileDown,
+  Download
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -410,6 +413,110 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     }
   };
 
+  const handleExportCSV = () => {
+    const csvContent = [
+      'First Name,Last Name,Date of Birth,Gender,Phone,Email,Address,City,State,Zip Code,Emergency Contact Name,Emergency Contact Phone,Emergency Contact Relation,Insurance ID,Group Number,Policy Holder Name,Policy Holder Relationship,Allergies,Current Medications,Medical Conditions,Previous Surgeries,Family History',
+      `${firstName || ''},${lastName || ''},${dateOfBirth || ''},${gender || ''},${phone || ''},${email || ''},${address || ''},${city || ''},${state || ''},${zipCode || ''},${emergencyContactName || ''},${emergencyContactPhone || ''},${emergencyContactRelation || ''},${insuranceId || ''},${groupNumber || ''},${policyHolderName || ''},${policyHolderRelationship || ''},${allergies || ''},${currentMedications || ''},${medicalConditions || ''},${previousSurgeries || ''},${familyHistory || ''}`
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `patient-registration-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Complete",
+      description: "Patient registration data has been exported to CSV.",
+    });
+  };
+
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'First Name,Last Name,Date of Birth,Gender,Phone,Email,Address,City,State,Zip Code,Emergency Contact Name,Emergency Contact Phone,Emergency Contact Relation,Insurance ID,Group Number,Policy Holder Name,Policy Holder Relationship,Allergies,Current Medications,Medical Conditions,Previous Surgeries,Family History',
+      'John,Doe,1990-01-15,Male,(555) 123-4567,john.doe@example.com,123 Main St,New York,NY,10001,Jane Doe,(555) 987-6543,Spouse,ABC123456789,GRP001,John Doe,Self,Penicillin,Ibuprofen,Hypertension,Appendectomy,Heart disease',
+      'Jane,Smith,1985-05-20,Female,(555) 234-5678,jane.smith@example.com,456 Oak Ave,Los Angeles,CA,90001,John Smith,(555) 876-5432,Spouse,DEF987654321,GRP002,Jane Smith,Self,None,Metformin,Diabetes,None,Diabetes'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'patient-registration-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const values = lines[1].split(',').map(v => v.trim());
+
+        // Map CSV columns to form fields
+        const getValue = (headerName: string) => {
+          const index = headers.indexOf(headerName);
+          return index >= 0 ? values[index] : '';
+        };
+
+        // Populate form fields from CSV
+        setFirstName(getValue('first name') || getValue('firstname') || '');
+        setLastName(getValue('last name') || getValue('lastname') || '');
+        setDateOfBirth(getValue('date of birth') || getValue('dob') || getValue('dateofbirth') || '');
+        setGender(getValue('gender') || '');
+        setPhone(getValue('phone') || getValue('phone number') || '');
+        setEmail(getValue('email') || getValue('email address') || '');
+        setAddress(getValue('address') || getValue('street address') || '');
+        setCity(getValue('city') || '');
+        setState(getValue('state') || '');
+        setZipCode(getValue('zip code') || getValue('zipcode') || getValue('zip') || '');
+        setEmergencyContactName(getValue('emergency contact name') || getValue('emergencycontactname') || '');
+        setEmergencyContactPhone(getValue('emergency contact phone') || getValue('emergencycontactphone') || '');
+        setEmergencyContactRelation(getValue('emergency contact relation') || getValue('emergencycontactrelation') || '');
+        setInsuranceId(getValue('insurance id') || getValue('insuranceid') || getValue('member id') || '');
+        setGroupNumber(getValue('group number') || getValue('groupnumber') || '');
+        setPolicyHolderName(getValue('policy holder name') || getValue('policyholdername') || '');
+        setPolicyHolderRelationship(getValue('policy holder relationship') || getValue('policyholderrelationship') || '');
+        setAllergies(getValue('allergies') || '');
+        setCurrentMedications(getValue('current medications') || getValue('medications') || '');
+        setMedicalConditions(getValue('medical conditions') || getValue('conditions') || '');
+        setPreviousSurgeries(getValue('previous surgeries') || getValue('surgeries') || '');
+        setFamilyHistory(getValue('family history') || getValue('familyhistory') || '');
+
+        toast({
+          title: "CSV Imported",
+          description: "Patient data has been loaded from CSV. Please review and complete any missing fields.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
+  };
+
   const handleClose = () => {
     onClose();
     // Reset form when closing
@@ -432,8 +539,6 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
     setInsuranceCompany('');
       setInsuranceCompanyId('');
     setInsuranceId('');
-      setPreferredProvider('');
-      setPrimaryPractice('');
     setGroupNumber('');
     setPolicyHolderName('');
     setPolicyHolderRelationship('');
@@ -463,6 +568,53 @@ export function PatientRegistrationForm({ isOpen, onClose, onSubmit }: PatientRe
             Register a new patient with complete information including contact details, insurance, and medical history.
           </DialogDescription>
         </DialogHeader>
+        
+        {/* CSV Import/Export Actions - Prominent Section */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">CSV Operations</h3>
+              <p className="text-sm text-blue-700">Import patient data from CSV or export current form data</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleExportCSV}
+                className="bg-white"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadSampleCSV}
+                className="bg-white"
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
+              </Button>
+              <Button
+                variant="default"
+                size="default"
+                asChild
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <label className="cursor-pointer">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportCSV}
+                    className="hidden"
+                  />
+                </label>
+              </Button>
+            </div>
+          </div>
+        </div>
 
         <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
             <Card>

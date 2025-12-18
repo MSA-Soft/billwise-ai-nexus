@@ -29,7 +29,8 @@ import {
   Search, 
   Download, 
   Upload, 
-  FileText, 
+  FileText,
+  FileDown, 
   Calendar,
   Phone,
   Mail,
@@ -192,7 +193,7 @@ const EligibilityVerification = () => {
         // rendered using row index
         return "—";
       case "Patient":
-        return entry.patientId || "—";
+        return entry.patientName || entry.patientId || "—";
       case "Payer":
         return entry.payerId || "—";
       case "Plan Type":
@@ -247,7 +248,8 @@ const EligibilityVerification = () => {
     status: "pending" as "pending" | "verified" | "completed" | "cancelled",
     isSelfPay: false,
     patientName: "",
-    patientId: "",
+    patientId: "", // External patient ID (PAT-001) for display
+    patientUuid: "", // Internal UUID from patients.id for database
     dob: "",
     patientGender: "",
     patientAddress: "",
@@ -1280,6 +1282,7 @@ const EligibilityVerification = () => {
       let queryBuilder = supabase
         .from('patients' as any)
         .select(`
+          id,
           patient_id, 
           first_name, 
           last_name,
@@ -1351,7 +1354,8 @@ const EligibilityVerification = () => {
       setVerificationForm(prev => ({
         ...prev,
         // Patient Information - ALL from database
-        patientId: patientData.patient_id || selectedPatient.patient_id || selectedPatientId,
+        patientId: patientData.patient_id || selectedPatient.patient_id || selectedPatientId, // External ID for display
+        patientUuid: data.id || selectedPatient.id || '', // UUID for database
         patientName: fullName,
         dob: formattedDob || prev.dob,
         patientGender: patientData.gender || prev.patientGender,
@@ -1433,6 +1437,7 @@ const EligibilityVerification = () => {
       const { data, error } = await supabase
         .from('patients' as any)
         .select(`
+          id,
           patient_id, 
           first_name, 
           last_name,
@@ -1498,7 +1503,8 @@ const EligibilityVerification = () => {
       setVerificationForm(prev => ({
         ...prev,
         // Patient Information - ALL from database
-        patientId: patientData.patient_id || patientId,
+        patientId: patientData.patient_id || patientId, // External ID for display
+        patientUuid: patientData.id || '', // UUID for database
         patientName: fullName,
         dob: formattedDob || prev.dob,
         patientGender: patientData.gender || prev.patientGender,
@@ -1605,7 +1611,8 @@ const EligibilityVerification = () => {
       // Auto-populate verification form with new patient data
       setVerificationForm(prev => ({
         ...prev,
-        patientId: patientId,
+        patientId: patientId, // External ID (PAT-001)
+        patientUuid: (newPatient as any).id || '', // UUID from database
         patientName: patientName,
         dob: quickAddForm.dob,
         patientGender: quickAddForm.gender,
@@ -2357,13 +2364,96 @@ const EligibilityVerification = () => {
 
           console.log('Saving eligibility verification with company_id:', currentCompany.id);
           
+          // Look up patient UUID if we have patientId but no patientUuid
+          // CRITICAL: patient_id column in eligibility_verifications is UUID type, NOT character varying
+          let finalPatientUuid: string | null = null;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          
+          console.log('🔍 Starting patient UUID lookup:', {
+            patientId: verificationForm.patientId,
+            patientUuid: verificationForm.patientUuid,
+            patientIdType: typeof verificationForm.patientId,
+            patientUuidType: typeof verificationForm.patientUuid
+          });
+          
+          // First check if we already have a valid UUID
+          if (verificationForm.patientUuid) {
+            if (uuidRegex.test(verificationForm.patientUuid)) {
+              finalPatientUuid = verificationForm.patientUuid;
+              console.log('✅ Using stored patientUuid:', finalPatientUuid);
+            } else {
+              console.warn('⚠️ patientUuid exists but is not a valid UUID:', verificationForm.patientUuid);
+            }
+          }
+          
+          // If we still don't have a UUID, try patientId
+          if (!finalPatientUuid && verificationForm.patientId) {
+            // Check if patientId is already a UUID
+            if (uuidRegex.test(verificationForm.patientId)) {
+              finalPatientUuid = verificationForm.patientId;
+              console.log('✅ patientId is already a UUID:', finalPatientUuid);
+            } else {
+              // Look up UUID from patients table using patient_id (external ID)
+              try {
+                console.log('🔍 Looking up patient UUID for patient_id:', verificationForm.patientId);
+                let patientQuery = supabase
+                  .from('patients' as any)
+                  .select('id')
+                  .eq('patient_id', verificationForm.patientId)
+                  .limit(1);
+                
+                // Filter by company_id if not super admin
+                if (!isSuperAdmin && currentCompany?.id) {
+                  patientQuery = patientQuery.eq('company_id', currentCompany.id);
+                }
+                
+                const { data: patientData, error: patientError } = await patientQuery.maybeSingle();
+                
+                if (patientError) {
+                  console.error('❌ Error looking up patient:', patientError);
+                }
+                
+                if (!patientError && patientData && (patientData as any)?.id) {
+                  const foundUuid = (patientData as any).id;
+                  if (uuidRegex.test(foundUuid)) {
+                    finalPatientUuid = foundUuid;
+                    console.log('✅ Found patient UUID:', finalPatientUuid, 'for patient_id:', verificationForm.patientId);
+                  } else {
+                    console.error('❌ Found patient id is not a valid UUID:', foundUuid);
+                    finalPatientUuid = null;
+                  }
+                } else {
+                  console.warn('⚠️ Could not find patient UUID for patient_id:', verificationForm.patientId);
+                  if (patientData) {
+                    console.warn('⚠️ Patient data returned:', patientData);
+                  }
+                  finalPatientUuid = null;
+                }
+              } catch (lookupError) {
+                console.error('❌ Error looking up patient UUID:', lookupError);
+                finalPatientUuid = null;
+              }
+            }
+          }
+          
+          // Final validation - ensure we never send a non-UUID string
+          if (finalPatientUuid && !uuidRegex.test(finalPatientUuid)) {
+            console.error('❌ CRITICAL: finalPatientUuid is not a valid UUID, setting to null:', finalPatientUuid);
+            finalPatientUuid = null;
+          }
+          
+          console.log('🔍 Final patient UUID result:', {
+            finalPatientUuid,
+            isNull: finalPatientUuid === null,
+            isValidUuid: finalPatientUuid ? uuidRegex.test(finalPatientUuid) : false
+          });
+          
           // Look up primary_insurance_id if primaryInsurance is provided
           // primary_insurance_id must be a UUID, but primaryInsurance might be a name string
           let primaryInsuranceId: string | null = null;
           const primaryInsuranceValue = verificationForm.primaryInsurance || '';
           
           // Check if primaryInsurance is already a UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (primaryInsuranceValue && uuidRegex.test(primaryInsuranceValue)) {
             // It's already a UUID, use it directly
             primaryInsuranceId = primaryInsuranceValue;
@@ -2416,6 +2506,32 @@ const EligibilityVerification = () => {
             }
           }
           
+          // CRITICAL: Ensure patient_id is ALWAYS UUID or null, NEVER a string
+          const safePatientId = (() => {
+            if (!finalPatientUuid) {
+              console.warn('⚠️ No patient UUID available - sending null for patient_id');
+              return null;
+            }
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(finalPatientUuid)) {
+              console.error('❌ finalPatientUuid is not a valid UUID:', finalPatientUuid, '- sending null instead');
+              return null;
+            }
+            // Double-check it's actually a string (UUID format)
+            if (typeof finalPatientUuid !== 'string') {
+              console.error('❌ finalPatientUuid is not a string:', typeof finalPatientUuid, finalPatientUuid);
+              return null;
+            }
+            return finalPatientUuid;
+          })();
+          
+          console.log('🔍 Safe patient_id value before insert:', {
+            safePatientId,
+            type: typeof safePatientId,
+            isNull: safePatientId === null,
+            isValidUuid: safePatientId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safePatientId) : false
+          });
+          
           const verificationData: any = {
             user_id: currentUser.id,
             company_id: currentCompany.id,
@@ -2432,7 +2548,9 @@ const EligibilityVerification = () => {
             demographic: verificationForm.demographic,
             type_of_visit: verificationForm.typeOfVisit,
             service_type: verificationForm.serviceType,
-            patient_id: verificationForm.patientId,
+            // patient_id column is UUID in DB – use the looked-up UUID
+            // IMPORTANT: Only send UUID or null, NEVER send a string like "PAT-001"
+            patient_id: safePatientId,
             patient_name: verificationForm.patientName,
             patient_dob: verificationForm.dob || (verificationForm as any).patientDob || null,
             patient_gender: verificationForm.patientGender,
@@ -2489,9 +2607,13 @@ const EligibilityVerification = () => {
           console.log('💾 Inserting verification data:', {
             company_id: verificationData.company_id,
             patient_id: verificationData.patient_id,
+            patient_id_type: typeof verificationData.patient_id,
+            patient_id_is_uuid: verificationData.patient_id ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(verificationData.patient_id) : 'null',
             patient_name: verificationData.patient_name,
             serial_no: verificationData.serial_no,
-            user_id: verificationData.user_id
+            user_id: verificationData.user_id,
+            verificationForm_patientId: verificationForm.patientId,
+            verificationForm_patientUuid: verificationForm.patientUuid
           });
 
           const { data: savedVerification, error: saveError } = await supabase
@@ -2905,6 +3027,7 @@ const EligibilityVerification = () => {
         isSelfPay: false,
         patientName: "",
         patientId: "",
+        patientUuid: "",
         dob: "",
         patientGender: "",
         patientAddress: "",
@@ -3079,6 +3202,182 @@ const EligibilityVerification = () => {
     }));
   };
 
+  // CSV Import/Export Functions
+  const handleExportEligibilityCSV = () => {
+    const csvContent = [
+      'Patient ID,Patient Name,Date of Birth,Primary Insurance,Insurance ID,Group Number,Appointment Date,Type of Visit,Service Type',
+      `${verificationForm.patientId || ''},${verificationForm.patientName || ''},${verificationForm.dob || ''},${verificationForm.primaryInsurance || ''},${verificationForm.insuranceId || ''},${verificationForm.groupNumber || ''},${verificationForm.appointmentDate || ''},${verificationForm.typeOfVisit || ''},${verificationForm.serviceType || ''}`
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `eligibility-verification-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Complete",
+      description: "Eligibility verification data has been exported to CSV.",
+    });
+  };
+
+  const handleDownloadEligibilitySampleCSV = () => {
+    const csvContent = [
+      'Patient ID,Patient Name,Date of Birth,Primary Insurance,Insurance ID,Group Number,Appointment Date,Type of Visit,Service Type,Subscriber ID,Subscriber First Name,Subscriber Last Name,Subscriber Date of Birth,Subscriber Relationship',
+      'PAT-001,John Doe,1990-01-15,Blue Cross Blue Shield,ABC123456789,GRP001,2024-12-20,consultation,outpatient,ABC123456789,John,Doe,1990-01-15,self',
+      'PAT-002,Jane Smith,1985-05-20,Aetna,DEF987654321,GRP002,2024-12-21,follow_up,outpatient,DEF987654321,Jane,Smith,1985-05-20,self'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'eligibility-verification-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Helper function to parse CSV line properly (handles quoted values)
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i++;
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // End of field
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add the last field
+    result.push(current.trim());
+    return result;
+  };
+
+  const handleImportEligibilityCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Parse headers and first data row
+        const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const values = parseCSVLine(lines[1]).map(v => v.trim().replace(/^"|"$/g, ''));
+
+        const getValue = (headerName: string) => {
+          const index = headers.indexOf(headerName);
+          return index >= 0 && values[index] ? values[index] : '';
+        };
+
+        // Get all possible header variations
+        const patientId = getValue('patient id') || getValue('patientid') || getValue('patient_id');
+        const patientName = getValue('patient name') || getValue('patientname') || getValue('patient_name');
+        const dob = getValue('date of birth') || getValue('dob') || getValue('dateofbirth') || getValue('patient dob');
+        const primaryInsurance = getValue('primary insurance') || getValue('primaryinsurance') || getValue('insurance company') || getValue('payer');
+        const insuranceId = getValue('insurance id') || getValue('insuranceid') || getValue('subscriber id') || getValue('subscriberid') || getValue('member id');
+        const groupNumber = getValue('group number') || getValue('groupnumber') || getValue('group_number');
+        const appointmentDate = getValue('appointment date') || getValue('appointmentdate') || getValue('service date') || getValue('servicedate') || getValue('date of service');
+        const typeOfVisit = getValue('type of visit') || getValue('typeofvisit') || getValue('visit type');
+        const serviceType = getValue('service type') || getValue('servicetype');
+        const subscriberId = getValue('subscriber id') || getValue('subscriberid') || insuranceId;
+        const subscriberFirstName = getValue('subscriber first name') || getValue('subscriberfirstname') || getValue('subscriber firstname');
+        const subscriberLastName = getValue('subscriber last name') || getValue('subscriberlastname') || getValue('subscriber lastname');
+        const subscriberDOB = getValue('subscriber date of birth') || getValue('subscriberdob') || getValue('subscriber dob');
+        const subscriberRelationship = getValue('subscriber relationship') || getValue('subscriberrelationship') || getValue('relationship');
+        const appointmentLocation = getValue('appointment location') || getValue('appointmentlocation') || getValue('location');
+        const description = getValue('description') || getValue('service description');
+
+        // Populate verification form from CSV - force update all fields
+        setVerificationForm(prev => {
+          const updated = {
+            ...prev,
+            // Only update if CSV has a value, otherwise keep existing
+            patientId: patientId || prev.patientId,
+            patientName: patientName || prev.patientName,
+            dob: dob || prev.dob,
+            primaryInsurance: primaryInsurance || prev.primaryInsurance,
+            insuranceId: insuranceId || prev.insuranceId,
+            groupNumber: groupNumber || prev.groupNumber,
+            appointmentDate: appointmentDate || prev.appointmentDate,
+            dateOfService: appointmentDate || prev.dateOfService,
+            typeOfVisit: typeOfVisit || prev.typeOfVisit,
+            serviceType: serviceType || prev.serviceType,
+            subscriberId: subscriberId || prev.subscriberId,
+            subscriberFirstName: subscriberFirstName || prev.subscriberFirstName,
+            subscriberLastName: subscriberLastName || prev.subscriberLastName,
+            subscriberDOB: subscriberDOB || prev.subscriberDOB,
+            subscriberRelationship: subscriberRelationship || prev.subscriberRelationship,
+            appointmentLocation: appointmentLocation || prev.appointmentLocation,
+            description: description || prev.description,
+          };
+          
+          // Log for debugging
+          console.log('CSV Import - Updating form with:', {
+            patientId,
+            patientName,
+            dob,
+            primaryInsurance,
+            insuranceId,
+            appointmentDate
+          });
+          
+          return updated;
+        });
+
+        // If patient ID is provided, try to fetch patient data
+        if (patientId) {
+          // Trigger patient search to auto-fill additional fields
+          setTimeout(() => {
+            searchPatientById(patientId);
+          }, 100);
+        }
+
+        toast({
+          title: "CSV Imported Successfully",
+          description: `Form populated with ${patientId ? 'Patient ID: ' + patientId : 'data'} from CSV. ${patientId ? 'Fetching patient details...' : 'Please review and complete any missing fields.'}`,
+        });
+      } catch (error: any) {
+        console.error('CSV Import Error:', error);
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format and try again.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   // Batch verification functions
   const handleBatchVerification = async () => {
     if (!batchData.trim()) {
@@ -3148,22 +3447,67 @@ const EligibilityVerification = () => {
 
       if (results.length > 0) {
       // Save batch verifications to database
-      const batchEntries = results.map(({ request, result }) => ({
-        patient_id: request.patientId,
-        patient_name: request.patientId, // Would need to fetch actual name
-        primary_insurance_name: request.payerId,
-        is_eligible: result.isEligible,
-        copay: result.coverage?.copay || 0,
-        deductible: result.coverage?.deductible || 0,
-        coinsurance: result.coverage?.coinsurance ? parseFloat(result.coverage.coinsurance.replace('%', '')) : 0,
-        plan_type: result.coverage?.planType || '',
-        effective_date: result.coverage?.effectiveDate || null,
-        termination_date: result.coverage?.terminationDate || null,
-        verification_result: result,
-        status: 'verified' as const, // Status tracks verification completion, not eligibility. Use is_eligible boolean for eligibility status.
-        verification_method: 'batch',
-        verified_by: user?.email || 'system'
-      }));
+      // First, look up UUIDs for all patient IDs
+      const patientIdMap = new Map<string, string | null>();
+      const uniquePatientIds = [...new Set(results.map(({ request }) => request.patientId))];
+      
+      for (const patientIdStr of uniquePatientIds) {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(patientIdStr)) {
+          // Already a UUID
+          patientIdMap.set(patientIdStr, patientIdStr);
+        } else {
+          // Look up UUID from patients table
+          try {
+            let patientQuery = supabase
+              .from('patients' as any)
+              .select('id')
+              .eq('patient_id', patientIdStr)
+              .limit(1);
+            
+            if (!isSuperAdmin && currentCompany?.id) {
+              patientQuery = patientQuery.eq('company_id', currentCompany.id);
+            }
+            
+            const { data: patientData, error: patientError } = await patientQuery.maybeSingle();
+            
+            if (!patientError && patientData && (patientData as any)?.id) {
+              patientIdMap.set(patientIdStr, (patientData as any).id);
+            } else {
+              console.warn('⚠️ Could not find patient UUID for patient_id:', patientIdStr);
+              patientIdMap.set(patientIdStr, null);
+            }
+          } catch (lookupError) {
+            console.warn('⚠️ Error looking up patient UUID for:', patientIdStr, lookupError);
+            patientIdMap.set(patientIdStr, null);
+          }
+        }
+      }
+      
+      const batchEntries = results.map(({ request, result }) => {
+        const patientUuid = patientIdMap.get(request.patientId);
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const finalPatientUuid = patientUuid && uuidRegex.test(patientUuid) ? patientUuid : null;
+        
+        return {
+          user_id: user?.id || null,
+          company_id: currentCompany?.id || null,
+          patient_id: finalPatientUuid, // UUID or null, NEVER a string
+          patient_name: request.patientId, // Store the external ID as name
+          primary_insurance_name: request.payerId,
+          is_eligible: result.isEligible,
+          copay: result.coverage?.copay || 0,
+          deductible: result.coverage?.deductible || 0,
+          coinsurance: result.coverage?.coinsurance ? parseFloat(result.coverage.coinsurance.replace('%', '')) : 0,
+          plan_type: result.coverage?.planType || '',
+          effective_date: result.coverage?.effectiveDate || null,
+          termination_date: result.coverage?.terminationDate || null,
+          verification_result: result,
+          status: 'verified' as const, // Status tracks verification completion, not eligibility. Use is_eligible boolean for eligibility status.
+          verification_method: 'batch',
+          verified_by: user?.email || 'system'
+        };
+      });
 
       try {
         const { data: savedBatch, error: batchError } = await supabase
@@ -3414,7 +3758,8 @@ const EligibilityVerification = () => {
   };
 
   const filteredHistory = verificationHistory.filter(entry => {
-    const matchesSearch = entry.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (entry.patientName || entry.patientId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        entry.patientId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                         entry.payerId.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === "all" || 
                         (filterStatus === "eligible" && entry.isEligible) ||
@@ -3780,6 +4125,54 @@ const EligibilityVerification = () => {
                   Enter patient information to verify insurance eligibility and benefits
                 </DialogDescription>
               </DialogHeader>
+              
+              {/* CSV Import/Export Actions - Prominent Section */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-blue-900 mb-1">CSV Operations</h3>
+                    <p className="text-sm text-blue-700">Import eligibility data from CSV or export current form data</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="default"
+                      onClick={handleExportEligibilityCSV}
+                      className="bg-white"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Export CSV
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="default"
+                      onClick={handleDownloadEligibilitySampleCSV}
+                      className="bg-white"
+                    >
+                      <FileDown className="w-4 h-4 mr-2" />
+                      Sample CSV
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="default"
+                      asChild
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <label className="cursor-pointer">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Import CSV
+                        <input
+                          type="file"
+                          accept=".csv"
+                          onChange={handleImportEligibilityCSV}
+                          className="hidden"
+                        />
+                      </label>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
       <div className="max-w-full overflow-hidden">
       <Tabs defaultValue="verify" className="space-y-6">
                 <TabsList className="grid w-full grid-cols-2">
@@ -7257,7 +7650,7 @@ const EligibilityVerification = () => {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search by patient ID or payer..."
+                      placeholder="Search by patient name, ID, or payer..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-10"
@@ -8297,12 +8690,16 @@ const EligibilityVerification = () => {
       <AuthorizationRequestDialog
         open={showAuthDialog}
         onOpenChange={setShowAuthDialog}
-        onSuccess={() => {
+        onSuccess={(newAuthId) => {
           toast({
             title: "Authorization Request Created",
             description: "Prior authorization request has been created successfully.",
           });
-          setShowAuthDialog(false);
+          // Keep dialog open if new auth was created so user can see the saved data
+          // User can close manually
+          if (!newAuthId) {
+            setShowAuthDialog(false);
+          }
         }}
         patientId={verificationForm.patientId}
         patientData={{

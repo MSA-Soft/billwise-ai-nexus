@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Save, Send, Plus, Trash2, Search } from "lucide-react";
+import { Save, Send, Plus, Trash2, Search, Upload, FileDown, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // Modern UB-04 Form - User-Friendly Digital Interface
@@ -159,6 +159,94 @@ const UB04Form = () => {
     });
   };
 
+  const handleExportCSV = () => {
+    const csvContent = [
+      'Patient Last Name,Patient First Name,Patient Date of Birth,Statement Covers From,Statement Covers To,Provider Name',
+      `${formData.patientLastName || ''},${formData.patientFirstName || ''},${formData.patientDob || ''},${formData.statementCoversFrom || ''},${formData.statementCoversTo || ''},${formData.providerName || ''}`
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ub04-claim-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Complete",
+      description: "UB-04 claim data has been exported to CSV.",
+    });
+  };
+
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Patient Last Name,Patient First Name,Patient Date of Birth,Statement Covers From,Statement Covers To,Provider Name',
+      'Doe,John,1990-01-15,2024-01-01,2024-01-31,Main Medical Center',
+      'Smith,Jane,1985-05-20,2024-02-01,2024-02-28,City Hospital'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'ub04-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const values = lines[1].split(',').map(v => v.trim());
+
+        const getValue = (headerName: string) => {
+          const index = headers.indexOf(headerName);
+          return index >= 0 ? values[index] : '';
+        };
+
+        setFormData(prev => ({
+          ...prev,
+          patientLastName: getValue('patient last name') || prev.patientLastName,
+          patientFirstName: getValue('patient first name') || prev.patientFirstName,
+          patientDob: getValue('patient dob') || prev.patientDob,
+          statementCoversFrom: getValue('statement covers from') || prev.statementCoversFrom,
+          statementCoversTo: getValue('statement covers to') || prev.statementCoversTo,
+          providerName: getValue('provider name') || prev.providerName,
+        }));
+
+        toast({
+          title: "CSV Imported",
+          description: "Claim data has been loaded from CSV. Please review and complete any missing fields.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   const addRevenueCode = () => {
     if (currentRevenueCode.code && currentRevenueCode.totalCharges > 0) {
       setFormData(prev => ({
@@ -195,6 +283,53 @@ const UB04Form = () => {
             Complete institutional claim information for insurance submission
           </p>
         </CardHeader>
+        
+        {/* CSV Import/Export Actions - Prominent Section */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mx-6 mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">CSV Operations</h3>
+              <p className="text-sm text-blue-700">Import claim data from CSV or export current form data</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleExportCSV}
+                className="bg-white"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={handleDownloadSampleCSV}
+                className="bg-white"
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
+              </Button>
+              <Button
+                variant="default"
+                size="default"
+                asChild
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <label className="cursor-pointer">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import CSV
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleImportCSV}
+                    className="hidden"
+                  />
+                </label>
+              </Button>
+            </div>
+          </div>
+        </div>
         <CardContent className="space-y-8">
           {/* PROVIDER INFORMATION */}
           <div className="space-y-6">

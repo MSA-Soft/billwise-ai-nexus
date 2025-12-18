@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Download, Upload, ChevronDown, ChevronRight, Shield, FileDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -395,17 +395,119 @@ export const CollectionAgencies: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportAgencies = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDownloadSampleCSV = () => {
+    const csvContent = [
+      'Name,Agency Type,Status,Phone,Email,Commission Rate,Address,City,State,Zip Code,Fax',
+      'ABC Collections,Medical Collections,active,(555) 123-4567,contact@abccollections.com,15.5,123 Main St,New York,NY,10001,(555) 123-4568',
+      'XYZ Recovery,Healthcare Collections,active,(555) 987-6543,info@xyzrecovery.com,18.0,456 Oak Ave,Los Angeles,CA,90001,(555) 987-6544'
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'collection-agencies-sample.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportAgencies = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      console.log('Importing collection agencies from CSV:', text);
-      alert('CSV import functionality would be implemented here');
+    reader.onload = async (e) => {
+      try {
+        const csv = e.target?.result as string;
+        const lines = csv.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+          toast({
+            title: "Import Failed",
+            description: "CSV file must contain at least a header row and one data row.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+        const importedAgencies: Partial<CollectionAgency>[] = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const agencyData: Partial<CollectionAgency> = {
+              name: values[headers.indexOf('name')] || '',
+              agencyType: values[headers.indexOf('agency type')] || values[headers.indexOf('agencytype')] || 'Medical Collections',
+              status: (values[headers.indexOf('status')] as 'active' | 'inactive') || 'active',
+              phone: values[headers.indexOf('phone')] || '',
+              email: values[headers.indexOf('email')] || '',
+              commissionRate: parseFloat(values[headers.indexOf('commission rate')] || values[headers.indexOf('commissionrate')] || '0') || 0,
+              address: values[headers.indexOf('address')] || '',
+              city: values[headers.indexOf('city')] || '',
+              state: values[headers.indexOf('state')] || '',
+              zipCode: values[headers.indexOf('zip code')] || values[headers.indexOf('zipcode')] || '',
+              fax: values[headers.indexOf('fax')] || '',
+            };
+
+            if (agencyData.name) {
+              importedAgencies.push(agencyData);
+            }
+          }
+        }
+
+        // Insert agencies into database
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const agencyData of importedAgencies) {
+          try {
+            const insertData: any = {
+              name: agencyData.name!.trim(),
+              address: agencyData.address || null,
+              address_line2: agencyData.addressLine2 || null,
+              city: agencyData.city || null,
+              state: agencyData.state || null,
+              zip_code: agencyData.zipCode || null,
+              phone: agencyData.phone || null,
+              fax: agencyData.fax || null,
+              email: agencyData.email || null,
+              agency_type: agencyData.agencyType || null,
+              status: (agencyData.status || 'active') as 'active' | 'inactive',
+              is_active: (agencyData.status || 'active') === 'active',
+              commission_rate: agencyData.commissionRate || 0,
+              notes: agencyData.notes || null
+            };
+
+            const { error } = await supabase
+              .from('collection_agencies' as any)
+              .insert(insertData);
+
+            if (error) throw error;
+            successCount++;
+          } catch (error) {
+            console.error('Error importing collection agency:', error);
+            errorCount++;
+          }
+        }
+
+        // Refresh the collection agencies list
+        await fetchCollectionAgenciesFromDatabase();
+
+        toast({
+          title: "Import Complete",
+          description: `${successCount} collection agencies imported successfully${errorCount > 0 ? `, ${errorCount} failed` : ''}.`,
+        });
+      } catch (error: any) {
+        toast({
+          title: "Import Failed",
+          description: error.message || "Error reading CSV file. Please check the format.",
+          variant: "destructive",
+        });
+      }
     };
     reader.readAsText(file);
+    // Reset file input
+    event.target.value = '';
   };
 
   return (
@@ -451,6 +553,10 @@ export const CollectionAgencies: React.FC = () => {
               <Button variant="outline" onClick={handleExportAgencies}>
                 <Download className="w-4 h-4 mr-2" />
                 Export
+              </Button>
+              <Button variant="outline" onClick={handleDownloadSampleCSV}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Sample CSV
               </Button>
               <Button variant="outline" asChild>
                 <label>
