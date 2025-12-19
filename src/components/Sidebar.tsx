@@ -283,12 +283,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       icon: FileText,
       badge: null,
     },
-    {
-      id: "enhanced-claims",
-      label: "Enhanced Claims",
-      icon: FileText,
-      badge: "AI",
-    },
   ];
 
   const patientsSubmenuItems = [
@@ -447,7 +441,6 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       'eligibility-verification': '/eligibility-verification',
       'code-validation': '/code-validation',
       authorization: '/authorization',
-      'enhanced-claims': '/enhanced-claims',
       // Workflow
       'billing-workflow': '/billing-workflow',
       'quick-actions': '/quick-actions',

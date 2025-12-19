@@ -3,10 +3,11 @@ import { useLocation } from 'react-router-dom';
 import { analytics } from '@/utils/analytics';
 import { useAuth } from '@/contexts/AuthContext';
 import { databaseService } from '@/services/databaseService';
+import { supabase } from '@/integrations/supabase/client';
 
 export const useAnalytics = () => {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, currentCompany } = useAuth();
   const [loading, setLoading] = useState(false);
   const [dashboardMetrics, setDashboardMetrics] = useState({
     billing: {
@@ -57,12 +58,49 @@ export const useAnalytics = () => {
   const getDashboardMetrics = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch billing statements
-      const statements = await databaseService.getBillingStatements();
-      const totalStatements = statements.length;
-      const pending = statements.filter(s => s.status === 'pending').length;
-      const paid = statements.filter(s => s.status === 'paid').length;
-      const totalAmount = statements.reduce((sum, s) => sum + (s.amount_due || 0), 0);
+      // Fetch claims from both professional_claims and claims tables
+      const professionalQuery = supabase
+        .from('professional_claims' as any)
+        .select('id, status, total_charges, company_id, created_at')
+        .order('created_at', { ascending: false });
+      
+      const legacyQuery = supabase
+        .from('claims' as any)
+        .select('id, status, total_charges, created_at')
+        .order('created_at', { ascending: false });
+
+      // Apply company filter to professional_claims if company exists
+      let finalProfessionalQuery = professionalQuery;
+      if (currentCompany?.id) {
+        finalProfessionalQuery = professionalQuery.or(`company_id.eq.${currentCompany.id},company_id.is.null`);
+      }
+
+      const [professionalResult, legacyResult] = await Promise.all([
+        finalProfessionalQuery,
+        legacyQuery
+      ]);
+
+      const { data: professionalClaims = [], error: professionalError } = professionalResult;
+      const { data: legacyClaims = [], error: legacyError } = legacyResult;
+
+      if (professionalError) console.error('Error fetching professional claims:', professionalError);
+      if (legacyError) console.error('Error fetching legacy claims:', legacyError);
+
+      // Combine all claims
+      const allClaims = [...(professionalClaims || []), ...(legacyClaims || [])];
+      
+      // Calculate billing metrics from claims
+      const totalStatements = allClaims.length;
+      const pending = allClaims.filter((c: any) => 
+        !c.status || c.status === 'draft' || c.status === 'pending' || c.status === 'submitted'
+      ).length;
+      const paid = allClaims.filter((c: any) => 
+        c.status === 'paid' || c.status === 'approved'
+      ).length;
+      const totalAmount = allClaims.reduce((sum: number, c: any) => {
+        const amount = parseFloat(c.total_charges || c.totalCharges || 0);
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
 
       // Fetch collections accounts
       const collectionsAccounts = await databaseService.getCollectionsAccounts();
@@ -75,7 +113,7 @@ export const useAnalytics = () => {
       // Fetch authorization requests
       const authRequests = await databaseService.getAuthorizationRequests();
       const totalRequests = authRequests.length;
-      const authPending = authRequests.filter(a => a.status === 'pending').length;
+      const authPending = authRequests.filter(a => a.status === 'pending' || a.status === 'submitted').length;
       const authApproved = authRequests.filter(a => a.status === 'approved').length;
       const authDenied = authRequests.filter(a => a.status === 'denied').length;
 
@@ -110,6 +148,7 @@ export const useAnalytics = () => {
         }
       };
 
+      console.log('📊 Dashboard metrics calculated:', metrics);
       setDashboardMetrics(metrics);
       return metrics;
     } catch (error) {
@@ -118,7 +157,12 @@ export const useAnalytics = () => {
     } finally {
       setLoading(false);
     }
-  }, [dashboardMetrics]);
+  }, [currentCompany]);
+
+  // Fetch dashboard metrics on mount
+  useEffect(() => {
+    getDashboardMetrics();
+  }, [getDashboardMetrics]);
 
   // Track custom events
   const trackEvent = useCallback((eventName: string, properties?: Record<string, any>) => {

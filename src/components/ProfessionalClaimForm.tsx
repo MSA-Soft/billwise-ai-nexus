@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,7 +42,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 interface ProfessionalClaimFormProps {
@@ -1106,12 +1107,22 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
-      <div className="w-full h-full bg-white text-gray-900 flex flex-col">
-        {/* Top Control Bar */}
-        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2">
+    <div className="fixed top-0 left-64 right-0 bottom-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center">
+      <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50/30 text-slate-900 flex flex-col shadow-2xl">
+        {/* Top Control Bar - Modern Design */}
+        <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-md">
+              <FileText className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Professional Claim Form</h2>
+              <p className="text-xs text-slate-500">{claimType === 'professional' ? 'CMS-1500' : 'UB-04'} Form</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
           <Button 
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg transition-all"
             onClick={handleSave}
             disabled={isSaving}
           >
@@ -1127,13 +1138,13 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
               </>
             )}
           </Button>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} className="border-slate-300 hover:bg-slate-50">
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="bg-white border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button variant="outline" className="bg-white border-slate-300 text-slate-700 hover:bg-slate-50">
                 <Printer className="h-4 w-4 mr-2" />
                 Print
                 <ChevronDown className="h-4 w-4 ml-2" />
@@ -1146,7 +1157,7 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="bg-white border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button variant="outline" className="bg-white border-slate-300 text-slate-700 hover:bg-slate-50">
                 <CheckCircle className="h-4 w-4 mr-2" />
                 Review
                 <ChevronDown className="h-4 w-4 ml-2" />
@@ -1159,7 +1170,7 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="bg-white border-gray-200 text-gray-700 hover:bg-gray-50">
+              <Button variant="outline" className="bg-white border-slate-300 text-slate-700 hover:bg-slate-50">
                 <MoreVertical className="h-4 w-4 mr-2" />
                 More
                 <ChevronDown className="h-4 w-4 ml-2" />
@@ -1170,32 +1181,83 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
               <DropdownMenuItem>Export</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left Side - Form */}
-          <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="bg-white border border-gray-200 rounded-md mb-4 text-gray-600">
-                <TabsTrigger value="claim" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
-                  Claim
-                </TabsTrigger>
-                <TabsTrigger value="charges" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
-                  Charges
-                </TabsTrigger>
-                <TabsTrigger value="additional" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
-                  Additional Info
-                </TabsTrigger>
-                <TabsTrigger value="ambulance" className="data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
-                  Ambulance Info
-                </TabsTrigger>
-              </TabsList>
+        {/* Main Content - Modern Full Width Design */}
+        <div className="flex-1 overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full flex flex-col">
+            {/* Modern Tab Navigation */}
+            <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-200/60 shadow-sm">
+              <div className="px-6 py-4">
+                <TabsList className="inline-flex h-12 items-center justify-start rounded-xl bg-slate-100/80 p-1.5 text-slate-600 w-full overflow-x-auto">
+                    <TabsTrigger 
+                      value="claim" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <FileText className="h-4 w-4 mr-2 inline" />
+                      Claim Info
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="charges" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <DollarSign className="h-4 w-4 mr-2 inline" />
+                      Charges
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="additional" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <Folder className="h-4 w-4 mr-2 inline" />
+                      Additional Info
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="ambulance" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <Activity className="h-4 w-4 mr-2 inline" />
+                      Ambulance
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="summary" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <Calculator className="h-4 w-4 mr-2 inline" />
+                      Summary & Payment
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="notes" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <CheckSquare className="h-4 w-4 mr-2 inline" />
+                      Notes & Activity
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="documents" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <FileText className="h-4 w-4 mr-2 inline" />
+                      Documents & Tasks
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="alerts" 
+                      className="rounded-lg px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm data-[state=active]:font-semibold hover:text-slate-900 whitespace-nowrap"
+                    >
+                      <Bell className="h-4 w-4 mr-2 inline" />
+                      Alerts
+                    </TabsTrigger>
+                </TabsList>
+              </div>
+            </div>
 
-              <TabsContent value="claim" className="space-y-3">
+            {/* Tab Content Container */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <TabsContent value="claim" className="mt-0 space-y-4">
                 {/* Claim # Section */}
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex-1">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex-1">
                     <Label className="text-gray-700 text-xs mb-1">Claim #</Label>
                     <Input 
                       value={formData.claimNumber}
@@ -1225,17 +1287,19 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                       </SelectContent>
                     </Select>
                   </div>
+                  </div>
+
+                  {/* Warning */}
+                  <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-4 rounded-xl border border-amber-200 shadow-sm mb-4">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">Claim is incomplete</span>
+                  </div>
                 </div>
 
-                {/* Warning */}
-                <div className="flex items-center gap-2 text-yellow-700 bg-yellow-50 p-3 rounded border border-yellow-200">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span>Claim is incomplete</span>
-                </div>
-
-                {/* Patient */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
+                {/* Patient Section */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
                     <Label className="text-gray-700 text-xs mb-1">Patient</Label>
                     <Select
                       value={selectedPatientId}
@@ -1336,13 +1400,15 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                         )}
                       </SelectContent>
                     </Select>
+                    </div>
                   </div>
                 </div>
 
-                {/* Supervising Provider */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-gray-700 text-xs mb-1">Supervising Provider</Label>
+                {/* Providers Section */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-gray-700 text-xs mb-1">Supervising Provider</Label>
                     <Select
                       value={selectedSupervisingProviderId}
                       onValueChange={(value) => {
@@ -1442,12 +1508,14 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                       </Select>
                     </div>
                   </div>
+                  </div>
                 </div>
 
-                {/* Facility */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-gray-700 text-xs mb-1">Facility</Label>
+                {/* Facility Section */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-gray-700 text-xs mb-1">Facility</Label>
                     <Select
                       value={selectedFacilityId}
                       onValueChange={(value) => {
@@ -1492,12 +1560,14 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                       </SelectContent>
                     </Select>
                   </div>
+                  </div>
                 </div>
 
-                {/* Insurance */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-gray-700 text-xs mb-1">Primary Insurance</Label>
+                {/* Insurance Section */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-gray-700 text-xs mb-1">Primary Insurance</Label>
                     <Select
                       value={selectedPrimaryInsuranceId}
                       onValueChange={(value) => {
@@ -1590,12 +1660,13 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                       </SelectContent>
                     </Select>
                   </div>
+                  </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="charges" className="space-y-3">
+              <TabsContent value="charges" className="mt-6 space-y-4">
                 {/* ICD Codes Section */}
-                <div className="bg-white border border-gray-200 rounded-md p-3">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                   <Label className="text-gray-700 text-xs font-semibold mb-2 block">ICD Codes</Label>
                   <div className="grid grid-cols-6 gap-2">
                     {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((letter) => (
@@ -1623,8 +1694,8 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                 </div>
 
                 {/* Charges Table Section */}
-                <div className="bg-white border border-gray-200 rounded-md">
-                  <div className="p-3 border-b border-gray-200">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="p-4 border-b border-slate-200 bg-slate-50/50">
                     <div className="flex items-center justify-between">
                       <Label className="text-gray-700 text-xs font-semibold">
                         {charges.filter(c => !c.delete).length} Charges
@@ -2057,11 +2128,71 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                     </Button>
                   </div>
                 </div>
+
+                {/* Charge Options Section */}
+                <Card className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                  <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-slate-200 rounded-t-xl">
+                    <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                      <DollarSign className="h-5 w-5 mr-2 text-blue-600" />
+                      Charge Options
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-5">
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="update-patient-defaults"
+                            checked={chargeOptions.updatePatientDefaults}
+                            onCheckedChange={(checked) => 
+                              setChargeOptions({ ...chargeOptions, updatePatientDefaults: !!checked })
+                            }
+                          />
+                          <Label htmlFor="update-patient-defaults" className="text-sm text-gray-700 cursor-pointer">
+                            Update patient ICD & Procedure Code defaults
+                          </Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="create-charge-panel"
+                            checked={chargeOptions.createChargePanel}
+                            onCheckedChange={(checked) => 
+                              setChargeOptions({ ...chargeOptions, createChargePanel: !!checked })
+                            }
+                          />
+                          <Label htmlFor="create-charge-panel" className="text-sm text-gray-700 cursor-pointer">
+                            Create a new charge panel from procedure(s)
+                          </Label>
+                        </div>
+                      </div>
+                      <div className="pt-2">
+                        <Label className="text-sm text-gray-700 mb-2 block">Set all charges to</Label>
+                        <Select
+                          value={chargeOptions.setAllChargesTo}
+                          onValueChange={(value) => 
+                            setChargeOptions({ ...chargeOptions, setAllChargesTo: value })
+                          }
+                        >
+                          <SelectTrigger className="bg-white border-gray-300 text-gray-900 h-9 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NO CHANGE">NO CHANGE</SelectItem>
+                            <SelectItem value="PAID">PAID</SelectItem>
+                            <SelectItem value="BALANCE DUE PATIENT">BALANCE DUE PATIENT</SelectItem>
+                            <SelectItem value="PENDING">PENDING</SelectItem>
+                            <SelectItem value="DENIED">DENIED</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
-              <TabsContent value="additional" className="space-y-3">
+              <TabsContent value="additional" className="mt-6 space-y-4">
                 {/* Show Additional Information Section */}
-                <div className="bg-white border border-gray-200 rounded-md p-3">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                   <Label className="text-gray-700 text-xs font-semibold mb-2 block">
                     Show Additional Information about each field
                   </Label>
@@ -3545,550 +3676,522 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
                   </div>
                 </div>
               </TabsContent>
-            </Tabs>
-          </div>
 
-          {/* Right Side - Claim Summary and Additional Accordions */}
-          <div className="w-80 bg-gray-50 border-l border-gray-200 overflow-y-auto">
-            <Accordion type="single" defaultValue={activeTab === 'charges' ? 'charge-options' : 'claim-summary'} collapsible className="w-full">
-              {/* Charge Options - Only show on Charges tab */}
-              {activeTab === 'charges' && (
-                <AccordionItem value="charge-options" className="border-b border-gray-200">
-                  <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                    <h3 className="font-semibold text-gray-900">Charge Options</h3>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-4 pb-4">
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="update-patient-defaults"
-                            checked={chargeOptions.updatePatientDefaults}
-                            onCheckedChange={(checked) => 
-                              setChargeOptions({ ...chargeOptions, updatePatientDefaults: !!checked })
-                            }
+              {/* Summary & Payment Tab - Contains Claim Summary, Estimate, and Payment */}
+              <TabsContent value="summary" className="mt-6 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Claim Summary */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <FileText className="h-5 w-5 mr-2 text-emerald-600" />
+                        Claim Summary
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-gray-500 text-xs">Form Version</Label>
+                          <p className="text-gray-900">CMS-1500 02-12</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Total Amount</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Ins Payments</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Pat Payments</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Adjustments</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Balance</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Patient Credits</Label>
+                          <p className="text-gray-900">$0.00</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Patient Follow Up Date</Label>
+                          <p className="text-gray-900">--</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Patient Recall Date</Label>
+                          <p className="text-gray-900">--</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs">Date of Service</Label>
+                          <p className="text-gray-900">--</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Estimate */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <Calculator className="h-5 w-5 mr-2 text-purple-600" />
+                        Estimate
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              className="w-full justify-between bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                            >
+                              New Estimate
+                              <ChevronDown className="h-4 w-4 ml-2" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-56">
+                            <DropdownMenuItem>Create New Estimate</DropdownMenuItem>
+                            <DropdownMenuItem>View Existing Estimates</DropdownMenuItem>
+                            <DropdownMenuItem>Copy from Previous</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Payment Section */}
+                <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 border-b border-slate-200">
+                    <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                      <CreditCard className="h-5 w-5 mr-2 text-blue-600" />
+                      Payment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      {/* Balance Fields */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-gray-500 text-xs mb-1">Current Balance</Label>
+                          <p className="text-gray-900 font-medium">${paymentData.currentBalance}</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs mb-1">New Balance</Label>
+                          <p className="text-gray-900 font-medium">${paymentData.newBalance}</p>
+                        </div>
+                        <div>
+                          <Label className="text-gray-500 text-xs mb-1">Copay Due</Label>
+                          <p className="text-gray-900 font-medium">${paymentData.copayDue}</p>
+                        </div>
+                      </div>
+
+                      {/* Payment Application Options */}
+                      <div>
+                        <Label className="text-gray-700 text-sm font-medium mb-2 block">Payment Application Options</Label>
+                        <RadioGroup 
+                          value={paymentData.paymentApplication} 
+                          onValueChange={(value) => setPaymentData({...paymentData, paymentApplication: value})}
+                          className="space-y-2"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="cannot-apply" id="cannot-apply" disabled />
+                            <label htmlFor="cannot-apply" className="text-sm text-gray-500 cursor-not-allowed">
+                              Cannot apply copay to claim with no copay due
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="apply-credit" id="apply-credit" />
+                            <label htmlFor="apply-credit" className="text-sm text-gray-700 cursor-pointer">
+                              Apply account credit to claim
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="post-new-payment" id="post-new-payment" />
+                            <label htmlFor="post-new-payment" className="text-sm text-gray-700 cursor-pointer">
+                              Post new payment to claim
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="do-not-apply" id="do-not-apply" />
+                            <label htmlFor="do-not-apply" className="text-sm text-gray-700 cursor-pointer">
+                              Do not apply a payment or credit
+                            </label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+
+                      {/* Payment Details */}
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-gray-700 text-xs mb-1">Payment Amount</Label>
+                          <Input
+                            type="number"
+                            value={paymentData.paymentAmount}
+                            onChange={(e) => setPaymentData({...paymentData, paymentAmount: e.target.value})}
+                            className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                            placeholder="0.00"
                           />
-                          <Label htmlFor="update-patient-defaults" className="text-sm text-gray-700 cursor-pointer">
-                            Update patient ICD & Procedure Code defaults
-                          </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="create-charge-panel"
-                            checked={chargeOptions.createChargePanel}
-                            onCheckedChange={(checked) => 
-                              setChargeOptions({ ...chargeOptions, createChargePanel: !!checked })
-                            }
+                          <Checkbox 
+                            id="send-receipt" 
+                            checked={paymentData.sendReceipt}
+                            onCheckedChange={(checked) => setPaymentData({...paymentData, sendReceipt: !!checked})}
                           />
-                          <Label htmlFor="create-charge-panel" className="text-sm text-gray-700 cursor-pointer">
-                            Create a new charge panel from procedure(s)
-                          </Label>
+                          <label htmlFor="send-receipt" className="text-sm text-gray-700 cursor-pointer">
+                            Send receipt
+                          </label>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <Label className="text-gray-700 text-xs mb-1">Received Date</Label>
+                            <div className="relative">
+                              <Input
+                                type="date"
+                                value={paymentData.receivedDate}
+                                onChange={(e) => setPaymentData({...paymentData, receivedDate: e.target.value})}
+                                className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
+                              />
+                              <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                            </div>
+                          </div>
+                          <div>
+                            <Label className="text-gray-700 text-xs mb-1">Deposit Date</Label>
+                            <div className="relative">
+                              <Input
+                                type="date"
+                                value={paymentData.depositDate}
+                                onChange={(e) => setPaymentData({...paymentData, depositDate: e.target.value})}
+                                className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
+                              />
+                              <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-gray-700 text-xs mb-1">Check #</Label>
+                          <Input
+                            value={paymentData.checkNumber}
+                            onChange={(e) => setPaymentData({...paymentData, checkNumber: e.target.value})}
+                            className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                            placeholder="Enter check number"
+                          />
                         </div>
                       </div>
-                      <div className="pt-2">
-                        <Label className="text-sm text-gray-700 mb-2 block">Set all charges to</Label>
-                        <Select
-                          value={chargeOptions.setAllChargesTo}
-                          onValueChange={(value) => 
-                            setChargeOptions({ ...chargeOptions, setAllChargesTo: value })
-                          }
-                        >
-                          <SelectTrigger className="bg-white border-gray-300 text-gray-900 h-9 text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="NO CHANGE">NO CHANGE</SelectItem>
-                            <SelectItem value="PAID">PAID</SelectItem>
-                            <SelectItem value="BALANCE DUE PATIENT">BALANCE DUE PATIENT</SelectItem>
-                            <SelectItem value="PENDING">PENDING</SelectItem>
-                            <SelectItem value="DENIED">DENIED</SelectItem>
-                          </SelectContent>
-                        </Select>
+
+                      {/* Payment Type and Source */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-gray-700 text-sm font-medium mb-2 block">Type</Label>
+                          <RadioGroup 
+                            value={paymentData.paymentType} 
+                            onValueChange={(value) => setPaymentData({...paymentData, paymentType: value})}
+                            className="space-y-2"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="copay" id="type-copay" />
+                              <label htmlFor="type-copay" className="text-sm text-gray-700 cursor-pointer">
+                                Copay
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="payment" id="type-payment" />
+                              <label htmlFor="type-payment" className="text-sm text-gray-700 cursor-pointer">
+                                Payment
+                              </label>
+                            </div>
+                          </RadioGroup>
+                        </div>
+                        <div>
+                          <Label className="text-gray-700 text-sm font-medium mb-2 block">Source</Label>
+                          <RadioGroup 
+                            value={paymentData.paymentSource} 
+                            onValueChange={(value) => setPaymentData({...paymentData, paymentSource: value})}
+                            className="space-y-2"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="check" id="source-check" />
+                              <label htmlFor="source-check" className="text-sm text-gray-700 cursor-pointer">
+                                Check
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="cash" id="source-cash" />
+                              <label htmlFor="source-cash" className="text-sm text-gray-700 cursor-pointer">
+                                Cash
+                              </label>
+                            </div>
+                            <div className="flex items-center space-x-2 gap-2">
+                              <RadioGroupItem value="credit-card" id="source-credit-card" />
+                              <label htmlFor="source-credit-card" className="text-sm text-gray-700 cursor-pointer">
+                                Credit Card
+                              </label>
+                              {paymentData.paymentSource === 'credit-card' && (
+                                <Select value={paymentData.otherSource} onValueChange={(value) => setPaymentData({...paymentData, otherSource: value})}>
+                                  <SelectTrigger className="w-24 h-7 text-xs bg-white border-gray-300">
+                                    <SelectValue placeholder="Other" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="visa">Visa</SelectItem>
+                                    <SelectItem value="mastercard">Mastercard</SelectItem>
+                                    <SelectItem value="amex">Amex</SelectItem>
+                                    <SelectItem value="discover">Discover</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            </div>
+                          </RadioGroup>
+                        </div>
+                      </div>
+
+                      {/* Memo */}
+                      <div>
+                        <Label className="text-gray-700 text-xs mb-1">Memo</Label>
+                        <Input
+                          value={paymentData.memo}
+                          onChange={(e) => setPaymentData({...paymentData, memo: e.target.value})}
+                          className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
+                          placeholder="Enter memo"
+                        />
                       </div>
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
-              )}
-              {/* Claim Summary Accordion */}
-              <AccordionItem value="claim-summary" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Claim Summary</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-gray-500 text-xs">Form Version</Label>
-                      <p className="text-gray-900">CMS-1500 02-12</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Total Amount</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Ins Payments</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Pat Payments</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Adjustments</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Balance</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Patient Credits</Label>
-                      <p className="text-gray-900">$0.00</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Patient Follow Up Date</Label>
-                      <p className="text-gray-900">--</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Patient Recall Date</Label>
-                      <p className="text-gray-900">--</p>
-                    </div>
-                    <div>
-                      <Label className="text-gray-500 text-xs">Date of Service</Label>
-                      <p className="text-gray-900">--</p>
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-              {/* Estimate Accordion */}
-              <AccordionItem value="estimate" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Estimate</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button 
-                          variant="outline" 
-                          className="w-full justify-between bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                        >
-                          New Estimate
-                          <ChevronDown className="h-4 w-4 ml-2" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-56">
-                        <DropdownMenuItem>Create New Estimate</DropdownMenuItem>
-                        <DropdownMenuItem>View Existing Estimates</DropdownMenuItem>
-                        <DropdownMenuItem>Copy from Previous</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    {/* Add your estimate list/content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              {/* Patient Notes Accordion */}
-              <AccordionItem value="patient-notes" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Patient Notes</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="flex-1 justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Note
-                      </Button>
-                      <div className="flex items-center gap-1">
-                        <Select defaultValue="notes-for-claim">
-                          <SelectTrigger className="w-48 bg-white border-gray-300 text-gray-700 h-9 text-sm">
-                            <SelectValue placeholder="Notes for this Claim" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all-notes">All Notes</SelectItem>
-                            <SelectItem value="appointment-notes">Appointment Notes</SelectItem>
-                            <SelectItem value="claim-notes">Claim Notes</SelectItem>
-                            <SelectItem value="my-notes">My Notes</SelectItem>
-                            <SelectItem value="patient-notes">Patient Notes</SelectItem>
-                            <SelectItem value="payment-notes">Payment Notes</SelectItem>
-                            <SelectItem value="notes-for-claim">Notes for this Claim</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex flex-col">
-                          <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
-                            <ChevronUp className="h-3 w-3" />
+              {/* Notes & Activity Tab */}
+              <TabsContent value="notes" className="mt-6 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Patient Notes */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <CheckSquare className="h-5 w-5 mr-2 text-amber-600" />
+                        Patient Notes
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="flex-1 justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Note
                           </Button>
-                          <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
-                            <ChevronUp className="h-3 w-3" />
+                          <div className="flex items-center gap-1">
+                            <Select defaultValue="notes-for-claim">
+                              <SelectTrigger className="w-48 bg-white border-gray-300 text-gray-700 h-9 text-sm">
+                                <SelectValue placeholder="Notes for this Claim" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all-notes">All Notes</SelectItem>
+                                <SelectItem value="appointment-notes">Appointment Notes</SelectItem>
+                                <SelectItem value="claim-notes">Claim Notes</SelectItem>
+                                <SelectItem value="my-notes">My Notes</SelectItem>
+                                <SelectItem value="patient-notes">Patient Notes</SelectItem>
+                                <SelectItem value="payment-notes">Payment Notes</SelectItem>
+                                <SelectItem value="notes-for-claim">Notes for this Claim</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <div className="flex flex-col">
+                              <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
+                                <ChevronUp className="h-3 w-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-3 w-6 p-0">
+                                <ChevronUp className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                              <ExternalLink className="h-4 w-4 text-gray-600" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Follow Up Activity */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <Activity className="h-5 w-5 mr-2 text-green-600" />
+                        Follow Up Activity
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Button 
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start bg-teal-50 hover:bg-teal-100 text-gray-900 border-l-4 border-l-green-500 pl-3"
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                            Follow Up Notes
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Note
                           </Button>
                         </div>
-                        <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
-                          <ExternalLink className="h-4 w-4 text-gray-600" />
-                        </Button>
                       </div>
-                    </div>
-                    {/* Add your patient notes list/content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
 
-              {/* Follow Up Activity Accordion */}
-              <AccordionItem value="follow-up-activity" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Follow Up Activity</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start bg-teal-50 hover:bg-teal-100 text-gray-900 border-l-4 border-l-green-500 pl-3"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        Follow Up Notes
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Note
-                      </Button>
-                    </div>
-                    {/* Add your follow up activity content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              {/* Alerts Accordion */}
-              <AccordionItem value="alerts" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Alerts</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900">Alerts</span>
-                        <ChevronDown className="h-4 w-4 text-gray-500" />
+              {/* Documents & Tasks Tab */}
+              <TabsContent value="documents" className="mt-6 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Documents */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <FileText className="h-5 w-5 mr-2 text-indigo-600" />
+                        Documents
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                              >
+                                Add
+                                <ChevronDown className="h-4 w-4 ml-2" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem>Upload Document</DropdownMenuItem>
+                              <DropdownMenuItem>Create New Document</DropdownMenuItem>
+                              <DropdownMenuItem>Link Existing Document</DropdownMenuItem>
+                              <DropdownMenuItem>Scan Document</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <div className="flex items-center gap-1">
+                            <Select defaultValue="claim-documents">
+                              <SelectTrigger className="w-40 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
+                                <SelectValue placeholder="Claim Documents" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="claim-documents">Claim Documents</SelectItem>
+                                <SelectItem value="all-documents">All Documents</SelectItem>
+                                <SelectItem value="patient-documents">Patient Documents</SelectItem>
+                                <SelectItem value="claim-related">Claim Related</SelectItem>
+                                <SelectItem value="attachments">Attachments</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-9 w-9 p-0 hover:bg-gray-100"
+                              title="Sort/Refresh"
+                            >
+                              <div className="flex flex-col">
+                                <ChevronUp className="h-3 w-3 text-gray-600" />
+                                <ChevronDown className="h-3 w-3 text-gray-600 -mt-1" />
+                              </div>
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Alert
-                      </Button>
-                    </div>
-                    {/* Add your alerts list/content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                    </CardContent>
+                  </Card>
 
-              {/* Tasks Accordion */}
-              <AccordionItem value="tasks" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Tasks</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Task
-                      </Button>
-                      <div className="flex items-center gap-2">
-                        <Checkbox id="show-completed-tasks" />
-                        <label 
-                          htmlFor="show-completed-tasks" 
-                          className="text-sm text-gray-700 cursor-pointer"
-                        >
-                          Show Completed Tasks
-                        </label>
-                      </div>
-                      <Select defaultValue="claim-tasks">
-                        <SelectTrigger className="w-32 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
-                          <SelectValue placeholder="Claim Tasks" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="claim-tasks">Claim Tasks</SelectItem>
-                          <SelectItem value="all-tasks">All Tasks</SelectItem>
-                          <SelectItem value="my-tasks">My Tasks</SelectItem>
-                          <SelectItem value="overdue-tasks">Overdue Tasks</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {/* Add your tasks list/content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              {/* Documents Accordion */}
-              <AccordionItem value="documents" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Documents</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                  {/* Tasks */}
+                  <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-200">
+                      <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                        <CheckSquare className="h-5 w-5 mr-2 text-violet-600" />
+                        Tasks
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-5">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Button 
                             variant="outline" 
                             size="sm"
                             className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
                           >
-                            Add
-                            <ChevronDown className="h-4 w-4 ml-2" />
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Task
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem>Upload Document</DropdownMenuItem>
-                          <DropdownMenuItem>Create New Document</DropdownMenuItem>
-                          <DropdownMenuItem>Link Existing Document</DropdownMenuItem>
-                          <DropdownMenuItem>Scan Document</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <div className="flex items-center gap-1">
-                        <Select defaultValue="claim-documents">
-                          <SelectTrigger className="w-40 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
-                            <SelectValue placeholder="Claim Documents" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="claim-documents">Claim Documents</SelectItem>
-                            <SelectItem value="all-documents">All Documents</SelectItem>
-                            <SelectItem value="patient-documents">Patient Documents</SelectItem>
-                            <SelectItem value="claim-related">Claim Related</SelectItem>
-                            <SelectItem value="attachments">Attachments</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-9 w-9 p-0 hover:bg-gray-100"
-                          title="Sort/Refresh"
-                        >
-                          <div className="flex flex-col">
-                            <ChevronUp className="h-3 w-3 text-gray-600" />
-                            <ChevronDown className="h-3 w-3 text-gray-600 -mt-1" />
+                          <div className="flex items-center gap-2">
+                            <Checkbox id="show-completed-tasks" />
+                            <label 
+                              htmlFor="show-completed-tasks" 
+                              className="text-sm text-gray-700 cursor-pointer"
+                            >
+                              Show Completed Tasks
+                            </label>
                           </div>
+                          <Select defaultValue="claim-tasks">
+                            <SelectTrigger className="w-32 bg-gray-100 border-gray-300 text-gray-700 h-9 text-sm">
+                              <SelectValue placeholder="Claim Tasks" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="claim-tasks">Claim Tasks</SelectItem>
+                              <SelectItem value="all-tasks">All Tasks</SelectItem>
+                              <SelectItem value="my-tasks">My Tasks</SelectItem>
+                              <SelectItem value="overdue-tasks">Overdue Tasks</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              {/* Alerts Tab */}
+              <TabsContent value="alerts" className="mt-6 space-y-4">
+                <Card className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-red-50 to-rose-50 border-b border-slate-200">
+                    <CardTitle className="text-lg font-semibold text-slate-900 flex items-center">
+                      <Bell className="h-5 w-5 mr-2 text-red-600" />
+                      Alerts
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-5">
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900">Alerts</span>
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="w-full justify-start bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-300"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Alert
                         </Button>
                       </div>
                     </div>
-                    {/* Add your documents list/content here */}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-
-              {/* Payment Accordion */}
-              <AccordionItem value="payment" className="border-b border-gray-200">
-                <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                  <h3 className="font-semibold text-gray-900">Payment</h3>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-3">
-                    {/* Balance Fields */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <Label className="text-gray-500 text-xs mb-1">Current Balance</Label>
-                        <p className="text-gray-900 font-medium">${paymentData.currentBalance}</p>
-                      </div>
-                      <div>
-                        <Label className="text-gray-500 text-xs mb-1">New Balance</Label>
-                        <p className="text-gray-900 font-medium">${paymentData.newBalance}</p>
-                      </div>
-                      <div>
-                        <Label className="text-gray-500 text-xs mb-1">Copay Due</Label>
-                        <p className="text-gray-900 font-medium">${paymentData.copayDue}</p>
-                      </div>
-                    </div>
-
-                    {/* Payment Application Options */}
-                    <div>
-                      <Label className="text-gray-700 text-sm font-medium mb-2 block">Payment Application Options</Label>
-                      <RadioGroup 
-                        value={paymentData.paymentApplication} 
-                        onValueChange={(value) => setPaymentData({...paymentData, paymentApplication: value})}
-                        className="space-y-2"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="cannot-apply" id="cannot-apply" disabled />
-                          <label htmlFor="cannot-apply" className="text-sm text-gray-500 cursor-not-allowed">
-                            Cannot apply copay to claim with no copay due
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="apply-credit" id="apply-credit" />
-                          <label htmlFor="apply-credit" className="text-sm text-gray-700 cursor-pointer">
-                            Apply account credit to claim
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="post-new-payment" id="post-new-payment" />
-                          <label htmlFor="post-new-payment" className="text-sm text-gray-700 cursor-pointer">
-                            Post new payment to claim
-                          </label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="do-not-apply" id="do-not-apply" />
-                          <label htmlFor="do-not-apply" className="text-sm text-gray-700 cursor-pointer">
-                            Do not apply a payment or credit
-                          </label>
-                        </div>
-                      </RadioGroup>
-                    </div>
-
-                    {/* Payment Details */}
-                    <div className="space-y-3">
-                      <div>
-                        <Label className="text-gray-700 text-xs mb-1">Payment Amount</Label>
-                        <Input
-                          type="number"
-                          value={paymentData.paymentAmount}
-                          onChange={(e) => setPaymentData({...paymentData, paymentAmount: e.target.value})}
-                          className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox 
-                          id="send-receipt" 
-                          checked={paymentData.sendReceipt}
-                          onCheckedChange={(checked) => setPaymentData({...paymentData, sendReceipt: !!checked})}
-                        />
-                        <label htmlFor="send-receipt" className="text-sm text-gray-700 cursor-pointer">
-                          Send receipt
-                        </label>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-gray-700 text-xs mb-1">Received Date</Label>
-                          <div className="relative">
-                            <Input
-                              type="date"
-                              value={paymentData.receivedDate}
-                              onChange={(e) => setPaymentData({...paymentData, receivedDate: e.target.value})}
-                              className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
-                            />
-                            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                          </div>
-                        </div>
-                        <div>
-                          <Label className="text-gray-700 text-xs mb-1">Deposit Date</Label>
-                          <div className="relative">
-                            <Input
-                              type="date"
-                              value={paymentData.depositDate}
-                              onChange={(e) => setPaymentData({...paymentData, depositDate: e.target.value})}
-                              className="bg-white border-gray-300 text-gray-900 h-9 text-sm pr-10"
-                            />
-                            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-gray-700 text-xs mb-1">Check #</Label>
-                        <Input
-                          value={paymentData.checkNumber}
-                          onChange={(e) => setPaymentData({...paymentData, checkNumber: e.target.value})}
-                          className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
-                          placeholder="Enter check number"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Payment Type and Source */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <Label className="text-gray-700 text-sm font-medium mb-2 block">Type</Label>
-                        <RadioGroup 
-                          value={paymentData.paymentType} 
-                          onValueChange={(value) => setPaymentData({...paymentData, paymentType: value})}
-                          className="space-y-2"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="copay" id="type-copay" />
-                            <label htmlFor="type-copay" className="text-sm text-gray-700 cursor-pointer">
-                              Copay
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="payment" id="type-payment" />
-                            <label htmlFor="type-payment" className="text-sm text-gray-700 cursor-pointer">
-                              Payment
-                            </label>
-                          </div>
-                        </RadioGroup>
-                      </div>
-                      <div>
-                        <Label className="text-gray-700 text-sm font-medium mb-2 block">Source</Label>
-                        <RadioGroup 
-                          value={paymentData.paymentSource} 
-                          onValueChange={(value) => setPaymentData({...paymentData, paymentSource: value})}
-                          className="space-y-2"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="check" id="source-check" />
-                            <label htmlFor="source-check" className="text-sm text-gray-700 cursor-pointer">
-                              Check
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="cash" id="source-cash" />
-                            <label htmlFor="source-cash" className="text-sm text-gray-700 cursor-pointer">
-                              Cash
-                            </label>
-                          </div>
-                          <div className="flex items-center space-x-2 gap-2">
-                            <RadioGroupItem value="credit-card" id="source-credit-card" />
-                            <label htmlFor="source-credit-card" className="text-sm text-gray-700 cursor-pointer">
-                              Credit Card
-                            </label>
-                            {paymentData.paymentSource === 'credit-card' && (
-                              <Select value={paymentData.otherSource} onValueChange={(value) => setPaymentData({...paymentData, otherSource: value})}>
-                                <SelectTrigger className="w-24 h-7 text-xs bg-white border-gray-300">
-                                  <SelectValue placeholder="Other" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="visa">Visa</SelectItem>
-                                  <SelectItem value="mastercard">Mastercard</SelectItem>
-                                  <SelectItem value="amex">Amex</SelectItem>
-                                  <SelectItem value="discover">Discover</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </div>
-                        </RadioGroup>
-                      </div>
-                    </div>
-
-                    {/* Memo */}
-                    <div>
-                      <Label className="text-gray-700 text-xs mb-1">Memo</Label>
-                      <Input
-                        value={paymentData.memo}
-                        onChange={(e) => setPaymentData({...paymentData, memo: e.target.value})}
-                        className="bg-white border-gray-300 text-gray-900 h-9 text-sm"
-                        placeholder="Enter memo"
-                      />
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </div>
+          </Tabs>
         </div>
       </div>
     </div>
