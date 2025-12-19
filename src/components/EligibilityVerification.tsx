@@ -5827,7 +5827,18 @@ const EligibilityVerification = () => {
                               type="number"
                               step="0.01"
                               value={verificationForm.outOfPocketRemaining}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, outOfPocketRemaining: e.target.value }))}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setVerificationForm(prev => {
+                                  const updated = { ...prev, outOfPocketRemaining: value };
+                                  // If out of pocket remaining is 0, set patient responsibility to 0 (insurance pays all)
+                                  const oopRemaining = parseFloat(value) || 0;
+                                  if (oopRemaining === 0) {
+                                    updated.patientResponsibility = '0.00';
+                                  }
+                                  return updated;
+                                });
+                              }}
                               placeholder="0.00"
                               className="h-9"
                             />
@@ -6446,7 +6457,22 @@ const EligibilityVerification = () => {
                             strIncludesMedicareCalc(verificationForm.primaryInsurance) ||
                             strIncludesMedicareCalc(verificationForm.insurancePlan) ||
                             strIncludesMedicareCalc(verificationForm.groupNumber);
-                          if (verificationForm.isQMB && verificationForm.isCoveredService && isMedicarePlan) {
+                          
+                          // Out-of-Pocket Remaining Check: If OOP remaining is 0, patient responsibility is 0 (insurance pays all)
+                          // This means the patient has already met their out-of-pocket maximum for the year
+                          if (oopYtd === 0) {
+                            // Patient has already met out-of-pocket maximum - insurance pays everything
+                            const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
+                            patientResponsibility = 0;
+                            calculationBreakdown.finalPatientResponsibility = 0;
+                            calculationBreakdown.oopMaxReached = true;
+                            calculationBreakdown.insurancePays = baseAmount;
+                            calculationBreakdown.copay = 0;
+                            calculationBreakdown.deductibleApplied = 0;
+                            calculationBreakdown.coinsurance = 0;
+                            calculationBreakdown.patientResponsibilityBeforeOOP = 0;
+                            calculationBreakdown.oopCapApplied = 0;
+                          } else if (verificationForm.isQMB && verificationForm.isCoveredService && isMedicarePlan) {
                             // QMB Patient - Federal law: $0 responsibility for Medicare covered services
                             calculationBreakdown.isQMBZeroed = true;
                             patientResponsibility = 0;

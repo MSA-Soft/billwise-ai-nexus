@@ -1107,8 +1107,13 @@ export function ProfessionalClaimForm({ isOpen, patientId, claimType, onClose }:
   if (!isOpen) return null;
 
   return (
-    <div className="fixed top-0 left-64 right-0 bottom-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center">
-      <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50/30 text-slate-900 flex flex-col shadow-2xl">
+    <div className="fixed top-0 left-64 right-0 bottom-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center" onClick={(e) => {
+      // Close modal when clicking on overlay
+      if (e.target === e.currentTarget) {
+        onClose();
+      }
+    }}>
+      <div className="w-full h-full bg-gradient-to-br from-slate-50 to-blue-50/30 text-slate-900 flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Top Control Bar - Modern Design */}
         <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/60 shadow-sm px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
