@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointments: {
+        Row: {
+          appointment_type: string
+          created_at: string | null
+          duration_minutes: number | null
+          id: string
+          location: string | null
+          notes: string | null
+          patient_id: string | null
+          provider_id: string | null
+          scheduled_date: string
+          scheduled_time: string
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          appointment_type: string
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          patient_id?: string | null
+          provider_id?: string | null
+          scheduled_date: string
+          scheduled_time: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          appointment_type?: string
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          location?: string | null
+          notes?: string | null
+          patient_id?: string | null
+          provider_id?: string | null
+          scheduled_date?: string
+          scheduled_time?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attorney_referrals: {
         Row: {
           account_balance_at_referral: number
@@ -78,6 +141,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      authorization_requests: {
+        Row: {
+          ack_status: string | null
+          auth_number: string | null
+          clinical_indication: string | null
+          created_at: string | null
+          diagnosis_codes: string[] | null
+          id: string
+          pa_required: boolean | null
+          patient_dob: string | null
+          patient_gender: string | null
+          patient_id: string | null
+          patient_member_id: string | null
+          patient_name: string
+          payer_id: string | null
+          payer_name: string | null
+          procedure_codes: string[] | null
+          requested_date: string | null
+          service_end_date: string | null
+          service_start_date: string | null
+          service_type: string | null
+          status: string | null
+          units_requested: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ack_status?: string | null
+          auth_number?: string | null
+          clinical_indication?: string | null
+          created_at?: string | null
+          diagnosis_codes?: string[] | null
+          id?: string
+          pa_required?: boolean | null
+          patient_dob?: string | null
+          patient_gender?: string | null
+          patient_id?: string | null
+          patient_member_id?: string | null
+          patient_name: string
+          payer_id?: string | null
+          payer_name?: string | null
+          procedure_codes?: string[] | null
+          requested_date?: string | null
+          service_end_date?: string | null
+          service_start_date?: string | null
+          service_type?: string | null
+          status?: string | null
+          units_requested?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ack_status?: string | null
+          auth_number?: string | null
+          clinical_indication?: string | null
+          created_at?: string | null
+          diagnosis_codes?: string[] | null
+          id?: string
+          pa_required?: boolean | null
+          patient_dob?: string | null
+          patient_gender?: string | null
+          patient_id?: string | null
+          patient_member_id?: string | null
+          patient_name?: string
+          payer_id?: string | null
+          payer_name?: string | null
+          procedure_codes?: string[] | null
+          requested_date?: string | null
+          service_end_date?: string | null
+          service_start_date?: string | null
+          service_type?: string | null
+          status?: string | null
+          units_requested?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       billing_cycles: {
         Row: {
@@ -495,6 +636,96 @@ export type Database = {
         }
         Relationships: []
       }
+      patients: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          created_at: string | null
+          date_of_birth: string | null
+          email: string | null
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_relation: string | null
+          emergency_contact_relationship: string | null
+          ethnicity: string | null
+          first_name: string
+          gender: string | null
+          id: string
+          language: string | null
+          last_name: string
+          marital_status: string | null
+          patient_id: string
+          phone: string | null
+          phone_primary: string | null
+          race: string | null
+          ssn: string | null
+          state: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relation?: string | null
+          emergency_contact_relationship?: string | null
+          ethnicity?: string | null
+          first_name: string
+          gender?: string | null
+          id?: string
+          language?: string | null
+          last_name: string
+          marital_status?: string | null
+          patient_id: string
+          phone?: string | null
+          phone_primary?: string | null
+          race?: string | null
+          ssn?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relation?: string | null
+          emergency_contact_relationship?: string | null
+          ethnicity?: string | null
+          first_name?: string
+          gender?: string | null
+          id?: string
+          language?: string | null
+          last_name?: string
+          marital_status?: string | null
+          patient_id?: string
+          phone?: string | null
+          phone_primary?: string | null
+          race?: string | null
+          ssn?: string | null
+          state?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          zip_code?: string | null
+        }
+        Relationships: []
+      }
       payment_installments: {
         Row: {
           amount: number
@@ -678,6 +909,51 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      providers: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          first_name: string
+          id: string
+          is_active: boolean | null
+          last_name: string
+          npi: string
+          phone: string | null
+          specialty: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          first_name: string
+          id?: string
+          is_active?: boolean | null
+          last_name: string
+          npi: string
+          phone?: string | null
+          specialty?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          first_name?: string
+          id?: string
+          is_active?: boolean | null
+          last_name?: string
+          npi?: string
+          phone?: string | null
+          specialty?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
