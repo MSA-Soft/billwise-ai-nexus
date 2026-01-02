@@ -2,44 +2,16 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Get environment variables (fail fast if missing)
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) as string | undefined;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  // Surface a clear error early instead of silently using a fallback
-  const problems = [
-    !SUPABASE_URL ? 'VITE_SUPABASE_URL' : undefined,
-    !SUPABASE_ANON_KEY ? 'VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY)' : undefined,
-  ].filter(Boolean).join(', ');
-  throw new Error(`Missing Supabase environment variable(s): ${problems}. Add them to your .env.local and restart the dev server.`);
-}
-
-// Log environment status (only in development)
-if (import.meta.env.DEV) {
-  console.log('🔧 Supabase Configuration:');
-  console.log('URL:', SUPABASE_URL ? '✅ From .env' : '❌ Missing');
-  console.log('Key:', SUPABASE_ANON_KEY ? `✅ From .env (${SUPABASE_ANON_KEY.length} chars)` : '❌ Missing');
-  
-  // Debug: Show first few chars of key to verify it's loaded (remove in production)
-  if (SUPABASE_ANON_KEY) {
-    console.log('Key preview:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
-  }
-}
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
-  },
-  // Ensure API key is sent with all requests
-  global: {
-    headers: {
-      'apikey': SUPABASE_ANON_KEY || '',
-    },
-  },
+  }
 });

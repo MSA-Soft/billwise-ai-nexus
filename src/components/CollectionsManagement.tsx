@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,25 +33,76 @@ import { SendLetterDialog } from "./collections/SendLetterDialog";
 import { SettlementOfferDialog } from "./collections/SettlementOfferDialog";
 import { AttorneyReferralDialog } from "./collections/AttorneyReferralDialog";
 import { DisputeDialog } from "./collections/DisputeDialog";
-import { useCollections } from "@/hooks/useCollections";
+
+interface CollectionsAccount {
+  id: string;
+  patient_name: string;
+  original_balance: number;
+  current_balance: number;
+  days_overdue: number;
+  collection_stage: string;
+  collection_status: string;
+  last_contact_date: string | null;
+  next_action_date: string | null;
+  created_at: string;
+}
+
+interface CollectionActivity {
+  id: string;
+  collection_account_id: string;
+  activity_type: string;
+  contact_method: string | null;
+  notes: string | null;
+  outcome: string | null;
+  created_at: string;
+  collections_accounts: { patient_name: string };
+}
 
 export function CollectionsManagement() {
+  const [accounts, setAccounts] = useState<CollectionsAccount[]>([]);
+  const [activities, setActivities] = useState<CollectionActivity[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState<string | null>(null);
   const { toast } = useToast();
-  
-  const {
-    accounts,
-    activities,
-    loading,
-    error,
-    fetchAccounts,
-    fetchActivities,
-    createAccount,
-    updateAccount,
-    deleteAccount,
-    addActivity,
-  } = useCollections();
+
+  useEffect(() => {
+    loadCollectionsData();
+  }, []);
+
+  const loadCollectionsData = async () => {
+    try {
+      setLoading(true);
+      
+      const { data: accountsData, error: accountsError } = await supabase
+        .from("collections_accounts")
+        .select("*")
+        .order("days_overdue", { ascending: false });
+
+      if (accountsError) throw accountsError;
+      setAccounts(accountsData || []);
+
+      const { data: activitiesData, error: activitiesError } = await supabase
+        .from("collection_activities")
+        .select(`
+          *,
+          collections_accounts(patient_name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (activitiesError) throw activitiesError;
+      setActivities(activitiesData || []);
+    } catch (error: any) {
+      toast({
+        title: "Error loading collections data",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStageColor = (stage: string) => {
     switch (stage) {
@@ -341,7 +393,7 @@ export function CollectionsManagement() {
                       <TableCell>
                         {format(new Date(activity.created_at), "MM/dd/yyyy HH:mm")}
                       </TableCell>
-                      <TableCell>Activity</TableCell>
+                      <TableCell>{activity.collections_accounts.patient_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {activity.activity_type.replace("_", " ")}
@@ -424,7 +476,7 @@ export function CollectionsManagement() {
       <CollectionsAccountDialog
         open={dialogOpen === "account"}
         onOpenChange={(open) => !open && setDialogOpen(null)}
-        onSuccess={fetchAccounts}
+        onSuccess={loadCollectionsData}
       />
 
       {selectedAccount && (
@@ -433,36 +485,34 @@ export function CollectionsManagement() {
             open={dialogOpen === "contact"}
             onOpenChange={(open) => !open && setDialogOpen(null)}
             accountId={selectedAccount}
-            onSuccess={fetchAccounts}
+            onSuccess={loadCollectionsData}
           />
           <SendLetterDialog
             open={dialogOpen === "letter"}
             onOpenChange={(open) => !open && setDialogOpen(null)}
             accountId={selectedAccount}
-            onSuccess={fetchAccounts}
+            onSuccess={loadCollectionsData}
           />
           <SettlementOfferDialog
             open={dialogOpen === "settlement"}
             onOpenChange={(open) => !open && setDialogOpen(null)}
             accountId={selectedAccount}
-            onSuccess={fetchAccounts}
+            onSuccess={loadCollectionsData}
           />
           <AttorneyReferralDialog
             open={dialogOpen === "attorney"}
             onOpenChange={(open) => !open && setDialogOpen(null)}
             accountId={selectedAccount}
-            onSuccess={fetchAccounts}
+            onSuccess={loadCollectionsData}
           />
           <DisputeDialog
             open={dialogOpen === "dispute"}
             onOpenChange={(open) => !open && setDialogOpen(null)}
             accountId={selectedAccount}
-            onSuccess={fetchAccounts}
+            onSuccess={loadCollectionsData}
           />
         </>
       )}
     </div>
   );
 }
-
-export default CollectionsManagement;

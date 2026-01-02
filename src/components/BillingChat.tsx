@@ -136,39 +136,17 @@ const BillingChat = ({ patientId, patientName }: BillingChatProps) => {
     setInputMessage("");
 
     try {
-      // First, save the user message
-      const { error: userError } = await supabase
-        .from("chat_messages")
-        .insert({
-          conversation_id: conversationId,
+      const { data, error } = await supabase.functions.invoke("chat-assistant", {
+        body: {
+          conversationId,
           message: messageText,
-          is_ai: false,
-          sender_name: "User",
-        });
+          patientId,
+        },
+      });
 
-      if (userError) throw userError;
+      if (error) throw error;
 
-      // Generate AI response using our AI service
-      const { aiService } = await import('@/services/aiService');
-      
-      // Generate contextual AI response
-      const aiResponse = await aiService.generateCommunicationSuggestion(
-        { patient_name: patientName, current_balance: 1250.00 },
-        'payment_reminder'
-      );
-
-      // Save AI response
-      const { error: aiError } = await supabase
-        .from("chat_messages")
-        .insert({
-          conversation_id: conversationId,
-          message: aiResponse,
-          is_ai: true,
-          sender_name: "AI Assistant",
-        });
-
-      if (aiError) throw aiError;
-
+      // Messages are added via realtime subscription
     } catch (error: any) {
       console.error("Error sending message:", error);
       toast({
