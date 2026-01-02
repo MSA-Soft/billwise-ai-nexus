@@ -413,11 +413,11 @@ export function EnhancedClaims() {
         </TabsContent>
 
         <TabsContent value="denial-management">
-          <DenialManagement claims={mockClaims} />
+          <DenialManagement claims={claims} />
         </TabsContent>
 
         <TabsContent value="ai-insights">
-          <AIAnalysisPanel claims={mockClaims} />
+          <AIAnalysisPanel claims={claims} />
         </TabsContent>
 
         <TabsContent value="analytics">

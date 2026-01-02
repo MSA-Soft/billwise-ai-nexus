@@ -2053,27 +2053,29 @@ const EligibilityVerification = () => {
           .insert({
             serial_no: verificationForm.serialNo,
             description: verificationForm.description,
-            provider_id: verificationForm.providerId || null,
+            provider_id: (verificationForm as any).providerId || null,
             provider_name: verificationForm.providerName,
-            npp_id: verificationForm.nppId || null,
+            npp_id: (verificationForm as any).nppId || null,
             npp_name: verificationForm.nppName,
-            facility_id: verificationForm.facilityId || null,
+            facility_id: (verificationForm as any).facilityId || null,
             appointment_location: verificationForm.appointmentLocation,
             appointment_date: verificationForm.appointmentDate || verificationForm.dateOfService,
             date_of_service: verificationForm.dateOfService,
             type_of_visit: verificationForm.typeOfVisit,
             patient_id: verificationForm.patientId,
             patient_name: verificationForm.patientName,
-            patient_dob: verificationForm.patientDob,
+            patient_dob: (verificationForm as any).patientDob || null,
             patient_gender: verificationForm.patientGender,
             primary_insurance_name: verificationForm.primaryInsurance,
-            plan_type: result.coverage?.planType || '',
-            effective_date: result.coverage?.effectiveDate || null,
-            termination_date: result.coverage?.terminationDate || null,
+            plan_type: (result.coverage as any)?.planType || '',
+            effective_date: (result.coverage as any)?.effectiveDate || null,
+            termination_date: (result.coverage as any)?.terminationDate || null,
             copay: result.coverage?.copay || 0,
-            coinsurance: result.coverage?.coinsurance ? parseFloat(result.coverage.coinsurance.replace('%', '')) : 0,
+            coinsurance: typeof result.coverage?.coinsurance === 'string' 
+              ? parseFloat((result.coverage.coinsurance as string).replace('%', '')) 
+              : result.coverage?.coinsurance || 0,
             deductible: result.coverage?.deductible || 0,
-            in_network_status: result.coverage?.inNetworkStatus || '',
+            in_network_status: (result.coverage as any)?.inNetworkStatus || '',
             is_eligible: result.isEligible,
             referral_required: verificationForm.referralRequired,
             prior_auth_required: verificationForm.preAuthorizationRequired,
@@ -2095,7 +2097,7 @@ const EligibilityVerification = () => {
           // Still add to local state even if database save fails
         } else {
           // Update entry with database ID
-          newEntry.id = savedVerification.id;
+          newEntry.id = (savedVerification as any).id;
         }
       } catch (dbError: any) {
         console.error('Error saving verification to database:', dbError);

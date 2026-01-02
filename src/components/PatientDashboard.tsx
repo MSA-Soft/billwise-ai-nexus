@@ -802,10 +802,10 @@ export function PatientDashboard({
                                 className="text-gray-600 hover:bg-gray-50"
                                 onClick={() => {
                                   if (document.fileUrl) {
-                                    const link = document.createElement('a');
-                                    link.href = document.fileUrl;
-                                    link.download = document.fileName || document.name;
-                                    link.click();
+                                    const anchor = window.document.createElement('a');
+                                    anchor.href = document.fileUrl;
+                                    anchor.download = document.fileName || document.name;
+                                    anchor.click();
                                   } else {
                                     onDownloadDocument(document.name);
                                   }

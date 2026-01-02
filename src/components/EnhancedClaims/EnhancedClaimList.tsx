@@ -186,6 +186,19 @@ export function EnhancedClaimList() {
   const [showNewClaimForm, setShowNewClaimForm] = useState(false);
   const [editingClaim, setEditingClaim] = useState<string | null>(null);
   
+  // Filters
+  const [filters, setFilters] = useState<ClaimFilters>({
+    dateCreated: 'By Date',
+    dateFrom: '',
+    dateTo: '',
+    searchField: 'Patient Last Name',
+    searchValue: '',
+    startsWith: false,
+    formType: '-- All --',
+    status: '-- All --',
+    facility: '-- All --'
+  });
+  
   // Update filtered claims when claims or filters change
   useEffect(() => {
     let filtered = [...claims];
@@ -214,19 +227,6 @@ export function EnhancedClaimList() {
     
     setFilteredClaims(filtered);
   }, [claims, filters]);
-  
-  // Filters
-  const [filters, setFilters] = useState<ClaimFilters>({
-    dateCreated: 'By Date',
-    dateFrom: '',
-    dateTo: '',
-    searchField: 'Patient Last Name',
-    searchValue: '',
-    startsWith: false,
-    formType: '-- All --',
-    status: '-- All --',
-    facility: '-- All --'
-  });
 
   // Print options
   const [printOptions, setPrintOptions] = useState<PrintOptions>({

@@ -126,7 +126,7 @@ export class AuthorizationTaskService {
     patientId: string,
     patientName: string,
     completedAppointmentDate: string,
-    nextVisitDate?: string,
+    nextVisitDate: string | undefined,
     options: {
       assignedTo?: string;
       priority?: AuthorizationTask['priority'];
@@ -219,10 +219,10 @@ export class AuthorizationTaskService {
       if (!authRequest) throw new Error('Authorization request not found');
 
       // Determine priority based on urgency level
-      const priority = options.priority || this.determinePriorityFromUrgency(authRequest.urgency_level);
+      const priority = options.priority || this.determinePriorityFromUrgency((authRequest as any).urgency_level);
 
       // Calculate due date based on task type and urgency
-      const dueDate = options.dueDate || this.calculateDueDate(taskType, authRequest.urgency_level);
+      const dueDate = options.dueDate || this.calculateDueDate(taskType, (authRequest as any).urgency_level);
 
       // Generate title if not provided
       const title = options.title || this.generateTaskTitle(taskType, authRequest);
@@ -232,7 +232,7 @@ export class AuthorizationTaskService {
 
       // Create task
       const { data: task, error: taskError } = await supabase
-        .from('authorization_tasks')
+        .from('authorization_tasks' as any)
         .insert({
           authorization_request_id: authorizationRequestId,
           task_type: taskType,
@@ -242,19 +242,19 @@ export class AuthorizationTaskService {
           assigned_by: options.userId,
           assigned_at: options.assignedTo ? new Date().toISOString() : null,
           priority,
-          urgency_level: authRequest.urgency_level,
+          urgency_level: (authRequest as any).urgency_level,
           status: 'pending',
           completion_percentage: 0,
           due_date: dueDate,
           estimated_duration_minutes: this.getEstimatedDuration(taskType),
           created_by: options.userId,
-        })
+        } as any)
         .select()
         .single();
 
       if (taskError) throw taskError;
 
-      return task as AuthorizationTask;
+      return task as unknown as AuthorizationTask;
     } catch (error: any) {
       console.error('Error creating task:', error);
       throw new Error(error.message || 'Failed to create task');
@@ -265,7 +265,7 @@ export class AuthorizationTaskService {
   async getTasks(filters?: TaskFilters, userId?: string): Promise<AuthorizationTask[]> {
     try {
       let query = supabase
-        .from('authorization_tasks')
+        .from('authorization_tasks' as any)
         .select(`
           *,
           authorization_requests (
@@ -337,7 +337,7 @@ export class AuthorizationTaskService {
   async getTaskById(taskId: string): Promise<AuthorizationTask> {
     try {
       const { data, error } = await supabase
-        .from('authorization_tasks')
+        .from('authorization_tasks' as any)
         .select(`
           *,
           authorization_requests (*),
@@ -350,7 +350,7 @@ export class AuthorizationTaskService {
       if (error) throw error;
       if (!data) throw new Error('Task not found');
 
-      return data as AuthorizationTask;
+      return data as unknown as AuthorizationTask;
     } catch (error: any) {
       console.error('Error fetching task:', error);
       throw new Error(error.message || 'Failed to fetch task');
@@ -365,18 +365,18 @@ export class AuthorizationTaskService {
   ): Promise<AuthorizationTask> {
     try {
       const { data, error } = await supabase
-        .from('authorization_tasks')
+        .from('authorization_tasks' as any)
         .update({
           ...updates,
           updated_at: new Date().toISOString(),
-        })
+        } as any)
         .eq('id', taskId)
         .select()
         .single();
 
       if (error) throw error;
 
-      return data as AuthorizationTask;
+      return data as unknown as AuthorizationTask;
     } catch (error: any) {
       console.error('Error updating task:', error);
       throw new Error(error.message || 'Failed to update task');
@@ -426,19 +426,19 @@ export class AuthorizationTaskService {
   ): Promise<TaskComment> {
     try {
       const { data, error } = await supabase
-        .from('authorization_task_comments')
+        .from('authorization_task_comments' as any)
         .insert({
           task_id: taskId,
           user_id: userId,
           comment,
           is_internal: isInternal,
-        })
+        } as any)
         .select()
         .single();
 
       if (error) throw error;
 
-      return data as TaskComment;
+      return data as unknown as TaskComment;
     } catch (error: any) {
       console.error('Error adding comment:', error);
       throw new Error(error.message || 'Failed to add comment');
@@ -448,7 +448,7 @@ export class AuthorizationTaskService {
   // Get task statistics
   async getTaskStats(userId?: string): Promise<TaskStats> {
     try {
-      let query = supabase.from('authorization_tasks').select('*');
+      let query = supabase.from('authorization_tasks' as any).select('*') as any;
 
       if (userId) {
         query = query.eq('assigned_to', userId);
@@ -458,7 +458,7 @@ export class AuthorizationTaskService {
 
       if (error) throw error;
 
-      const tasks = (data || []) as AuthorizationTask[];
+      const tasks = (data || []) as unknown as AuthorizationTask[];
 
       const stats: TaskStats = {
         total: tasks.length,
@@ -507,11 +507,11 @@ export class AuthorizationTaskService {
   async getOverdueTasks(userId?: string): Promise<AuthorizationTask[]> {
     try {
       let query = supabase
-        .from('authorization_tasks')
+        .from('authorization_tasks' as any)
         .select('*')
         .lt('due_date', new Date().toISOString())
         .not('status', 'in', '(completed,cancelled)')
-        .order('due_date', { ascending: true });
+        .order('due_date', { ascending: true }) as any;
 
       if (userId) {
         query = query.eq('assigned_to', userId);
@@ -521,7 +521,7 @@ export class AuthorizationTaskService {
 
       if (error) throw error;
 
-      return (data || []) as AuthorizationTask[];
+      return (data || []) as unknown as AuthorizationTask[];
     } catch (error: any) {
       console.error('Error fetching overdue tasks:', error);
       throw new Error(error.message || 'Failed to fetch overdue tasks');

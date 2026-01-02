@@ -78,16 +78,15 @@ export class AuthorizationAuditService {
         throw new Error('User not authenticated');
       }
 
-      // Try to get user profile for name
+      // Try to get user profile for name from profiles table
       const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('first_name, last_name')
+        .from('profiles')
+        .select('full_name')
         .eq('id', user.id)
         .single();
 
-      const userName = profile 
-        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() 
-        : user.email?.split('@')[0] || 'Unknown';
+      const userName = profile?.full_name 
+        || user.email?.split('@')[0] || 'Unknown';
 
       return {
         id: user.id,
@@ -211,8 +210,8 @@ export class AuthorizationAuditService {
       };
 
       const { error } = await supabase
-        .from('authorization_audit_logs')
-        .insert(auditLog);
+        .from('authorization_audit_logs' as any)
+        .insert(auditLog as any);
 
       if (error) {
         console.error('Error logging authorization action:', error);
@@ -301,9 +300,9 @@ export class AuthorizationAuditService {
   async getAuditLogs(query: AuditLogQuery): Promise<AuthorizationAuditLog[]> {
     try {
       let supabaseQuery = supabase
-        .from('authorization_audit_logs')
+        .from('authorization_audit_logs' as any)
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }) as any;
 
       if (query.authorization_request_id) {
         supabaseQuery = supabaseQuery.eq('authorization_request_id', query.authorization_request_id);
