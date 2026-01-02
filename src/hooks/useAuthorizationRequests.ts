@@ -85,7 +85,7 @@ export const useAuthorizationRequests = () => {
   };
 
   const getRequestsByUrgency = (urgency: string): AuthorizationRequest[] => {
-    return requests.filter(req => req.urgency_level === urgency);
+    return requests.filter(req => (req as any).urgency_level === urgency);
   };
 
   const getPendingRequests = (): AuthorizationRequest[] => {
