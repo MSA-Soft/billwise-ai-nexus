@@ -19,6 +19,7 @@ import { Codes } from '@/components/Codes';
 import { Statements } from '@/components/Statements';
 import { Superbills } from '@/components/Superbills';
 import { Labels } from '@/components/Labels';
+import { PosTosConfiguration } from '@/components/PosTosConfiguration';
 import { Patients } from '@/components/Patients';
 import { Claims } from '@/components/Claims';
 import { Schedule } from '@/components/Schedule';
@@ -131,6 +132,9 @@ const CustomerSetup: React.FC = () => {
         </div>
         <div style={{ display: activeTab === 'codes' ? 'block' : 'none' }}>
           <Codes key="codes" />
+        </div>
+        <div style={{ display: activeTab === 'pos-tos-config' ? 'block' : 'none' }}>
+          <PosTosConfiguration key="pos-tos-config" />
         </div>
         <div style={{ display: activeTab === 'statements' ? 'block' : 'none' }}>
           <Statements key="statements" />

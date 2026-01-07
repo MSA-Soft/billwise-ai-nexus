@@ -1,6 +1,8 @@
 // EDI Service for BillWise AI Nexus
 // Handles X12 EDI transactions for healthcare billing
 
+import { supabase } from '@/integrations/supabase/client';
+
 export interface EDITransaction {
   id: string;
   transactionType: '837' | '835' | '270' | '271' | '276' | '277';
@@ -85,33 +87,121 @@ export class EDIService {
   }
 
   // 270/271 - Eligibility Verification
-  async checkEligibility(request: EligibilityRequest): Promise<EligibilityResponse> {
+  // Fetches eligibility data from database instead of mock data
+  async checkEligibility(request: EligibilityRequest, companyId?: string): Promise<EligibilityResponse> {
     try {
-      // Mock implementation - simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Generate mock eligibility response
-      const mockResponse = {
-        transactionId: `270-${Date.now()}`,
+      console.log('🔍 Checking eligibility from database:', {
         patientId: request.patientId,
         subscriberId: request.subscriberId,
-        eligibilityStatus: Math.random() > 0.3 ? 'ACTIVE' : 'INACTIVE',
-        coverageType: ['PPO', 'HMO', 'EPO'][Math.floor(Math.random() * 3)],
-        effectiveDate: '2024-01-01',
-        terminationDate: '2024-12-31',
-        copay: Math.floor(Math.random() * 50) + 10,
-        deductible: Math.floor(Math.random() * 2000) + 500,
-        outOfPocketMax: Math.floor(Math.random() * 5000) + 2000,
-        benefits: [
-          { serviceCode: '99213', description: 'Office Visit', covered: true, copay: 25 },
-          { serviceCode: '36415', description: 'Blood Draw', covered: true, copay: 15 },
-          { serviceCode: '80053', description: 'Comprehensive Metabolic Panel', covered: true, copay: 0 }
-        ],
-        responseDate: new Date().toISOString(),
-        status: 'SUCCESS'
-      };
+        payerId: request.payerId,
+        serviceDate: request.serviceDate,
+        companyId
+      });
 
-      return this.parseEligibilityResponse(mockResponse);
+      // First, try to find patient UUID if patientId is not a UUID
+      let patientUuid: string | null = null;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (request.patientId && uuidRegex.test(request.patientId)) {
+        patientUuid = request.patientId;
+      } else if (request.patientId) {
+        // Look up patient UUID from patients table
+        let patientQuery = supabase
+          .from('patients' as any)
+          .select('id')
+          .eq('patient_id', request.patientId)
+          .limit(1);
+        
+        if (companyId) {
+          patientQuery = patientQuery.eq('company_id', companyId);
+        }
+        
+        const { data: patientData } = await patientQuery.maybeSingle();
+        if (patientData && (patientData as any)?.id) {
+          patientUuid = (patientData as any).id;
+        }
+      }
+
+      // Build query to find most recent eligibility verification
+      let eligibilityQuery = supabase
+        .from('eligibility_verifications' as any)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      // Filter by patient (UUID or patient_id)
+      if (patientUuid) {
+        eligibilityQuery = eligibilityQuery.eq('patient_id', patientUuid);
+      } else if (request.patientId) {
+        // Fallback: try to match by insurance_id or subscriber_id
+        eligibilityQuery = eligibilityQuery.or(`insurance_id.eq.${request.subscriberId},insurance_id.eq.${request.patientId}`);
+      }
+
+      // Filter by payer/insurance if provided
+      if (request.payerId) {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(request.payerId)) {
+          eligibilityQuery = eligibilityQuery.eq('primary_insurance_id', request.payerId);
+        } else {
+          eligibilityQuery = eligibilityQuery.ilike('primary_insurance_name', `%${request.payerId}%`);
+        }
+      }
+
+      // Filter by service date if provided
+      if (request.serviceDate) {
+        eligibilityQuery = eligibilityQuery.or(`appointment_date.eq.${request.serviceDate},date_of_service.eq.${request.serviceDate}`);
+      }
+
+      // Filter by company if provided
+      if (companyId) {
+        eligibilityQuery = eligibilityQuery.eq('company_id', companyId);
+      }
+
+      const { data: eligibilityData, error: eligibilityError } = await eligibilityQuery.maybeSingle();
+
+      if (eligibilityError && eligibilityError.code !== 'PGRST116') {
+        // PGRST116 = no rows returned (not an error, just no data)
+        console.warn('⚠️ Error querying eligibility verification:', eligibilityError);
+      }
+
+      if (eligibilityData) {
+        console.log('✅ Found eligibility verification in database:', eligibilityData.id);
+        const elig = eligibilityData as any;
+        
+        // Convert database record to EligibilityResponse format
+        return {
+          isEligible: elig.is_eligible ?? false,
+          coverage: {
+            copay: elig.copay ?? 0,
+            deductible: elig.deductible ?? 0,
+            coinsurance: elig.coinsurance ?? 0,
+            outOfPocketMax: elig.out_of_pocket_max ?? elig.out_of_pocket_remaining ?? 0,
+          },
+          benefits: elig.cpt_codes?.map((code: string) => ({
+            serviceCode: code,
+            description: '',
+            covered: true,
+            copay: elig.copay ?? 0
+          })) || [],
+          effectiveDate: elig.effective_date || elig.appointment_date || elig.date_of_service || new Date().toISOString().split('T')[0],
+          terminationDate: elig.termination_date || undefined,
+        };
+      }
+
+      // If no eligibility found in database, return default response indicating no eligibility data
+      console.log('ℹ️ No eligibility verification found in database for this patient/insurance combination');
+      return {
+        isEligible: false,
+        coverage: {
+          copay: 0,
+          deductible: 0,
+          coinsurance: 0,
+          outOfPocketMax: 0,
+        },
+        benefits: [],
+        effectiveDate: request.serviceDate || new Date().toISOString().split('T')[0],
+        terminationDate: undefined,
+      };
     } catch (error) {
       console.error('Eligibility check error:', error);
       throw error;

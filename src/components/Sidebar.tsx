@@ -356,6 +356,12 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       badge: null,
     },
     {
+      id: "pos-tos-config",
+      label: "POS & TOS",
+      icon: MapPin,
+      badge: null,
+    },
+    {
       id: "alert-control",
       label: "Alert Control",
       icon: AlertTriangle,
@@ -462,6 +468,7 @@ export const Sidebar = ({ currentPage = "dashboard", onPageChange }: SidebarProp
       'payer-agreements': '/customer-setup?tab=payer-agreements',
       'collection-agencies': '/customer-setup?tab=collection-agencies',
       codes: '/customer-setup?tab=codes',
+      'pos-tos-config': '/customer-setup?tab=pos-tos-config',
       'alert-control': '/customer-setup?tab=alert-control',
       statements: '/customer-setup?tab=statements',
       superbills: '/customer-setup?tab=superbills',

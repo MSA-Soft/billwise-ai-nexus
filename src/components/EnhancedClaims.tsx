@@ -33,9 +33,11 @@ import { AIAnalysisPanel } from '@/components/EnhancedClaims/AIAnalysisPanel';
 import { LetterGenerator } from '@/components/EnhancedClaims/LetterGenerator';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function EnhancedClaims() {
   const { toast } = useToast();
+  const { currentCompany, isSuperAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('claims-list');
   const [showNewClaimForm, setShowNewClaimForm] = useState(false);
   const [showCMS1500Form, setShowCMS1500Form] = useState(false);
@@ -50,14 +52,28 @@ export function EnhancedClaims() {
     const fetchClaims = async () => {
       setIsLoadingClaims(true);
       try {
-        // First, fetch claims with nested relations that should work
-        const { data: claimsData, error: claimsError } = await supabase
+        // CRITICAL: Filter by company_id for multi-tenant isolation
+        // Note: claims table may not have company_id, but professional_claims does
+        // For now, we'll fetch from claims table (legacy) without company filter
+        // If you have professional_claims, use that with company filter instead
+        let claimsQuery = supabase
           .from('claims' as any)
           .select(`
             *,
             claim_procedures (*),
             claim_diagnoses (*)
-          `)
+          `);
+        
+        // Super admins can see all claims, regular users see only their company's claims
+        // Note: If claims table has company_id column, uncomment the filter below
+        // if (isSuperAdmin) {
+        //   console.log('👑 Super admin - fetching all claims (no company filter)');
+        // } else if (currentCompany?.id) {
+        //   console.log('🏢 Filtering claims by company_id:', currentCompany.id);
+        //   claimsQuery = claimsQuery.eq('company_id', currentCompany.id);
+        // }
+        
+        const { data: claimsData, error: claimsError } = await claimsQuery
           .order('created_at', { ascending: false })
           .limit(100);
 

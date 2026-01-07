@@ -15,6 +15,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -57,7 +60,9 @@ import {
   GripVertical,
   ChevronUp,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  MessageSquare,
+  Stethoscope
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -66,7 +71,8 @@ import { getCodeValidationService } from "@/services/codeValidationService";
 import { supabase } from "@/integrations/supabase/client";
 import { eligibilityAuditService } from "@/services/eligibilityAuditService";
 import { useAuth } from "@/contexts/AuthContext";
-import AuthorizationRequestDialog from "@/components/AuthorizationRequestDialog";
+import AuthorizationRequestDialog from '@/components/AuthorizationRequestDialog';
+import { PatientRegistrationForm } from '@/components/PatientRegistrationForm';
 //#endregion
 
 type HistoryDownloadFormat = "xlsx" | "csv" | "pdf" | "json";
@@ -90,6 +96,8 @@ const EligibilityVerification = () => {
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [nppList, setNppList] = useState<Array<{ id: string; name: string; npi: string }>>([]);
   const [isLoadingNpp, setIsLoadingNpp] = useState(false);
+  const [payers, setPayers] = useState<any[]>([]);
+  const [isLoadingPayers, setIsLoadingPayers] = useState(false);
   const [verificationSerialNo, setVerificationSerialNo] = useState(1);
   const [cptCodeFees, setCptCodeFees] = useState<Map<string, number>>(new Map());
   const [estimateTemplates, setEstimateTemplates] = useState<Array<{ id: string; name: string; data: any }>>([]);
@@ -98,6 +106,8 @@ const EligibilityVerification = () => {
   const [showCalculationDetails, setShowCalculationDetails] = useState(false);
   const [showAbnDialog, setShowAbnDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showPatientEditModal, setShowPatientEditModal] = useState(false);
+  const [showPatientRegistrationModal, setShowPatientRegistrationModal] = useState(false);
   // Dynamic columns for verification history
   const [historyVisibleColumns, setHistoryVisibleColumns] = useState<string[]>([
     "S.No",
@@ -133,6 +143,70 @@ const EligibilityVerification = () => {
   //#region State - Patient Management
   const [patientIdSearch, setPatientIdSearch] = useState("");
   const [isSearchingPatient, setIsSearchingPatient] = useState(false);
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
+  const [patientSearchQuery, setPatientSearchQuery] = useState("");
+  const [posComboboxOpen, setPosComboboxOpen] = useState(false);
+  const [posSearchQuery, setPosSearchQuery] = useState("");
+  const [tosComboboxOpen, setTosComboboxOpen] = useState(false);
+  const [tosSearchQuery, setTosSearchQuery] = useState("");
+  
+  // State for POS and TOS codes (configured from database, not hardcoded)
+  const [placeOfServiceCodes, setPlaceOfServiceCodes] = useState<Array<{code: string; description: string}>>([]);
+  const [typeOfServiceCodes, setTypeOfServiceCodes] = useState<Array<{code: string; description: string}>>([]);
+  
+  // Fetch POS and TOS codes from database
+  useEffect(() => {
+    const fetchCodes = async () => {
+      try {
+        // Try to fetch POS codes from database
+        const { data: posData, error: posError } = await supabase
+          .from('place_of_service_codes' as any)
+          .select('code, description')
+          .order('code', { ascending: true });
+          
+        if (!posError && posData && Array.isArray(posData)) {
+          setPlaceOfServiceCodes(posData as any);
+        }
+        
+        // Try to fetch TOS codes from database
+        const { data: tosData, error: tosError } = await supabase
+          .from('type_of_service_codes' as any)
+          .select('code, description')
+          .order('code', { ascending: true });
+          
+        if (!tosError && tosData && Array.isArray(tosData)) {
+          setTypeOfServiceCodes(tosData as any);
+        }
+      } catch (error) {
+        console.warn('Could not fetch POS/TOS codes from database. Please configure place_of_service_codes and type_of_service_codes tables:', error);
+      }
+    };
+    
+    fetchCodes();
+  }, []);
+  
+  // SQL to create tables if needed (for reference):
+  /*
+  CREATE TABLE place_of_service_codes (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    code VARCHAR(10) NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  
+  CREATE TABLE type_of_service_codes (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    code VARCHAR(10) NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  */
+  
+  
   const [showQuickAddPatient, setShowQuickAddPatient] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({
     firstName: "",
@@ -250,7 +324,16 @@ const EligibilityVerification = () => {
     patientName: "",
     patientId: "", // External patient ID (PAT-001) for display
     patientUuid: "", // Internal UUID from patients.id for database
+    firstName: "",
+    lastName: "",
     dob: "",
+    gender: "",
+    phone: "",
+    email: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
     patientGender: "",
     patientAddress: "",
     patientCity: "",
@@ -270,6 +353,7 @@ const EligibilityVerification = () => {
     subscriberState: "",
     subscriberZip: "",
     primaryInsurance: "",
+    primaryInsuranceId: "",
     insuranceId: "",
     groupNumber: "",
     insurancePlan: "",
@@ -291,13 +375,11 @@ const EligibilityVerification = () => {
       code: string;
       modifier1: string;
       modifier2: string;
-      modifier3: string;
+      icd: string; // Linked ICD code
       pos: string; // Place of Service
       tos: string; // Type of Service
       units: string;
       charge: string;
-      renderingNpi: string;
-      ndc: string;
     }>,
     icdCodes: [] as Array<{
       code: string;
@@ -309,15 +391,13 @@ const EligibilityVerification = () => {
       code: "",
       modifier1: "",
       modifier2: "",
-      modifier3: "",
+      icd: "", // ICD code linked to this CPT
       pos: "",
       tos: "",
       units: "",
       charge: "",
-      renderingNpi: "",
-      ndc: "", // National Drug Code
     },
-    // Current ICD row being edited
+    // Current ICD row being edited (kept for compatibility)
     currentIcd: {
       code: "",
       description: "",
@@ -327,6 +407,7 @@ const EligibilityVerification = () => {
     
     // Secondary Insurance
     secondaryInsuranceName: "",
+    secondaryInsurance: "",
     secondaryInsuranceCoverage: "",
     secondaryInsuranceId: "", // Subscriber/Member ID
     secondaryGroupNumber: "",
@@ -341,11 +422,14 @@ const EligibilityVerification = () => {
     secondaryDeductible: "",
     secondaryDeductibleMet: "",
     secondaryCoInsurance: "",
+    secondaryPolicyHolderName: "",
+    secondaryPolicyHolderRelationship: "",
     cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
     cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
     
     // Referral & Authorization
     referralRequired: false,
+    referralStatus: "active", // Active or Inactive
     referralObtainedFrom: "", // "PCP" or "Insurance Approved PCP"
     referralPCPStatus: "", // "On File" or "Required" (only if obtained from PCP)
     referralNumber: "",
@@ -389,12 +473,28 @@ const EligibilityVerification = () => {
     
     // Additional Information
     remarks: "",
+    comments: "",
+    commentEntries: [] as Array<{id: string, text: string, attachments: Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>, timestamp: string, author: string}>,
+    attachments: [] as Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>,
     dateChecked: new Date().toISOString().split('T')[0],
     verifiedBy: "", // User who performed verification
     checkBy: "", // Current user who checked (QA/Review)
     verificationMethod: "manual", // manual, automated, portal
     demographicChangesMade: false,
     qa: false,
+    // Emergency Contact
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    emergencyContactRelation: "",
+    // Policy Holder Information
+    policyHolderName: "",
+    policyHolderRelationship: "",
+    // Medical Information
+    knownAllergies: "",
+    currentMedications: "",
+    medicalConditions: "",
+    previousSurgeries: "",
+    familyHistory: "",
     // Demographic display (read-only, populated when patient selected)
     demographicDisplay: {
       patientId: "",
@@ -411,6 +511,9 @@ const EligibilityVerification = () => {
       state: "",
       zip: "",
       ssn: "",
+      emergencyContactName: "",
+      emergencyContactPhone: "",
+      emergencyContactRelation: "",
     } as {
       patientId: string;
       firstName: string;
@@ -426,9 +529,25 @@ const EligibilityVerification = () => {
       state: string;
       zip: string;
       ssn: string;
+      emergencyContactName: string;
+      emergencyContactPhone: string;
+      emergencyContactRelation: string;
     },
   });
-
+  
+  // Monitor CPT codes for Surgery TOS and automatically set prior authorization
+  useEffect(() => {
+    const hasSurgeryTos = verificationForm.cptCodes.some(
+      cpt => (cpt.tos || "").toUpperCase() === "2" // TOS code 2 = Surgery
+    );
+    
+    // Only update if there's a mismatch between TOS and prior auth status
+    if (hasSurgeryTos && !verificationForm.preAuthorizationRequired) {
+      // Surgery TOS is present but prior auth is not set - enable it
+      setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: true }));
+    }
+  }, [verificationForm.cptCodes]);
+  
   // Enhanced form state
   const [formData, setFormData] = useState({
     // Patient Information
@@ -847,8 +966,7 @@ const EligibilityVerification = () => {
   const [modifierValidation, setModifierValidation] = useState<{
     modifier1: { isValid: boolean; message: string } | null;
     modifier2: { isValid: boolean; message: string } | null;
-    modifier3: { isValid: boolean; message: string } | null;
-  }>({ modifier1: null, modifier2: null, modifier3: null });
+  }>({ modifier1: null, modifier2: null });
 
   const openEdit = (entry: any) => {
     setEditEntry({ ...entry });
@@ -908,28 +1026,156 @@ const EligibilityVerification = () => {
     const estimated = entry.estimatedResponsibility;
     const fallbackTotal = (entry.coverage?.copay ?? 0) + (entry.coverage?.deductible ?? 0);
     const total = estimated ?? entry.totalCollectible ?? fallbackTotal;
-    const text = `Eligibility for ${entry.patientName || entry.patientId}\nS.No: ${entry.serialNo || '-'}\nPayer: ${entry.payerId}\nStatus: ${entry.isEligible ? 'Eligible' : 'InEligible'}\nPlan: ${entry.planType || '-'}\nNetwork: ${entry.inNetworkStatus || '-'}\nAppointment Location: ${entry.appointmentLocation || '-'}\nDOS/Appt Date: ${entry.appointmentDate || '-'}\nType of Visit: ${entry.typeOfVisit || '-'}\nCopay: $${entry.coverage?.copay ?? 0}\nDeductible: $${entry.coverage?.deductible ?? 0}\nCoinsurance: ${entry.coverage?.coinsurance ?? '-'}\nAllowed Amount: $${entry.allowedAmount ?? '-'}\nEstimated Responsibility: $${estimated ?? '-'}\nTotal Collectible: $${total}\nEffective: ${entry.effectiveDate || '-'}\nTermination: ${entry.terminationDate || '-'}`;
+    const text = `Eligibility for ${entry.patientName || entry.patientId}
+S.No: ${entry.serialNo || '-'}
+Payer: ${entry.payerId}
+Status: ${entry.isEligible ? 'Eligible' : 'InEligible'}
+Plan: ${entry.planType || '-'}
+Network: ${entry.inNetworkStatus || '-'}
+Appointment Location: ${entry.appointmentLocation || '-'}
+DOS/Appt Date: ${entry.appointmentDate || '-'}
+Type of Visit: ${entry.typeOfVisit || '-'}
+Copay: $${entry.coverage?.copay ?? 0}
+Deductible: $${entry.coverage?.deductible ?? 0}
+Coinsurance: ${entry.coverage?.coinsurance ?? '-'}
+Allowed Amount: $${entry.allowedAmount ?? '-'}
+Estimated Responsibility: $${estimated ?? '-'}
+Total Collectible: $${total}
+Effective: ${entry.effectiveDate || '-'}
+Termination: ${entry.terminationDate || '-'}`;
     try { await navigator.clipboard.writeText(text); toast({ title: 'Copied', description: 'Summary copied to clipboard' }); } catch {}
   };
 
   const duplicateToForm = (entry: any) => {
     setVerificationForm(v => ({
       ...v,
-      patientId: entry.patientId,
-      patientName: entry.patientName || '',
-      appointmentDate: new Date().toISOString().split('T')[0],
-      dateOfService: new Date().toISOString().split('T')[0],
-      appointmentLocation: entry.appointmentLocation || v.appointmentLocation,
-      typeOfVisit: entry.typeOfVisit || v.typeOfVisit,
-      primaryInsurance: entry.payerId,
-      insurancePlan: entry.payerId,
-      planType: entry.planType || v.planType,
-      effectiveDate: entry.effectiveDate || v.effectiveDate,
-      terminationDate: entry.terminationDate || v.terminationDate,
-      inNetworkStatus: entry.inNetworkStatus || v.inNetworkStatus,
-      coPay: String(entry.coverage?.copay ?? v.coPay),
-      deductible: String(entry.coverage?.deductible ?? v.deductible),
-      coInsurance: String(entry.coverage?.coinsurance ?? v.coInsurance),
+      // Patient Information
+      patientId: entry.patientId || v.patientId,
+      patientName: entry.patientName || v.patientName,
+      dob: entry.patientDob || entry.patient_dob || v.dob,
+      patientGender: entry.patientGender || entry.patient_gender || v.patientGender,
+      patientAddress: entry.patientAddress || entry.patient_address || v.patientAddress,
+      patientCity: entry.patientCity || entry.patient_city || v.patientCity,
+      patientState: entry.patientState || entry.patient_state || v.patientState,
+      patientZip: entry.patientZip || entry.patient_zip || v.patientZip,
+      patientPhone: entry.patientPhone || entry.patient_phone || v.patientPhone,
+      
+      // Appointment Information
+      appointmentDate: entry.appointmentDate || entry.appointment_date || v.appointmentDate,
+      dateOfService: entry.dateOfService || entry.date_of_service || v.dateOfService,
+      appointmentLocation: entry.appointmentLocation || entry.appointment_location || v.appointmentLocation,
+      typeOfVisit: entry.typeOfVisit || entry.type_of_visit || v.typeOfVisit,
+      serviceType: entry.serviceType || entry.service_type || v.serviceType,
+      
+      // Insurance Information
+      primaryInsurance: entry.payerId || entry.primary_insurance_name || v.primaryInsurance,
+      insuranceId: entry.insuranceId || entry.insurance_id || v.insuranceId,
+      insurancePlan: entry.insurancePlan || entry.insurance_plan || v.insurancePlan,
+      groupNumber: entry.groupNumber || entry.group_number || v.groupNumber,
+      planType: entry.planType || entry.plan_type || v.planType,
+      effectiveDate: entry.effectiveDate || entry.effective_date || v.effectiveDate,
+      terminationDate: entry.terminationDate || entry.termination_date || v.terminationDate,
+      
+      // Financial Information
+      coPay: String(entry.coverage?.copay ?? entry.copay ?? entry.co_pay ?? v.coPay),
+      coInsurance: String(entry.coverage?.coinsurance ?? entry.coinsurance ?? entry.co_insurance ?? v.coInsurance),
+      deductible: String(entry.coverage?.deductible ?? entry.deductible ?? v.deductible),
+      deductibleStatus: entry.deductibleStatus || entry.deductible_status || v.deductibleStatus,
+      deductibleAmount: String(entry.deductibleAmount ?? entry.deductible_amount ?? v.deductibleAmount),
+      outOfPocketRemaining: String(entry.outOfPocketRemaining ?? entry.out_of_pocket_remaining ?? v.outOfPocketRemaining),
+      outOfPocketMax: String(entry.outOfPocketMax ?? entry.out_of_pocket_max ?? v.outOfPocketMax),
+      inNetworkStatus: entry.inNetworkStatus || entry.in_network_status || v.inNetworkStatus,
+      allowedAmount: String(entry.allowedAmount ?? entry.allowed_amount ?? v.allowedAmount),
+      
+      // Provider Information
+      providerId: entry.providerId || entry.provider_id || v.providerId,
+      providerName: entry.providerName || entry.provider_name || v.providerName,
+      nppId: entry.nppId || entry.npp_id || v.nppId,
+      nppName: entry.nppName || entry.npp_name || v.nppName,
+      
+      // Secondary Insurance
+      secondaryInsuranceName: entry.secondaryInsuranceName || entry.secondary_insurance_name || v.secondaryInsuranceName,
+      secondaryInsuranceCoverage: entry.secondaryInsuranceCoverage || entry.secondary_insurance_coverage || v.secondaryInsuranceCoverage,
+      secondaryInsuranceId: entry.secondaryInsuranceId || entry.secondary_insurance_id || v.secondaryInsuranceId,
+      secondaryGroupNumber: entry.secondaryGroupNumber || entry.secondary_group_number || v.secondaryGroupNumber,
+      
+      // Referral & Authorization
+      referralRequired: entry.referralRequired || entry.referral_required || v.referralRequired,
+      referralNumber: entry.referralNumber || entry.referral_number || v.referralNumber,
+      preAuthorizationRequired: entry.preAuthorizationRequired || entry.pre_authorization_required || v.preAuthorizationRequired,
+      priorAuthNumber: entry.priorAuthNumber || entry.prior_auth_number || v.priorAuthNumber,
+      
+      // Financial Information
+      previousBalanceCredit: String(entry.previousBalanceCredit ?? entry.previous_balance_credit ?? v.previousBalanceCredit),
+      patientResponsibility: String(entry.patientResponsibility ?? entry.patient_responsibility ?? v.patientResponsibility),
+      collection: String(entry.collection ?? v.collection),
+      estimatedCost: String(entry.estimatedCost ?? entry.estimated_cost ?? v.estimatedCost),
+      
+      // Additional Information
+      remarks: entry.remarks || v.remarks,
+      comments: entry.comments || v.comments,
+      commentEntries: entry.commentEntries || entry.comment_entries || v.commentEntries,
+      dateChecked: entry.dateChecked || entry.date_checked || new Date().toISOString().split('T')[0],
+      verificationMethod: entry.verificationMethod || entry.verification_method || v.verificationMethod,
+      demographicChangesMade: entry.demographicChangesMade || entry.demographic_changes_made || v.demographicChangesMade,
+      qa: entry.qa || v.qa,
+      
+      // CPT and ICD Codes (if available in the entry)
+      // Prefer full JSON details when available, otherwise map simple code arrays to full objects
+      cptCodes: entry.cptCodes
+        || entry.cpt_details
+        || (Array.isArray(entry.cpt_codes)
+          ? entry.cpt_codes.map((code: string) => ({
+              code,
+              modifier1: "",
+              modifier2: "",
+              icd: "",
+              pos: "",
+              tos: "",
+              units: "",
+              charge: "",
+            }))
+          : v.cptCodes),
+      icdCodes: entry.icdCodes
+        || entry.icd_details
+        || (Array.isArray(entry.icd_codes)
+          ? entry.icd_codes.map((code: string) => ({
+              code,
+              description: "",
+              type: "DX",
+              isPrimary: false,
+            }))
+          : v.icdCodes),
+      
+      // Status
+      status: entry.status || v.status,
+      
+      // QMB and Coverage
+      isQMB: entry.isQMB || entry.is_qmb || v.isQMB,
+      isCoveredService: entry.isCoveredService || entry.is_covered_service || v.isCoveredService,
+      
+      // Insurance Payments
+      primaryPayment: String(entry.primaryPayment ?? entry.primary_payment ?? v.primaryPayment),
+      secondaryPayment: String(entry.secondaryPayment ?? entry.secondary_payment ?? v.secondaryPayment),
+      
+      // Coverage percents
+      primaryCoveragePercent: String(entry.primaryCoveragePercent ?? entry.primary_coverage_percent ?? v.primaryCoveragePercent),
+      secondaryCoveragePercent: String(entry.secondaryCoveragePercent ?? entry.secondary_coverage_percent ?? v.secondaryCoveragePercent),
+      
+      // Self Pay
+      isSelfPay: entry.isSelfPay || entry.is_self_pay || v.isSelfPay,
+      
+      // Demographics
+      demographic: entry.demographic || v.demographic,
+      
+      // Subscriber information
+      subscriberIsPatient: entry.subscriberIsPatient || entry.subscriber_is_patient || v.subscriberIsPatient,
+      subscriberId: entry.subscriberId || entry.subscriber_id || v.subscriberId,
+      subscriberFirstName: entry.subscriberFirstName || entry.subscriber_first_name || v.subscriberFirstName,
+      subscriberLastName: entry.subscriberLastName || entry.subscriber_last_name || v.subscriberLastName,
+      subscriberDOB: entry.subscriberDOB || entry.subscriber_dob || v.subscriberDOB,
+      subscriberGender: entry.subscriberGender || entry.subscriber_gender || v.subscriberGender,
+      subscriberRelationship: entry.subscriberRelationship || entry.subscriber_relationship || v.subscriberRelationship,
     }));
     toast({ title: 'Prefilled', description: 'Form prefilled from history entry' });
   };
@@ -975,7 +1221,7 @@ const EligibilityVerification = () => {
       toast({ title: 'Re-verified', description: `Updated result for ${entry.patientId}` });
   };
 
-  const payers = [
+  const mockPayers = [
     { id: "MEDICARE", name: "Medicare", type: "Government" },
     { id: "MEDICAID", name: "Medicaid", type: "Government" },
     { id: "BCBS", name: "Blue Cross Blue Shield", type: "Commercial" },
@@ -1355,7 +1601,7 @@ const EligibilityVerification = () => {
         ...prev,
         // Patient Information - ALL from database
         patientId: patientData.patient_id || selectedPatient.patient_id || selectedPatientId, // External ID for display
-        patientUuid: data.id || selectedPatient.id || '', // UUID for database
+        patientUuid: selectedPatient.id || '', // UUID for database
         patientName: fullName,
         dob: formattedDob || prev.dob,
         patientGender: patientData.gender || prev.patientGender,
@@ -1384,6 +1630,9 @@ const EligibilityVerification = () => {
           state: patientData.state || "",
           zip: patientData.zip_code || "",
           ssn: patientData.ssn || "",
+          emergencyContactName: patientData.emergency_contact_name || "",
+          emergencyContactPhone: patientData.emergency_contact_phone || "",
+          emergencyContactRelation: patientData.emergency_contact_relation || "",
         },
       }));
 
@@ -1534,6 +1783,9 @@ const EligibilityVerification = () => {
           state: patientData.state || "",
           zip: patientData.zip_code || "",
           ssn: patientData.ssn || "",
+          emergencyContactName: patientData.emergency_contact_name || "",
+          emergencyContactPhone: patientData.emergency_contact_phone || "",
+          emergencyContactRelation: patientData.emergency_contact_relation || "",
         },
       }));
 
@@ -1612,7 +1864,7 @@ const EligibilityVerification = () => {
       setVerificationForm(prev => ({
         ...prev,
         patientId: patientId, // External ID (PAT-001)
-        patientUuid: (newPatient as any).id || '', // UUID from database
+        patientUuid: (data as any)?.id || '', // UUID from database
         patientName: patientName,
         dob: quickAddForm.dob,
         patientGender: quickAddForm.gender,
@@ -1983,17 +2235,14 @@ const EligibilityVerification = () => {
     const cptCode = verificationForm.currentCpt.code.trim();
     const modifier1 = verificationForm.currentCpt.modifier1.trim();
     const modifier2 = verificationForm.currentCpt.modifier2.trim();
-    const modifier3 = verificationForm.currentCpt.modifier3.trim();
 
     setModifierValidation({
       modifier1: modifier1 ? validateModifier(modifier1, cptCode) : null,
       modifier2: modifier2 ? validateModifier(modifier2, cptCode) : null,
-      modifier3: modifier3 ? validateModifier(modifier3, cptCode) : null,
     });
   }, [
     verificationForm.currentCpt.modifier1,
     verificationForm.currentCpt.modifier2,
-    verificationForm.currentCpt.modifier3,
     verificationForm.currentCpt.code,
   ]);
 
@@ -2314,6 +2563,20 @@ const EligibilityVerification = () => {
       return;
     }
 
+    // Auto-flag prior authorization when TOS indicates surgery or facility-based services
+    const hasSurgeryTos = verificationForm.cptCodes.some(
+      cpt => (cpt.tos || "").toUpperCase() === "2" // TOS code 2 = Surgery
+    );
+    const hasFacilityPos = verificationForm.cptCodes.some(
+      cpt => cpt.pos && !["11", "12"].includes(cpt.pos) // anything other than Office/Home treated as facility
+    );
+    if ((hasSurgeryTos || hasFacilityPos) && !verificationForm.preAuthorizationRequired) {
+      setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: true }));
+      if (verificationForm.patientId) {
+        setShowAuthDialog(true);
+      }
+    }
+
     setIsLoading(true);
     let errorOccurred = false;
     let savedSuccessfully = false;
@@ -2592,8 +2855,14 @@ const EligibilityVerification = () => {
             icd_codes: verificationForm.icdCodes.length > 0
               ? verificationForm.icdCodes.map(icd => icd.code).filter(code => code && code.trim() !== '')
               : null,
+            // Full CPT/ICD details for editing (JSONB)
+            cpt_details: verificationForm.cptCodes.length > 0 ? verificationForm.cptCodes : null,
+            icd_details: verificationForm.icdCodes.length > 0 ? verificationForm.icdCodes : null,
             // Additional Information
             remarks: verificationForm.remarks,
+            comments: verificationForm.comments,
+            comment_entries: verificationForm.commentEntries || [],
+            attachments: verificationForm.attachments || [],
             date_checked: verificationForm.dateChecked || new Date().toISOString().split('T')[0],
             // Note: check_by field doesn't exist in schema, using verified_by instead
             demographic_changes_made: verificationForm.demographicChangesMade || false,
@@ -2694,6 +2963,9 @@ const EligibilityVerification = () => {
                   patient_responsibility: parseFloat(verificationForm.patientResponsibility || '0'),
                   collection_amount: parseFloat(verificationForm.collection || '0'),
                   remarks: verificationForm.remarks,
+                  comments: verificationForm.comments,
+                  comment_entries: verificationForm.commentEntries || [],
+                  attachments: verificationForm.attachments || [],
                   date_checked: verificationForm.dateChecked || new Date().toISOString().split('T')[0],
                   // Note: check_by field may not exist in referrals table schema
                   demographic_changes_made: verificationForm.demographicChangesMade || false,
@@ -3012,23 +3284,32 @@ const EligibilityVerification = () => {
       if (savedSuccessfully) {
         setVerificationForm({
         serialNo: "",
-        description: "",
-        providerId: "",
-        providerName: "",
-        nppId: "",
-        nppName: "",
+        description: "", // Service description
+        providerId: "", // Provider selection
+        providerName: "", // Provider display name
+        nppId: "", // Non-Physician Practitioner ID
+        nppName: "", // Non-Physician Practitioner name
         appointmentLocation: "",
         appointmentDate: "",
         dateOfService: "",
         demographic: "",
         typeOfVisit: "",
-        serviceType: "",
-        status: "pending",
+        serviceType: "", // Inpatient, Outpatient, Emergency, etc.
+        status: "pending" as "pending" | "verified" | "completed" | "cancelled",
         isSelfPay: false,
         patientName: "",
-        patientId: "",
-        patientUuid: "",
+        patientId: "", // External patient ID (PAT-001) for display
+        patientUuid: "", // Internal UUID from patients.id for database
+        firstName: "",
+        lastName: "",
         dob: "",
+        gender: "",
+        phone: "",
+        email: "",
+        address: "",
+        city: "",
+        state: "",
+        zip: "",
         patientGender: "",
         patientAddress: "",
         patientCity: "",
@@ -3042,12 +3323,13 @@ const EligibilityVerification = () => {
         subscriberMiddleInitial: "",
         subscriberDOB: "",
         subscriberGender: "",
-        subscriberRelationship: "",
+        subscriberRelationship: "", // Self, Spouse, Child, Parent, etc.
         subscriberAddress: "",
         subscriberCity: "",
         subscriberState: "",
         subscriberZip: "",
         primaryInsurance: "",
+        primaryInsuranceId: "",
         insuranceId: "",
         groupNumber: "",
         insurancePlan: "",
@@ -3063,33 +3345,49 @@ const EligibilityVerification = () => {
         inNetworkStatus: "",
         allowedAmount: "",
         copayBeforeDeductible: true,
-        deductibleStatus: "Met",
+        deductibleStatus: "Met" as "Met" | "Not Met",
         deductibleAmount: "",
-        cptCodes: [],
-        icdCodes: [],
+        cptCodes: [] as Array<{
+          code: string;
+          modifier1: string;
+          modifier2: string;
+          icd: string; // Linked ICD code
+          pos: string; // Place of Service
+          tos: string; // Type of Service
+          units: string;
+          charge: string;
+        }>,
+        icdCodes: [] as Array<{
+          code: string;
+          description: string;
+          type: string;
+          isPrimary: boolean;
+        }>,
         currentCpt: {
           code: "",
           modifier1: "",
           modifier2: "",
-          modifier3: "",
+          icd: "", // ICD code linked to this CPT
           pos: "",
           tos: "",
           units: "",
           charge: "",
-          renderingNpi: "",
-          ndc: "",
         },
+        // Current ICD row being edited (kept for compatibility)
         currentIcd: {
           code: "",
           description: "",
-          type: "DX",
+          type: "DX", // DX = Diagnosis, PX = Procedure
           isPrimary: false,
         },
+        
+        // Secondary Insurance
         secondaryInsuranceName: "",
+        secondaryInsurance: "",
         secondaryInsuranceCoverage: "",
-        secondaryInsuranceId: "",
+        secondaryInsuranceId: "", // Subscriber/Member ID
         secondaryGroupNumber: "",
-        secondaryRelationshipCode: "",
+        secondaryRelationshipCode: "", // Self, Spouse, Child, Parent, Other
         secondaryEffectiveDate: "",
         secondaryTerminationDate: "",
         secondarySubscriberFirstName: "",
@@ -3100,18 +3398,23 @@ const EligibilityVerification = () => {
         secondaryDeductible: "",
         secondaryDeductibleMet: "",
         secondaryCoInsurance: "",
-        cobRule: "",
-        cobIndicator: "S" as "P" | "S" | "T" | "A",
+        secondaryPolicyHolderName: "",
+        secondaryPolicyHolderRelationship: "",
+        cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
+        cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
+        
+        // Referral & Authorization
         referralRequired: false,
-        referralObtainedFrom: "",
-        referralPCPStatus: "",
+        referralStatus: "active", // Active or Inactive
+        referralObtainedFrom: "", // "PCP" or "Insurance Approved PCP"
+        referralPCPStatus: "", // "On File" or "Required" (only if obtained from PCP)
         referralNumber: "",
         preAuthorizationRequired: false,
         priorAuthNumber: "",
-        priorAuthStatus: "",
+        priorAuthStatus: "", // Not Started, Request Submitted, Pending, Under Review, Approved, Denied, Expired, Cancelled
         priorAuthRequestDate: "",
         priorAuthSubmissionDate: "",
-        priorAuthSubmissionMethod: "",
+        priorAuthSubmissionMethod: "", // Electronic (X12 278), Portal, Fax, Email, Phone
         priorAuthPayerConfirmationNumber: "",
         priorAuthExpectedResponseDate: "",
         priorAuthResponseDate: "",
@@ -3124,26 +3427,51 @@ const EligibilityVerification = () => {
         priorAuthServiceDate: "",
         priorAuthAppealSubmitted: false,
         priorAuthAppealDate: "",
-        priorAuthAppealStatus: "",
+        priorAuthAppealStatus: "", // Pending, Approved, Denied
         priorAuthAppealDecisionDate: "",
+        
+        // Financial Information
         previousBalanceCredit: "",
         patientResponsibility: "",
         collection: "",
         estimatedCost: "",
+        // Visit amounts
         billedAmount: "",
-        isQMB: false,
-        isCoveredService: true,
-        primaryPayment: "",
-        secondaryPayment: "",
+        // QMB and Coverage
+        isQMB: false, // Qualified Medicare Beneficiary
+        isCoveredService: true, // Is service Medicare covered
+        // Insurance Payments
+        primaryPayment: "", // Amount paid by primary insurance
+        secondaryPayment: "", // Amount paid by secondary insurance (if any)
+        // Coverage percents (prototype-driven)
         primaryCoveragePercent: "",
         secondaryCoveragePercent: "",
+        
+        // Additional Information
         remarks: "",
+        comments: "",
+        commentEntries: [] as Array<{id: string, text: string, attachments: Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>, timestamp: string, author: string}>,
+        attachments: [] as Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>,
         dateChecked: new Date().toISOString().split('T')[0],
-        verifiedBy: "",
-        checkBy: "",
-        verificationMethod: "manual",
+        verifiedBy: "", // User who performed verification
+        checkBy: "", // Current user who checked (QA/Review)
+        verificationMethod: "manual", // manual, automated, portal
         demographicChangesMade: false,
         qa: false,
+        // Emergency Contact
+        emergencyContactName: "",
+        emergencyContactPhone: "",
+        emergencyContactRelation: "",
+        // Policy Holder Information
+        policyHolderName: "",
+        policyHolderRelationship: "",
+        // Medical Information
+        knownAllergies: "",
+        currentMedications: "",
+        medicalConditions: "",
+        previousSurgeries: "",
+        familyHistory: "",
+        // Demographic display (read-only, populated when patient selected)
         demographicDisplay: {
           patientId: "",
           firstName: "",
@@ -3159,7 +3487,28 @@ const EligibilityVerification = () => {
           state: "",
           zip: "",
           ssn: "",
-        },
+          emergencyContactName: "",
+          emergencyContactPhone: "",
+          emergencyContactRelation: "",
+        } as {
+          patientId: string;
+          firstName: string;
+          lastName: string;
+          middleInitial: string;
+          suffix: string;
+          dob: string;
+          gender: string;
+          phone: string;
+          email: string;
+          address: string;
+          city: string;
+          state: string;
+          zip: string;
+          ssn: string;
+          emergencyContactName: string;
+          emergencyContactPhone: string;
+          emergencyContactRelation: string;
+        }
       });
       }
     }
@@ -4182,171 +4531,87 @@ const EligibilityVerification = () => {
 
         <TabsContent value="verify" className="space-y-6">
                   <div className="space-y-6">
-                    {/* Estimate Info Section */}
-            <Card>
-              <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Shield className="h-5 w-5 text-blue-600" />
-                          Estimate Info
-                  </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                            <Label htmlFor="description">Description</Label>
-                    <Input
-                              id="description"
-                              value={verificationForm.description}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, description: e.target.value }))}
-                              placeholder="Enter service description"
-                              className="h-9"
-                    />
-                  </div>
-                  <div>
-                            <Label htmlFor="provider">Provider</Label>
-                            <Select 
-                              value={verificationForm.providerId} 
-                              onValueChange={(value) => {
-                                const provider = providers.find(p => p.id === value);
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  providerId: value,
-                                  providerName: provider ? `${provider.first_name} ${provider.last_name}${provider.title ? `, ${provider.title}` : ''}` : ""
-                                }));
-                              }}
-                              disabled={isLoadingProviders || verificationForm.isSelfPay}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder={isLoadingProviders ? "Loading..." : "Select provider"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {providers.map((provider) => (
-                                  <SelectItem key={provider.id} value={provider.id}>
-                                    {provider.first_name} {provider.last_name}{provider.title ? `, ${provider.title}` : ''} (NPI: {provider.npi})
-                                  </SelectItem>
-                                ))}
-                                {providers.length === 0 && !isLoadingProviders && (
-                                  <SelectItem value="none" disabled>No providers found</SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="npp">NPP (Non-Physician Practitioner)</Label>
-                            <Select 
-                              value={verificationForm.nppId} 
-                              onValueChange={(value) => {
-                                const npp = nppList.find(n => n.id === value);
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  nppId: value,
-                                  nppName: npp?.name || ""
-                                }));
-                              }}
-                              disabled={isLoadingNpp || verificationForm.isSelfPay}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder={isLoadingNpp ? "Loading..." : "Select NPP"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {nppList.map((npp) => (
-                                  <SelectItem key={npp.id} value={npp.id}>
-                                    {npp.name}
-                                  </SelectItem>
-                                ))}
-                                {nppList.length === 0 && !isLoadingNpp && (
-                                  <SelectItem value="none" disabled>No NPP found</SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                  <div>
-                            <Label htmlFor="serialNo">S.No (Auto Generated)</Label>
-                    <Input
-                              id="serialNo"
-                              value={verificationForm.serialNo}
-                              readOnly
-                              className="bg-muted h-9"
-                    />
-                  </div>
-                  <div>
-                            <Label htmlFor="appointmentLocation">Appointment Location *</Label>
-                            <Select 
-                              value={verificationForm.appointmentLocation} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, appointmentLocation: value }))}
-                              disabled={isLoadingFacilities}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder={isLoadingFacilities ? "Loading..." : "Select location"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {facilities.map((facility) => (
-                                  <SelectItem key={facility.id} value={facility.id}>
-                                    {facility.name}
-                                  </SelectItem>
-                                ))}
-                                {facilities.length === 0 && !isLoadingFacilities && (
-                                  <SelectItem value="none" disabled>No facilities found</SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="appointmentDate">Appointment Date / Date of Service *</Label>
-                      <Input
-                              id="appointmentDate"
-                        type="date"
-                              value={verificationForm.appointmentDate || verificationForm.dateOfService}
-                              onChange={(e) => {
-                                const date = e.target.value;
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  appointmentDate: date,
-                                  dateOfService: date 
-                                }));
-                              }}
-                              className="h-9"
-                              max={new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]}
-                      />
-                      {/* Real-time validation warnings */}
-                      {verificationForm.appointmentDate && (() => {
-                        const serviceDate = new Date(verificationForm.appointmentDate);
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const daysDiff = (today.getTime() - serviceDate.getTime()) / (1000 * 60 * 60 * 24);
-                        
-                        if (serviceDate < today && daysDiff > 90) {
-                          return <p className="text-xs text-yellow-600 mt-1">⚠️ Service date is more than 90 days in the past</p>;
-                        }
-                        if (verificationForm.effectiveDate && serviceDate < new Date(verificationForm.effectiveDate)) {
-                          return <p className="text-xs text-red-600 mt-1">⚠️ Service date is before insurance effective date</p>;
-                        }
-                        if (verificationForm.terminationDate && serviceDate > new Date(verificationForm.terminationDate)) {
-                          return <p className="text-xs text-red-600 mt-1">⚠️ Service date is after insurance termination date</p>;
-                        }
-                        return null;
-                      })()}
+                    {/* Verification Info - Compact Single Row */}
+                    <div className="grid grid-cols-4 gap-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border">
+                      <div>
+                        <Label htmlFor="serialNo">Verification No (Auto)</Label>
+                        <Input
+                          id="serialNo"
+                          value={verificationForm.serialNo}
+                          readOnly
+                          className="bg-muted h-9"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="appointmentLocation">Appointment Location *</Label>
+                        <Select 
+                          value={verificationForm.appointmentLocation} 
+                          onValueChange={(value) => setVerificationForm(prev => ({ ...prev, appointmentLocation: value }))}
+                          disabled={isLoadingFacilities}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder={isLoadingFacilities ? "Loading..." : "Select location"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {facilities.map((facility) => (
+                              <SelectItem key={facility.id} value={facility.id}>
+                                {facility.name}
+                              </SelectItem>
+                            ))}
+                            {facilities.length === 0 && !isLoadingFacilities && (
+                              <SelectItem value="none" disabled>No facilities found</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="appointmentDate">Appointment Date *</Label>
+                        <Input
+                          id="appointmentDate"
+                          type="date"
+                          value={verificationForm.appointmentDate || verificationForm.dateOfService}
+                          onChange={(e) => {
+                            const date = e.target.value;
+                            setVerificationForm(prev => ({ 
+                              ...prev, 
+                              appointmentDate: date,
+                              dateOfService: date 
+                            }));
+                          }}
+                          className="h-9"
+                          max={new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0]}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="provider">Provider *</Label>
+                        <Select 
+                          value={verificationForm.providerId} 
+                          onValueChange={(value) => {
+                            const provider = providers.find(p => p.id === value);
+                            setVerificationForm(prev => ({ 
+                              ...prev, 
+                              providerId: value,
+                              providerName: provider ? `${provider.first_name} ${provider.last_name}${provider.title ? `, ${provider.title}` : ''}` : ""
+                            }));
+                          }}
+                          disabled={isLoadingProviders || verificationForm.isSelfPay}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder={isLoadingProviders ? "Loading..." : "Select provider"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {providers.map((provider) => (
+                              <SelectItem key={provider.id} value={provider.id}>
+                                {provider.first_name} {provider.last_name}{provider.title ? `, ${provider.title}` : ''} (NPI: {provider.npi})
+                              </SelectItem>
+                            ))}
+                            {providers.length === 0 && !isLoadingProviders && (
+                              <SelectItem value="none" disabled>No providers found</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div>
-                            <Label htmlFor="status">Status</Label>
-                            <Select 
-                              value={verificationForm.status} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, status: value as "pending" | "verified" | "completed" | "cancelled" }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="verified">Verified</SelectItem>
-                                <SelectItem value="completed">Completed</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
-                              </SelectContent>
-                            </Select>
-                    </div>
-                  </div>
-                      </CardContent>
-                    </Card>
 
                     {/* Patient Information */}
                     <Card>
@@ -4357,153 +4622,397 @@ const EligibilityVerification = () => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Single Row: Select Patient, Patient Name, DOB */}
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
-                            <Label htmlFor="typeOfVisit">Type Of Visit *</Label>
-                            <Select 
-                              value={verificationForm.typeOfVisit} 
-                              onValueChange={(value) => {
-                                const lower = value.toLowerCase();
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  typeOfVisit: value,
-                                  // Auto-mark prior authorization required for surgery/facility
-                                  preAuthorizationRequired: lower === 'surgery' || lower === 'facility' ? true : prev.preAuthorizationRequired
-                                }));
-                              }}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select visit type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="consultation">Consultation</SelectItem>
-                                <SelectItem value="follow_up">Follow-up</SelectItem>
-                                <SelectItem value="routine_checkup">Routine Checkup</SelectItem>
-                                <SelectItem value="physical_therapy">Physical Therapy</SelectItem>
-                                <SelectItem value="emergency">Emergency</SelectItem>
-                                <SelectItem value="specialist">Specialist Visit</SelectItem>
-                                <SelectItem value="surgery">Surgery</SelectItem>
-                                <SelectItem value="facility">Facility</SelectItem>
-                              </SelectContent>
-                            </Select>
-                    </div>
-                    <div>
-                            <Label htmlFor="serviceType">Service Type</Label>
-                            <Select 
-                              value={verificationForm.serviceType} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, serviceType: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select service type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="outpatient">Outpatient</SelectItem>
-                                <SelectItem value="inpatient">Inpatient</SelectItem>
-                                <SelectItem value="emergency">Emergency</SelectItem>
-                                <SelectItem value="urgent-care">Urgent Care</SelectItem>
-                                <SelectItem value="ambulatory">Ambulatory</SelectItem>
-                              </SelectContent>
-                            </Select>
-                    </div>
-                    </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div className="col-span-1 sm:col-span-2 lg:col-span-2">
                       <Label htmlFor="patientSelect">Select Patient *</Label>
-                      <Select 
-                        value={verificationForm.patientId || ""} 
-                        onValueChange={handlePatientSelect}
-                        disabled={isLoadingPatients || isSearchingPatient}
-                      >
-                        <SelectTrigger className="h-9" id="patientSelect">
-                          <SelectValue placeholder={isLoadingPatients ? "Loading patients..." : "Select patient from database"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {isLoadingPatients ? (
-                            <SelectItem value="loading" disabled>Loading patients...</SelectItem>
-                          ) : patients.length > 0 ? (
-                            patients.map((patient) => (
-                              <SelectItem key={patient.id} value={patient.patient_id || patient.id}>
-                                {patient.patient_name} {patient.patient_id && `(${patient.patient_id})`}
-                              </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="none" disabled>No patients found. Please add patients first.</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Select a patient from the database. All patient information will be auto-filled.
-                      </p>
-                    </div>
-                    <div className="col-span-1 sm:col-span-2 lg:col-span-2">
-                      <Label htmlFor="patientIdSearch">Or Search by Patient ID</Label>
-                      <div className="flex gap-2">
-                        <div className="flex-1 relative">
-                          <Input
-                            id="patientIdSearch"
-                            value={patientIdSearch}
-                            onChange={(e) => setPatientIdSearch(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                searchPatientById(patientIdSearch);
-                              }
-                            }}
-                            placeholder="Enter Patient ID (e.g., PAT-001) then press Enter or click Search"
-                            className="h-9"
-                            disabled={isSearchingPatient}
-                          />
-                          {isSearchingPatient && (
-                            <Clock className="absolute right-3 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => searchPatientById(patientIdSearch)}
-                          disabled={isSearchingPatient || !patientIdSearch.trim()}
-                          className="h-9"
-                        >
-                          <Search className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Enter Patient ID and press Enter or click Search. All patient information will be auto-filled from the database.
-                      </p>
+                      <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={patientComboboxOpen}
+                            className="w-full justify-between h-9 font-normal"
+                            disabled={isLoadingPatients}
+                          >
+                            {verificationForm.patientId
+                              ? patients.find(p => (p.patient_id || p.id) === verificationForm.patientId)?.patient_name || verificationForm.patientName || "Select..."
+                              : isLoadingPatients ? "Loading..." : "Search patient..."}
+                            <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[400px] p-0" align="start">
+                          <Command>
+                            <CommandInput 
+                              placeholder="Search by name, ID, or DOB..." 
+                              value={patientSearchQuery}
+                              onValueChange={setPatientSearchQuery}
+                            />
+                            <CommandList>
+                              <CommandEmpty>No patient found.</CommandEmpty>
+                              <CommandGroup>
+                                {patients
+                                  .filter(patient => {
+                                    const query = patientSearchQuery.toLowerCase();
+                                    if (!query) return true;
+                                    const name = (patient.patient_name || "").toLowerCase();
+                                    const id = (patient.patient_id || "").toLowerCase();
+                                    return name.includes(query) || id.includes(query);
+                                  })
+                                  .map((patient) => (
+                                    <CommandItem
+                                      key={patient.id}
+                                      value={`${patient.patient_name} ${patient.patient_id}`}
+                                      onSelect={() => {
+                                        handlePatientSelect(patient.patient_id || patient.id);
+                                        setPatientComboboxOpen(false);
+                                        setPatientSearchQuery("");
+                                      }}
+                                    >
+                                      <CheckCircle
+                                        className={`mr-2 h-4 w-4 ${verificationForm.patientId === (patient.patient_id || patient.id) ? "opacity-100" : "opacity-0"}`}
+                                      />
+                                      {patient.patient_name} {patient.patient_id && `(${patient.patient_id})`}
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div>
-                            <Label htmlFor="patientName">Patient Name *</Label>
+                      <Label htmlFor="patientName">Patient Name *</Label>
                       <Input
-                              id="patientName"
-                              value={verificationForm.patientName}
-                              readOnly
-                              className="bg-muted h-9"
-                              placeholder="Auto-filled from patient record"
+                        id="patientName"
+                        value={verificationForm.patientName}
+                        readOnly
+                        className="bg-muted h-9"
+                        placeholder="Auto-filled"
                       />
                     </div>
                     <div>
-                            <Label htmlFor="dob">Date of Birth (DOB) *</Label>
+                      <Label htmlFor="dob">Date of Birth *</Label>
                       <Input
-                              id="dob"
-                              type="date"
-                              value={verificationForm.dob}
-                              readOnly
-                              className="bg-muted h-9"
-                              placeholder="Auto-filled from patient record"
+                        id="dob"
+                        type="date"
+                        value={verificationForm.dob}
+                        readOnly
+                        className="bg-muted h-9"
                       />
+                      {/* Primary Insurance - Collapsible */}
+
                     </div>
                   </div>
+                  
+                    <Collapsible defaultOpen={false} className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-5 w-5 text-blue-600" />
+                            <span className="text-lg font-semibold">Primary Insurance</span>
+                          </div>
+                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="p-4 pt-0 space-y-3">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Checkbox
+                              id="isSelfPay"
+                              checked={verificationForm.isSelfPay}
+                              onCheckedChange={(checked) => {
+                                setVerificationForm(prev => ({ 
+                                  ...prev, 
+                                  isSelfPay: checked as boolean,
+                                  primaryInsurance: checked ? "" : prev.primaryInsurance,
+                                  insuranceId: checked ? "" : prev.insuranceId,
+                                  providerId: checked ? "" : prev.providerId,
+                                  nppId: checked ? "" : prev.nppId,
+                                }));
+                              }}
+                            />
+                            <Label htmlFor="isSelfPay" className="cursor-pointer font-medium">Self Pay (No Insurance)</Label>
+                          </div>
+                          {/* Row 1: Insurance Name, ID, Plan, Plan Type */}
+                          <div className="grid grid-cols-4 gap-3">
+                            <div>
+                              <Label htmlFor="primaryInsurance">Insurance Name *</Label>
+                              <Select 
+                                value={verificationForm.primaryInsurance} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, primaryInsurance: value }))}
+                                disabled={verificationForm.isSelfPay}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder={verificationForm.isSelfPay ? "N/A - Self Pay" : "Select insurance"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {payers.map((payer) => (
+                                    <SelectItem key={payer.id} value={payer.id}>
+                                      {payer.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="insuranceId">Insurance ID *</Label>
+                              <Input
+                                id="insuranceId"
+                                value={verificationForm.insuranceId}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, insuranceId: e.target.value }))}
+                                placeholder="Subscriber/Member ID"
+                                disabled={verificationForm.isSelfPay}
+                                className="h-9"
+                              />
+                            </div>
+                          
+                            <div>
+                              <Label htmlFor="planType">Plan Type</Label>
+                              <Select 
+                                value={verificationForm.planType} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, planType: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="HMO">HMO</SelectItem>
+                                  <SelectItem value="PPO">PPO</SelectItem>
+                                  <SelectItem value="EPO">EPO</SelectItem>
+                                  <SelectItem value="POS">POS</SelectItem>
+                                  <SelectItem value="HDHP">HDHP</SelectItem>
+                                  <SelectItem value="Medicare">Medicare</SelectItem>
+                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Primary Insurance Cost Sharing */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Primary Insurance Cost Sharing</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <Label htmlFor="coPay">Co-pay</Label>
+                              <Input
+                                id="coPay"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.coPay}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, coPay: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="coInsurance">Co-insurance (%)</Label>
+                              <Input
+                                id="coInsurance"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.coInsurance}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, coInsurance: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="deductibleStatus">Deductible Status</Label>
+                              <Select
+                                value={verificationForm.deductibleStatus}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, deductibleStatus: value as "Met" | "Not Met" }))}
+                              >
+                                <SelectTrigger id="deductibleStatus" className="h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Met">Met</SelectItem>
+                                  <SelectItem value="Not Met">Not Met</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="deductibleAmount">Deductible Amount</Label>
+                              <Input
+                                id="deductibleAmount"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.deductibleAmount}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, deductibleAmount: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                                disabled={verificationForm.deductibleStatus === "Met"}
+                              />
+                              {verificationForm.deductibleStatus === "Met" && (
+                                <p className="text-xs text-muted-foreground mt-1">Deductible met - amount locked at $0</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                    {/* Secondary Insurance - Collapsible */}
+                    <Collapsible defaultOpen={false} className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-5 w-5 text-blue-600" />
+                            <span className="text-lg font-semibold">Secondary Insurance (Optional)</span>
+                          </div>
+                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="p-4 pt-0 space-y-3">
+                          {/* Row 1: Insurance Name, ID, Plan, Plan Type */}
+                          <div className="grid grid-cols-4 gap-3">
+                            <div>
+                              <Label htmlFor="secondaryInsuranceName">Insurance Name</Label>
+                              <Select 
+                                value={verificationForm.secondaryInsuranceName} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceName: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select insurance" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {payers.map((payer) => (
+                                    <SelectItem key={payer.id} value={payer.id}>
+                                      {payer.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryInsuranceId">Insurance ID</Label>
+                              <Input
+                                id="secondaryInsuranceId"
+                                value={verificationForm.secondaryInsuranceId}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceId: e.target.value }))}
+                                placeholder="Subscriber/Member ID"
+                                className="h-9"
+                              />
+                            </div>
+                           
+                            <div>
+                              <Label htmlFor="secondaryRelationshipCode">Plan Type</Label>
+                              <Select
+                                value={verificationForm.secondaryRelationshipCode}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryRelationshipCode: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="HMO">HMO</SelectItem>
+                                  <SelectItem value="PPO">PPO</SelectItem>
+                                  <SelectItem value="EPO">EPO</SelectItem>
+                                  <SelectItem value="POS">POS</SelectItem>
+                                  <SelectItem value="Medicare">Medicare</SelectItem>
+                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Secondary Insurance Cost Sharing */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Secondary Insurance Cost Sharing</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <Label htmlFor="secondaryCoPay">Secondary Co-pay</Label>
+                              <Input
+                                id="secondaryCoPay"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoPay}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoPay: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryDeductible">Secondary Deductible</Label>
+                              <Input
+                                id="secondaryDeductible"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryDeductible}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductible: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryDeductibleMet">Secondary Deductible Met</Label>
+                              <Input
+                                id="secondaryDeductibleMet"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryDeductibleMet}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductibleMet: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryCoInsurance">Secondary Co-insurance (%)</Label>
+                              <Input
+                                id="secondaryCoInsurance"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoInsurance}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoInsurance: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryCoveragePercent">Secondary Coverage %</Label>
+                              <Input
+                                id="secondaryCoveragePercent"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoveragePercent}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoveragePercent: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
 
                   {/* Demographic Read-Only Section - Only shows when patient is selected */}
                   {verificationForm.patientId && verificationForm.demographicDisplay.patientId && (
                     <Card className="mt-4 border-blue-200 dark:border-blue-800">
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <User className="h-5 w-5 text-blue-600" />
-                          Demographic (Read-Only)
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground">Patient demographic information from database</p>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <User className="h-5 w-5 text-blue-600" />
+                            Demographic (Read-Only)
+                          </CardTitle>
+                          <p className="text-sm text-muted-foreground">Patient demographic information from database</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Open the patient edit modal
+                            setShowPatientEditModal(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -4569,6 +5078,473 @@ const EligibilityVerification = () => {
                   )}
                       </CardContent>
                     </Card>
+ 
+                    {/* Referral & Authorization - MOVED TO BE AFTER PATIENT INFORMATION */}
+                    <Card className={verificationForm.referralRequired ? "border-2 border-amber-500 shadow-md shadow-amber-200" : ""}>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <AlertTriangle className={verificationForm.referralRequired ? "h-5 w-5 text-amber-600" : "h-5 w-5 text-blue-600"} />
+                          Referral & Authorization
+                        </CardTitle>
+                        {verificationForm.referralRequired && (
+                          <span className="inline-flex items-center rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-400">
+                            Referral Required
+                          </span>
+                        )}
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                              <div className="flex items-center justify-between pb-2">
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id="referralRequired"
+                                    checked={verificationForm.referralRequired}
+                                    onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, referralRequired: checked as boolean }))}
+                                  />
+                                  <Label htmlFor="referralRequired" className="cursor-pointer">Referral Required</Label>
+                                </div>
+                                
+                                <div className="flex space-x-6">
+                                  {/* Referral Status - Active/Inactive */}
+                                  <div className="flex items-center space-x-2">
+                                    <Label className="text-sm font-medium">Status:</Label>
+                                    <div className="flex items-center space-x-2">
+                                      <div className="flex items-center space-x-1">
+                                        <input
+                                          type="radio"
+                                          id="referralStatusActive"
+                                          name="referralStatus"
+                                          value="active"
+                                          checked={verificationForm.referralStatus === 'active'}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, referralStatus: e.target.value }))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Label htmlFor="referralStatusActive" className="text-xs cursor-pointer">Active</Label>
+                                      </div>
+                                      <div className="flex items-center space-x-1">
+                                        <input
+                                          type="radio"
+                                          id="referralStatusInactive"
+                                          name="referralStatus"
+                                          value="inactive"
+                                          checked={verificationForm.referralStatus === 'inactive'}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, referralStatus: e.target.value }))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Label htmlFor="referralStatusInactive" className="text-xs cursor-pointer">Inactive</Label>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* In Network Status - Yes/No */}
+                                  <div className="flex items-center space-x-2">
+                                    <Label className="text-sm font-medium">In-Network:</Label>
+                                    <div className="flex items-center space-x-2">
+                                      <div className="flex items-center space-x-1">
+                                        <input
+                                          type="radio"
+                                          id="inNetworkYes"
+                                          name="inNetworkStatus"
+                                          value="yes"
+                                          checked={verificationForm.inNetworkStatus === 'yes'}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: e.target.value }))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Label htmlFor="inNetworkYes" className="text-xs cursor-pointer">Yes</Label>
+                                      </div>
+                                      <div className="flex items-center space-x-1">
+                                        <input
+                                          type="radio"
+                                          id="inNetworkNo"
+                                          name="inNetworkStatus"
+                                          value="no"
+                                          checked={verificationForm.inNetworkStatus === 'no'}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: e.target.value }))}
+                                          className="h-4 w-4"
+                                        />
+                                        <Label htmlFor="inNetworkNo" className="text-xs cursor-pointer">No</Label>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {verificationForm.referralRequired && (
+                                <div className="ml-6 space-y-4 border-l-2 pl-4">
+                        <div>
+                                  <Label htmlFor="referralObtainedFrom">Obtain From</Label>
+                                  <Select 
+                                    value={verificationForm.referralObtainedFrom} 
+                                    onValueChange={(value) => setVerificationForm(prev => ({ ...prev, referralObtainedFrom: value }))}
+                                  >
+                          <SelectTrigger className="h-9">
+                                      <SelectValue placeholder="Select option" />
+                          </SelectTrigger>
+                          <SelectContent>
+                                      <SelectItem value="PCP">Obtain from PCP</SelectItem>
+                                      <SelectItem value="InsuranceApprovedPCP">Insurance Approved PCP</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                                {verificationForm.referralObtainedFrom === "PCP" && (
+                      <div>
+                                  <Label htmlFor="referralPCPStatus">PCP Status</Label>
+                                  <Select 
+                                    value={verificationForm.referralPCPStatus} 
+                                    onValueChange={(value) => setVerificationForm(prev => ({ ...prev, referralPCPStatus: value }))}
+                                  >
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue placeholder="Select status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="onFile">On File</SelectItem>
+                                      <SelectItem value="required">Required</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                      </div>
+                                )}
+                                <div>
+                                  <Label htmlFor="referralNumber">Referral Number</Label>
+                                  <Input
+                                    id="referralNumber"
+                                    value={verificationForm.referralNumber}
+                                    onChange={(e) => setVerificationForm(prev => ({ ...prev, referralNumber: e.target.value }))}
+                                    placeholder="Enter referral number if available"
+                                    className="h-9"
+                                  />
+                                </div>
+                      </div>
+                              )}
+
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="preAuthorizationRequired"
+                                  checked={verificationForm.preAuthorizationRequired}
+                                  onCheckedChange={(checked) => {
+                                    setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: checked as boolean }));
+                                    // Open authorization dialog when checked
+                                    if (checked && verificationForm.patientId) {
+                                      setShowAuthDialog(true);
+                                    } else if (checked && !verificationForm.patientId) {
+                                      toast({
+                                        title: "Patient Required",
+                                        description: "Please select a patient first before creating a prior authorization request.",
+                                        variant: "destructive"
+                                      });
+                                    }
+                                  }}
+                                />
+                                <Label htmlFor="preAuthorizationRequired" className="cursor-pointer">Pre-Authorization Required</Label>
+                                {verificationForm.preAuthorizationRequired && verificationForm.patientId && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowAuthDialog(true)}
+                                    className="ml-2"
+                                  >
+                                    Create Authorization Request
+                                  </Button>
+                                )}
+                              </div>
+
+                              {verificationForm.preAuthorizationRequired && (
+                                <div className="ml-6 space-y-4 border-l-2 pl-4 border-blue-200 dark:border-blue-800">
+                                  {/* Prior Authorization Status & Basic Info */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div>
+                                      <Label htmlFor="priorAuthStatus">Prior Auth Status *</Label>
+                                      <Select
+                                        value={verificationForm.priorAuthStatus}
+                                        onValueChange={(value) => {
+                                          const updates: any = { priorAuthStatus: value };
+                                          // Auto-set dates based on status (only if not already set)
+                                          if (value === "request_submitted" && !verificationForm.priorAuthSubmissionDate) {
+                                            updates.priorAuthSubmissionDate = new Date().toISOString().split('T')[0];
+                                          }
+                                          if (value === "request_submitted" && !verificationForm.priorAuthRequestDate) {
+                                            updates.priorAuthRequestDate = new Date().toISOString().split('T')[0];
+                                          }
+                                          if (value === "approved" && !verificationForm.priorAuthResponseDate) {
+                                            updates.priorAuthResponseDate = new Date().toISOString().split('T')[0];
+                                          }
+                                          // If status changes to denied, clear approval-related fields
+                                          if (value === "denied") {
+                                            updates.priorAuthNumber = "";
+                                            updates.priorAuthEffectiveDate = "";
+                                            updates.priorAuthExpirationDate = "";
+                                          }
+                                          // If status changes to expired, update expiration flag
+                                          if (value === "expired") {
+                                            // Keep existing dates but mark as expired
+                                          }
+                                          setVerificationForm(prev => ({ ...prev, ...updates }));
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="not_started">Not Started</SelectItem>
+                                          <SelectItem value="request_submitted">Request Submitted</SelectItem>
+                                          <SelectItem value="pending">Pending Review</SelectItem>
+                                          <SelectItem value="under_review">Under Review</SelectItem>
+                                          <SelectItem value="additional_info_requested">Additional Info Requested</SelectItem>
+                                          <SelectItem value="approved">Approved</SelectItem>
+                                          <SelectItem value="denied">Denied</SelectItem>
+                                          <SelectItem value="expired">Expired</SelectItem>
+                                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthNumber">Authorization Number</Label>
+                                      <Input
+                                        id="priorAuthNumber"
+                                        value={verificationForm.priorAuthNumber}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthNumber: e.target.value }))}
+                                        placeholder="Enter authorization number"
+                                        className="h-9"
+                                        disabled={verificationForm.priorAuthStatus !== "approved"}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthSubmissionMethod">Submission Method</Label>
+                                      <Select
+                                        value={verificationForm.priorAuthSubmissionMethod}
+                                        onValueChange={(value) => setVerificationForm(prev => ({ ...prev, priorAuthSubmissionMethod: value }))}
+                                      >
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Select method" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="electronic">Electronic (X12 278)</SelectItem>
+                                          <SelectItem value="portal">Payer Portal</SelectItem>
+                                          <SelectItem value="fax">Fax</SelectItem>
+                                          <SelectItem value="email">Email</SelectItem>
+                                          <SelectItem value="phone">Phone (Verbal)</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthPayerConfirmationNumber">Payer Confirmation #</Label>
+                                      <Input
+                                        id="priorAuthPayerConfirmationNumber"
+                                        value={verificationForm.priorAuthPayerConfirmationNumber}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthPayerConfirmationNumber: e.target.value }))}
+                                        placeholder="Payer confirmation number"
+                                        className="h-9"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Prior Authorization Dates */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div>
+                                      <Label htmlFor="priorAuthRequestDate">Request Date</Label>
+                                      <Input
+                                        id="priorAuthRequestDate"
+                                        type="date"
+                                        value={verificationForm.priorAuthRequestDate}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthRequestDate: e.target.value }))}
+                                        className="h-9"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthSubmissionDate">Submission Date</Label>
+                                      <Input
+                                        id="priorAuthSubmissionDate"
+                                        type="date"
+                                        value={verificationForm.priorAuthSubmissionDate}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthSubmissionDate: e.target.value }))}
+                                        className="h-9"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthExpectedResponseDate">Expected Response Date</Label>
+                                      <Input
+                                        id="priorAuthExpectedResponseDate"
+                                        type="date"
+                                        value={verificationForm.priorAuthExpectedResponseDate}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthExpectedResponseDate: e.target.value }))}
+                                        className="h-9"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor="priorAuthResponseDate">Response Date</Label>
+                                      <Input
+                                        id="priorAuthResponseDate"
+                                        type="date"
+                                        value={verificationForm.priorAuthResponseDate}
+                                        onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthResponseDate: e.target.value }))}
+                                        className="h-9"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Authorization Effective & Expiration Dates */}
+                                  {(verificationForm.priorAuthStatus === "approved" || verificationForm.priorAuthNumber) && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                                      <div>
+                                        <Label htmlFor="priorAuthEffectiveDate">Authorization Effective Date *</Label>
+                                        <Input
+                                          id="priorAuthEffectiveDate"
+                                          type="date"
+                                          value={verificationForm.priorAuthEffectiveDate}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthEffectiveDate: e.target.value }))}
+                                          className="h-9"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="priorAuthExpirationDate">Authorization Expiration Date *</Label>
+                                        <Input
+                                          id="priorAuthExpirationDate"
+                                          type="date"
+                                          value={verificationForm.priorAuthExpirationDate}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthExpirationDate: e.target.value }))}
+                                          className="h-9"
+                                        />
+                                        {verificationForm.priorAuthExpirationDate && new Date(verificationForm.priorAuthExpirationDate) < new Date() && (
+                                          <p className="text-xs text-red-600 mt-1">⚠️ Authorization has expired</p>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="priorAuthApprovedQuantity">Approved Quantity</Label>
+                                        <Input
+                                          id="priorAuthApprovedQuantity"
+                                          value={verificationForm.priorAuthApprovedQuantity}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthApprovedQuantity: e.target.value }))}
+                                          placeholder="e.g., 1, 10, etc."
+                                          className="h-9"
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label htmlFor="priorAuthApprovedFrequency">Approved Frequency</Label>
+                                        <Input
+                                          id="priorAuthApprovedFrequency"
+                                          value={verificationForm.priorAuthApprovedFrequency}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthApprovedFrequency: e.target.value }))}
+                                          placeholder="e.g., Once, Daily, Weekly"
+                                          className="h-9"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Denial Information */}
+                                  {verificationForm.priorAuthStatus === "denied" && (
+                                    <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800 space-y-3">
+                                      <Label className="text-sm font-semibold text-red-900 dark:text-red-100">Denial Information</Label>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div>
+                                          <Label htmlFor="priorAuthDenialReasonCode">Denial Reason Code</Label>
+                                          <Input
+                                            id="priorAuthDenialReasonCode"
+                                            value={verificationForm.priorAuthDenialReasonCode}
+                                            onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthDenialReasonCode: e.target.value }))}
+                                            placeholder="e.g., MN (Medical Necessity)"
+                                            className="h-9"
+                                          />
+                                        </div>
+                                        <div className="sm:col-span-1">
+                                          <Label htmlFor="priorAuthDenialReason">Denial Reason Description</Label>
+                                          <Textarea
+                                            id="priorAuthDenialReason"
+                                            value={verificationForm.priorAuthDenialReason}
+                                            onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthDenialReason: e.target.value }))}
+                                            placeholder="Enter denial reason..."
+                                            rows={2}
+                                            className="resize-none"
+                                          />
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Appeal Section */}
+                                      <div className="border-t pt-3 mt-3">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <Checkbox
+                                            id="priorAuthAppealSubmitted"
+                                            checked={verificationForm.priorAuthAppealSubmitted}
+                                            onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, priorAuthAppealSubmitted: checked as boolean }))}
+                                          />
+                                          <Label htmlFor="priorAuthAppealSubmitted" className="cursor-pointer">Appeal Submitted</Label>
+                                        </div>
+                                        {verificationForm.priorAuthAppealSubmitted && (
+                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 ml-6">
+                                            <div>
+                                              <Label htmlFor="priorAuthAppealDate">Appeal Date</Label>
+                                              <Input
+                                                id="priorAuthAppealDate"
+                                                type="date"
+                                                value={verificationForm.priorAuthAppealDate}
+                                                onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthAppealDate: e.target.value }))}
+                                                className="h-9"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="priorAuthAppealStatus">Appeal Status</Label>
+                                              <Select
+                                                value={verificationForm.priorAuthAppealStatus}
+                                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, priorAuthAppealStatus: value }))}
+                                      >
+                                        <SelectTrigger className="h-9">
+                                          <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="pending">Pending</SelectItem>
+                                          <SelectItem value="approved">Approved</SelectItem>
+                                          <SelectItem value="denied">Denied</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                            <div>
+                                              <Label htmlFor="priorAuthAppealDecisionDate">Appeal Decision Date</Label>
+                                              <Input
+                                                id="priorAuthAppealDecisionDate"
+                                                type="date"
+                                                value={verificationForm.priorAuthAppealDecisionDate}
+                                                onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthAppealDecisionDate: e.target.value }))}
+                                                className="h-9"
+                                              />
+                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Service Date (if approved) */}
+                                    {verificationForm.priorAuthStatus === "approved" && (
+                                      <div>
+                                        <Label htmlFor="priorAuthServiceDate">Service Date (When service was/will be provided)</Label>
+                                        <Input
+                                          id="priorAuthServiceDate"
+                                          type="date"
+                                          value={verificationForm.priorAuthServiceDate}
+                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthServiceDate: e.target.value }))}
+                                          className="h-9"
+                                        />
+                                        {verificationForm.priorAuthExpirationDate && verificationForm.priorAuthServiceDate && 
+                                         new Date(verificationForm.priorAuthServiceDate) > new Date(verificationForm.priorAuthExpirationDate) && (
+                                          <p className="text-xs text-yellow-600 mt-1">⚠️ Service date is after authorization expiration</p>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Status Alerts */}
+                                    {verificationForm.priorAuthStatus === "pending" && verificationForm.priorAuthExpectedResponseDate && 
+                                     new Date(verificationForm.priorAuthExpectedResponseDate) < new Date() && (
+                                      <Alert className="bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800">
+                                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                        <AlertDescription className="text-yellow-800 dark:text-yellow-200 text-sm">
+                                          Expected response date has passed. Follow up with payer.
+                                        </AlertDescription>
+                                      </Alert>
+                                    )}
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
 
                     {/* Service Codes (CPT/ICD) - Optional but recommended for specific service verification */}
                     <Card>
@@ -4585,42 +5561,6 @@ const EligibilityVerification = () => {
                           <div className="flex items-center justify-between">
                             <Label className="text-base font-semibold">CPT Section</Label>
                             <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  // Add common E&M codes
-                                  const emCodes = [
-                                    { code: "99213", description: "Office Visit, Est Pt., Level 3", charge: "150.00", pos: "11", units: "1" },
-                                    { code: "99214", description: "Office Visit, Est Pt., Level 4", charge: "200.00", pos: "11", units: "1" },
-                                    { code: "99215", description: "Office Visit, Est Pt., Level 5", charge: "250.00", pos: "11", units: "1" },
-                                  ];
-                                  const newCodes = emCodes.map(em => ({
-                                    code: em.code,
-                                    modifier1: "",
-                                    modifier2: "",
-                                    modifier3: "",
-                                    pos: em.pos,
-                                    tos: "1",
-                                    units: em.units,
-                                    charge: em.charge,
-                                    renderingNpi: verificationForm.providerId ? providers.find(p => p.id === verificationForm.providerId)?.npi || "" : "",
-                                    ndc: "",
-                                  }));
-                                  setVerificationForm(prev => ({
-                                    ...prev,
-                                    cptCodes: [...prev.cptCodes, ...newCodes]
-                                  }));
-                                  toast({
-                                    title: "E&M Codes Added",
-                                    description: `Added ${newCodes.length} common E&M codes`,
-                                  });
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add E&M
-                              </Button>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -4668,13 +5608,11 @@ const EligibilityVerification = () => {
                                       code: "",
                                       modifier1: "",
                                       modifier2: "",
-                                      modifier3: "",
+                                      icd: "",
                                       pos: "",
                                       tos: "",
                                       units: "",
                                       charge: "",
-                                      renderingNpi: "",
-                                      ndc: "",
                                     }
                                   }));
 
@@ -4697,15 +5635,13 @@ const EligibilityVerification = () => {
                                 <thead className="bg-muted">
                                   <tr>
                                     <th className="p-2 text-left font-medium">CPT Code</th>
-                                    <th className="p-2 text-left font-medium">Modifier 1</th>
-                                    <th className="p-2 text-left font-medium">Modifier 2</th>
-                                    <th className="p-2 text-left font-medium">Modifier 3</th>
+                                    <th className="p-2 text-left font-medium">Mod 1</th>
+                                    <th className="p-2 text-left font-medium">Mod 2</th>
+                                    <th className="p-2 text-left font-medium">ICD</th>
                                     <th className="p-2 text-left font-medium">POS</th>
                                     <th className="p-2 text-left font-medium">TOS</th>
                                     <th className="p-2 text-left font-medium">Units</th>
                                     <th className="p-2 text-left font-medium">Charge</th>
-                                    <th className="p-2 text-left font-medium">NDC</th>
-                                    <th className="p-2 text-left font-medium">Rendering NPI</th>
                                     <th className="p-2 text-left font-medium">Actions</th>
                                   </tr>
                                 </thead>
@@ -4715,13 +5651,11 @@ const EligibilityVerification = () => {
                                       <td className="p-2">{cpt.code}</td>
                                       <td className="p-2">{cpt.modifier1 || "-"}</td>
                                       <td className="p-2">{cpt.modifier2 || "-"}</td>
-                                      <td className="p-2">{cpt.modifier3 || "-"}</td>
-                                      <td className="p-2">{cpt.pos || "-"}</td>
-                                      <td className="p-2">{cpt.tos || "-"}</td>
+                                      <td className="p-2">{cpt.icd || "-"}</td>
+                                      <td className="p-2">{placeOfServiceCodes.find(p => p.code === cpt.pos)?.description?.substring(0, 15) || cpt.pos || "-"}</td>
+                                      <td className="p-2">{typeOfServiceCodes.find(t => t.code === cpt.tos)?.description?.substring(0, 15) || cpt.tos || "-"}</td>
                                       <td className="p-2">{cpt.units || "-"}</td>
                                       <td className="p-2">${cpt.charge || "0.00"}</td>
-                                      <td className="p-2">{cpt.ndc || "-"}</td>
-                                      <td className="p-2">{cpt.renderingNpi || "-"}</td>
                                       <td className="p-2">
                                         <Button
                                           type="button"
@@ -4827,55 +5761,120 @@ const EligibilityVerification = () => {
                                         <div className="mt-1 text-xs text-red-600">{modifierValidation.modifier2.message}</div>
                                       )}
                                     </td>
-                                    <td className="p-2">
-                                      <div className="relative">
-                                        <Input
-                                          placeholder="25"
-                                          value={verificationForm.currentCpt.modifier3}
-                                          onChange={(e) => setVerificationForm(prev => ({
-                                            ...prev,
-                                            currentCpt: { ...prev.currentCpt, modifier3: e.target.value }
-                                          }))}
-                                          className={`h-8 w-16 pr-6 ${modifierValidation.modifier3?.isValid === false ? 'border-red-500' : modifierValidation.modifier3?.isValid === true ? 'border-green-500' : ''}`}
-                                          maxLength={2}
-                                        />
-                                        {modifierValidation.modifier3 && (
-                                          <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                            {modifierValidation.modifier3.isValid ? (
-                                              <CheckCircle className="h-4 w-4 text-green-500" />
-                                            ) : (
-                                              <XCircle className="h-4 w-4 text-red-500" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {modifierValidation.modifier3 && !modifierValidation.modifier3.isValid && (
-                                        <div className="mt-1 text-xs text-red-600">{modifierValidation.modifier3.message}</div>
-                                      )}
-                                    </td>
+
                                     <td className="p-2">
                                       <Input
-                                        placeholder="11"
-                                        value={verificationForm.currentCpt.pos}
+                                        placeholder="E11.9"
+                                        value={verificationForm.currentCpt.icd}
                                         onChange={(e) => setVerificationForm(prev => ({
                                           ...prev,
-                                          currentCpt: { ...prev.currentCpt, pos: e.target.value }
+                                          currentCpt: { ...prev.currentCpt, icd: e.target.value }
                                         }))}
-                                        className="h-8 w-16"
-                                        maxLength={2}
+                                        className="h-8 w-20"
+                                        maxLength={10}
                                       />
                                     </td>
                                     <td className="p-2">
-                                      <Input
-                                        placeholder="1"
-                                        value={verificationForm.currentCpt.tos}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, tos: e.target.value }
-                                        }))}
-                                        className="h-8 w-16"
-                                        maxLength={2}
-                                      />
+                                      <Popover open={posComboboxOpen} onOpenChange={setPosComboboxOpen}>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={posComboboxOpen}
+                                            className="h-8 w-24 justify-between text-xs font-normal px-2"
+                                          >
+                                            {verificationForm.currentCpt.pos
+                                              ? verificationForm.currentCpt.pos
+                                              : "POS"}
+                                            <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[300px] p-0" align="start">
+                                          <Command>
+                                            <CommandInput placeholder="Search POS..." value={posSearchQuery} onValueChange={setPosSearchQuery} />
+                                            <CommandList>
+                                              <CommandEmpty>No place of service found.</CommandEmpty>
+                                              <CommandGroup>
+                                                {placeOfServiceCodes
+                                                  .filter(pos => {
+                                                    const query = posSearchQuery.toLowerCase();
+                                                    if (!query) return true;
+                                                    return pos.code.includes(query) || pos.description.toLowerCase().includes(query);
+                                                  })
+                                                  .map((pos) => (
+                                                    <CommandItem
+                                                      key={pos.code}
+                                                      value={`${pos.code} ${pos.description}`}
+                                                      onSelect={() => {
+                                                        setVerificationForm(prev => ({
+                                                          ...prev,
+                                                          currentCpt: { ...prev.currentCpt, pos: pos.code }
+                                                        }));
+                                                        setPosComboboxOpen(false);
+                                                        setPosSearchQuery("");
+                                                      }}
+                                                    >
+                                                      <CheckCircle className={`mr-2 h-4 w-4 ${verificationForm.currentCpt.pos === pos.code ? "opacity-100" : "opacity-0"}`} />
+                                                      {pos.code} - {pos.description}
+                                                    </CommandItem>
+                                                  ))}
+                                              </CommandGroup>
+                                            </CommandList>
+                                          </Command>
+                                        </PopoverContent>
+                                      </Popover>
+                                    </td>
+                                    <td className="p-2">
+                                      <Popover open={tosComboboxOpen} onOpenChange={setTosComboboxOpen}>
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={tosComboboxOpen}
+                                            className="h-8 w-20 justify-between text-xs font-normal px-2"
+                                          >
+                                            {verificationForm.currentCpt.tos
+                                              ? verificationForm.currentCpt.tos
+                                              : "TOS"}
+                                            <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[300px] p-0" align="start">
+                                          <Command>
+                                            <CommandInput placeholder="Search TOS..." value={tosSearchQuery} onValueChange={setTosSearchQuery} />
+                                            <CommandList>
+                                              <CommandEmpty>No type of service found.</CommandEmpty>
+                                              <CommandGroup>
+                                                {typeOfServiceCodes
+                                                  .filter(tos => {
+                                                    const query = tosSearchQuery.toLowerCase();
+                                                    if (!query) return true;
+                                                    return tos.code.toLowerCase().includes(query) || tos.description.toLowerCase().includes(query);
+                                                  })
+                                                  .map((tos) => (
+                                                    <CommandItem
+                                                      key={tos.code}
+                                                      value={`${tos.code} ${tos.description}`}
+                                                      onSelect={() => {
+                                                        setVerificationForm(prev => ({
+                                                          ...prev,
+                                                          currentCpt: { ...prev.currentCpt, tos: tos.code },
+                                                          // Automatically set prior authorization required if Surgery (code "2") is selected
+                                                          preAuthorizationRequired: tos.code === "2" ? true : prev.preAuthorizationRequired
+                                                        }));
+                                                        setTosComboboxOpen(false);
+                                                        setTosSearchQuery("");
+                                                      }}
+                                                    >
+                                                      <CheckCircle className={`mr-2 h-4 w-4 ${verificationForm.currentCpt.tos === tos.code ? "opacity-100" : "opacity-0"}`} />
+                                                      {tos.code} - {tos.description}
+                                                    </CommandItem>
+                                                  ))}
+                                              </CommandGroup>
+                                            </CommandList>
+                                          </Command>
+                                        </PopoverContent>
+                                      </Popover>
                                     </td>
                                     <td className="p-2">
                                       <Input
@@ -4902,30 +5901,8 @@ const EligibilityVerification = () => {
                                         className="h-8 w-20"
                                       />
                                     </td>
-                                    <td className="p-2">
-                                      <Input
-                                        placeholder="12345-6789-01"
-                                        value={verificationForm.currentCpt.ndc}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, ndc: e.target.value }
-                                        }))}
-                                        className="h-8 w-28"
-                                        maxLength={20}
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <Input
-                                        placeholder="1234567890"
-                                        value={verificationForm.currentCpt.renderingNpi}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, renderingNpi: e.target.value }
-                                        }))}
-                                        className="h-8 w-28"
-                                        maxLength={10}
-                                      />
-                                    </td>
+
+
                                     <td className="p-2">
                                       <Button
                                         type="button"
@@ -4966,21 +5943,21 @@ const EligibilityVerification = () => {
                                             return;
                                           }
 
-                                          // Add the CPT code
+                                          // Add the CPT code and check if any CPT code has Surgery TOS (code "2") to automatically set prior authorization
                                           setVerificationForm(prev => ({
                                             ...prev,
                                             cptCodes: [...prev.cptCodes, { ...prev.currentCpt }],
+                                            // Check if any CPT code in the list has Surgery TOS ("2") to automatically set prior authorization required
+                                            preAuthorizationRequired: [...prev.cptCodes, { ...prev.currentCpt }].some(cpt => cpt.tos === "2") ? true : prev.preAuthorizationRequired,
                                             currentCpt: {
                                               code: "",
                                               modifier1: "",
                                               modifier2: "",
-                                              modifier3: "",
+                                              icd: "",
                                               pos: "",
                                               tos: "",
                                               units: "",
                                               charge: "",
-                                              renderingNpi: "",
-                                              ndc: "",
                                             }
                                           }));
 
@@ -4999,162 +5976,10 @@ const EligibilityVerification = () => {
                             </div>
                           </div>
                         </div>
-
-                        {/* ICD Section */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-base font-semibold">ICD Section</Label>
-                          </div>
-                          
-                          {/* ICD Table */}
-                          <div className="border rounded-lg overflow-hidden">
-                            <div className="overflow-x-auto max-w-full">
-                              <table className="w-full text-sm max-w-full">
-                                <thead className="bg-muted">
-                                  <tr>
-                                    <th className="p-2 text-left font-medium">ICD Code</th>
-                                    <th className="p-2 text-left font-medium">Description</th>
-                                    <th className="p-2 text-left font-medium">Type</th>
-                                    <th className="p-2 text-left font-medium">Primary?</th>
-                                    <th className="p-2 text-left font-medium">Actions</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {verificationForm.icdCodes.map((icd, index) => (
-                                    <tr key={index} className="border-t">
-                                      <td className="p-2">{icd.code}</td>
-                                      <td className="p-2">{icd.description || "-"}</td>
-                                      <td className="p-2">{icd.type}</td>
-                                      <td className="p-2">
-                                        {icd.isPrimary ? (
-                                          <Badge variant="default">Primary</Badge>
-                                        ) : (
-                                          <Badge variant="outline">Secondary</Badge>
-                                        )}
-                                      </td>
-                                      <td className="p-2">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setVerificationForm(prev => ({
-                                            ...prev,
-                                            icdCodes: prev.icdCodes.filter((_, i) => i !== index)
-                                          }))}
-                                        >
-                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                  {/* Add New ICD Row */}
-                                  <tr className="border-t bg-muted/30">
-                                    <td className="p-2">
-                                      <div className="relative">
-                                        <Input
-                                          placeholder="E11.9"
-                                          value={verificationForm.currentIcd.code}
-                                          onChange={(e) => setVerificationForm(prev => ({
-                                            ...prev,
-                                            currentIcd: { ...prev.currentIcd, code: e.target.value }
-                                          }))}
-                                          className={`h-8 w-24 pr-6 ${icdValidation?.isValid === false ? 'border-red-500' : icdValidation?.isValid === true ? 'border-green-500' : ''}`}
-                                          maxLength={10}
-                                        />
-                                        {icdValidation && (
-                                          <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                            {icdValidation.isValid ? (
-                                              <CheckCircle className="h-4 w-4 text-green-500" />
-                                            ) : (
-                                              <XCircle className="h-4 w-4 text-red-500" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {icdValidation && (
-                                        <div className="mt-1 text-xs">
-                                          {icdValidation.isValid && icdValidation.description && (
-                                            <div className="text-green-600 line-clamp-1">{icdValidation.description}</div>
-                                          )}
-                                          {icdValidation.errors.length > 0 && (
-                                            <div className="text-red-600">{icdValidation.errors[0]}</div>
-                                          )}
-                                          {icdValidation.warnings.length > 0 && (
-                                            <div className="text-yellow-600">{icdValidation.warnings[0]}</div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="p-2">
-                                      <Input
-                                        placeholder="Type 2 diabetes without complications"
-                                        value={verificationForm.currentIcd.description}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentIcd: { ...prev.currentIcd, description: e.target.value }
-                                        }))}
-                                        className="h-8 w-full max-w-[200px]"
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <Select
-                                        value={verificationForm.currentIcd.type}
-                                        onValueChange={(value) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentIcd: { ...prev.currentIcd, type: value }
-                                        }))}
-                                      >
-                                        <SelectTrigger className="h-8 w-20">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="DX">DX</SelectItem>
-                                          <SelectItem value="PX">PX</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </td>
-                                    <td className="p-2">
-                                      <Checkbox
-                                        checked={verificationForm.currentIcd.isPrimary}
-                                        onCheckedChange={(checked) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentIcd: { ...prev.currentIcd, isPrimary: checked as boolean }
-                                        }))}
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          if (verificationForm.currentIcd.code.trim()) {
-                                            setVerificationForm(prev => ({
-                                              ...prev,
-                                              icdCodes: [...prev.icdCodes, { ...prev.currentIcd }],
-                                              currentIcd: {
-                                                code: "",
-                                                description: "",
-                                                type: "DX",
-                                                isPrimary: false,
-                                              }
-                                            }));
-                                          }
-                                        }}
-                                      >
-                                        <Plus className="h-4 w-4" />
-                                      </Button>
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </div>
                       </CardContent>
                     </Card>
 
-                    {/* Subscriber Information (when different from patient) */}
+                    {/* Subscriber Information (when different from patient) 
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-lg flex items-center gap-2">
@@ -5239,1084 +6064,7 @@ const EligibilityVerification = () => {
                         )}
                       </CardContent>
                     </Card>
-
-                    {/* Primary Insurance */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <CreditCard className="h-5 w-5 text-blue-600" />
-                          Primary Insurance
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center space-x-2 mb-4">
-                          <Checkbox
-                            id="isSelfPay"
-                            checked={verificationForm.isSelfPay}
-                            onCheckedChange={(checked) => {
-                              setVerificationForm(prev => ({ 
-                                ...prev, 
-                                isSelfPay: checked as boolean,
-                                primaryInsurance: checked ? "" : prev.primaryInsurance,
-                                insuranceId: checked ? "" : prev.insuranceId,
-                                providerId: checked ? "" : prev.providerId,
-                                nppId: checked ? "" : prev.nppId,
-                              }));
-                            }}
-                          />
-                          <Label htmlFor="isSelfPay" className="cursor-pointer font-medium">Self Pay (No Insurance)</Label>
-                        </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                            <Label htmlFor="primaryInsurance">Primary Insurance *</Label>
-                            <Select 
-                              value={verificationForm.primaryInsurance} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, primaryInsurance: value }))}
-                              disabled={verificationForm.isSelfPay}
-                            >
-                        <SelectTrigger className="h-9">
-                                <SelectValue placeholder={verificationForm.isSelfPay ? "N/A - Self Pay" : "Select insurance"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                                {payers.map((payer) => (
-                                  <SelectItem key={payer.id} value={payer.id}>
-                                    {payer.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                            <Label htmlFor="insuranceId">Insurance ID (Subscriber ID) *</Label>
-                      <Input
-                              id="insuranceId"
-                              value={verificationForm.insuranceId}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, insuranceId: e.target.value }))}
-                              placeholder="Enter subscriber/member ID"
-                              disabled={verificationForm.isSelfPay}
-                              className="h-9"
-                      />
-                    </div>
-                    <div>
-                            <Label htmlFor="groupNumber">Group Number</Label>
-                      <Input
-                              id="groupNumber"
-                              value={verificationForm.groupNumber}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, groupNumber: e.target.value }))}
-                              placeholder="Enter group number"
-                              className="h-9"
-                      />
-                    </div>
-                    <div>
-                            <Label htmlFor="insurancePlan">Insurance Plan</Label>
-                    <Input
-                              id="insurancePlan"
-                              value={verificationForm.insurancePlan}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, insurancePlan: e.target.value }))}
-                              placeholder="Enter plan name"
-                              className="h-9"
-                    />
-                  </div>
-                    <div>
-                            <Label htmlFor="planType">Plan Type</Label>
-                            <Select 
-                              value={verificationForm.planType} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, planType: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select plan type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="HMO">HMO</SelectItem>
-                                <SelectItem value="PPO">PPO</SelectItem>
-                                <SelectItem value="EPO">EPO</SelectItem>
-                                <SelectItem value="POS">POS</SelectItem>
-                                <SelectItem value="HDHP">HDHP</SelectItem>
-                                <SelectItem value="Medicare">Medicare</SelectItem>
-                                <SelectItem value="Medicaid">Medicaid</SelectItem>
-                                <SelectItem value="Other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div>
-                            <Label htmlFor="effectiveDate">Effective Date</Label>
-                      <Input
-                              id="effectiveDate"
-                              type="date"
-                              value={verificationForm.effectiveDate}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, effectiveDate: e.target.value }))}
-                              placeholder="Coverage start date"
-                              className="h-9"
-                      />
-                      {verificationForm.effectiveDate && verificationForm.terminationDate && 
-                       new Date(verificationForm.effectiveDate) > new Date(verificationForm.terminationDate) && (
-                        <p className="text-xs text-red-600 mt-1">⚠️ Effective date cannot be after termination date</p>
-                      )}
-                      {verificationForm.effectiveDate && verificationForm.appointmentDate && 
-                       new Date(verificationForm.appointmentDate) < new Date(verificationForm.effectiveDate) && (
-                        <p className="text-xs text-red-600 mt-1">⚠️ Service date is before effective date</p>
-                      )}
-                    </div>
-                    <div>
-                            <Label htmlFor="terminationDate">Termination Date</Label>
-                      <Input
-                              id="terminationDate"
-                              type="date"
-                              value={verificationForm.terminationDate}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, terminationDate: e.target.value }))}
-                              placeholder="Coverage end date"
-                              className="h-9"
-                              min={verificationForm.effectiveDate || undefined}
-                      />
-                      {verificationForm.terminationDate && verificationForm.appointmentDate && 
-                       new Date(verificationForm.appointmentDate) > new Date(verificationForm.terminationDate) && (
-                        <p className="text-xs text-red-600 mt-1">⚠️ Service date is after termination date</p>
-                      )}
-                      {verificationForm.terminationDate && new Date(verificationForm.terminationDate) < new Date() && (
-                        <p className="text-xs text-red-600 mt-1">⚠️ Insurance coverage has expired</p>
-                      )}
-                    </div>
-                    <div>
-                            <Label htmlFor="inNetworkStatus">In Network Status</Label>
-                            <Select 
-                              value={verificationForm.inNetworkStatus} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: value }))}
-                            >
-                        <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                                <SelectItem value="in-network">In Network</SelectItem>
-                                <SelectItem value="out-of-network">Out of Network</SelectItem>
-                                <SelectItem value="unknown">Unknown</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Secondary Insurance (moved up to be included before calculation) */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <Building className="h-5 w-5 text-blue-600" />
-                          Secondary Insurance (Optional)
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Coordination of Benefits (COB) - Secondary insurance pays after primary insurance
-                        </p>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Secondary Insurance Basic Info */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div>
-                            <Label htmlFor="secondaryInsuranceName">Secondary Insurance Name *</Label>
-                            <Select 
-                              value={verificationForm.secondaryInsuranceName} 
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceName: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select insurance" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {payers.map((payer) => (
-                                  <SelectItem key={payer.id} value={payer.id}>
-                                    {payer.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryInsuranceId">Subscriber/Member ID *</Label>
-                            <Input
-                              id="secondaryInsuranceId"
-                              value={verificationForm.secondaryInsuranceId}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceId: e.target.value }))}
-                              placeholder="Enter member ID"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryGroupNumber">Group Number</Label>
-                            <Input
-                              id="secondaryGroupNumber"
-                              value={verificationForm.secondaryGroupNumber}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryGroupNumber: e.target.value }))}
-                              placeholder="Enter group number"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryRelationshipCode">Relationship to Subscriber *</Label>
-                            <Select
-                              value={verificationForm.secondaryRelationshipCode}
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryRelationshipCode: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select relationship" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="self">Self</SelectItem>
-                                <SelectItem value="spouse">Spouse</SelectItem>
-                                <SelectItem value="child">Child</SelectItem>
-                                <SelectItem value="parent">Parent</SelectItem>
-                                <SelectItem value="other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        {/* Secondary Coverage Dates */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div>
-                            <Label htmlFor="secondaryEffectiveDate">Effective Date</Label>
-                            <Input
-                              id="secondaryEffectiveDate"
-                              type="date"
-                              value={verificationForm.secondaryEffectiveDate}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryEffectiveDate: e.target.value }))}
-                              className="h-9"
-                            />
-                            {verificationForm.secondaryEffectiveDate && verificationForm.secondaryTerminationDate && 
-                             new Date(verificationForm.secondaryEffectiveDate) > new Date(verificationForm.secondaryTerminationDate) && (
-                              <p className="text-xs text-red-600 mt-1">⚠️ Effective date cannot be after termination date</p>
-                            )}
-                            {verificationForm.secondaryEffectiveDate && verificationForm.appointmentDate && 
-                             new Date(verificationForm.appointmentDate) < new Date(verificationForm.secondaryEffectiveDate) && (
-                              <p className="text-xs text-red-600 mt-1">⚠️ Service date is before secondary effective date</p>
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryTerminationDate">Termination Date</Label>
-                            <Input
-                              id="secondaryTerminationDate"
-                              type="date"
-                              value={verificationForm.secondaryTerminationDate}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryTerminationDate: e.target.value }))}
-                              className="h-9"
-                              min={verificationForm.secondaryEffectiveDate || undefined}
-                            />
-                            {verificationForm.secondaryTerminationDate && verificationForm.appointmentDate && 
-                             new Date(verificationForm.appointmentDate) > new Date(verificationForm.secondaryTerminationDate) && (
-                              <p className="text-xs text-red-600 mt-1">⚠️ Service date is after secondary termination date</p>
-                            )}
-                            {verificationForm.secondaryTerminationDate && new Date(verificationForm.secondaryTerminationDate) < new Date() && (
-                              <p className="text-xs text-red-600 mt-1">⚠️ Secondary insurance coverage has expired</p>
-                            )}
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryCoveragePercent">Coverage Percentage (%)</Label>
-                            <Input
-                              id="secondaryCoveragePercent"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="100"
-                              value={verificationForm.secondaryCoveragePercent}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                if (!isNaN(val) && val >= 0 && val <= 100) {
-                                  setVerificationForm(prev => ({ ...prev, secondaryCoveragePercent: e.target.value }));
-                                }
-                              }}
-                              placeholder="e.g., 80"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="cobRule">COB Rule</Label>
-                            <Select
-                              value={verificationForm.cobRule}
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, cobRule: value }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Auto-detect or select" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="auto">Auto-detect</SelectItem>
-                                <SelectItem value="birthday">Birthday Rule</SelectItem>
-                                <SelectItem value="employee">Employee Rule</SelectItem>
-                                <SelectItem value="medicare">Medicare Rule</SelectItem>
-                                <SelectItem value="length">Length of Coverage</SelectItem>
-                                <SelectItem value="court">Court Decree</SelectItem>
-                                <SelectItem value="manual">Manual Override</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        {/* Secondary Subscriber Information (if different from patient) */}
-                        {verificationForm.secondaryRelationshipCode !== "self" && verificationForm.secondaryRelationshipCode !== "" && (
-                          <div className="border-l-2 pl-4 ml-2 border-blue-200 dark:border-blue-800 space-y-3">
-                            <Label className="text-sm font-semibold">Secondary Subscriber Information</Label>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                              <div>
-                                <Label htmlFor="secondarySubscriberFirstName">Subscriber First Name</Label>
-                                <Input
-                                  id="secondarySubscriberFirstName"
-                                  value={verificationForm.secondarySubscriberFirstName}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, secondarySubscriberFirstName: e.target.value }))}
-                                  placeholder="First name"
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="secondarySubscriberLastName">Subscriber Last Name</Label>
-                                <Input
-                                  id="secondarySubscriberLastName"
-                                  value={verificationForm.secondarySubscriberLastName}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, secondarySubscriberLastName: e.target.value }))}
-                                  placeholder="Last name"
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="secondarySubscriberDOB">Subscriber DOB</Label>
-                                <Input
-                                  id="secondarySubscriberDOB"
-                                  type="date"
-                                  value={verificationForm.secondarySubscriberDOB}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, secondarySubscriberDOB: e.target.value }))}
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="secondarySubscriberGender">Subscriber Gender</Label>
-                                <Select
-                                  value={verificationForm.secondarySubscriberGender}
-                                  onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondarySubscriberGender: value }))}
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select gender" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="M">Male</SelectItem>
-                                    <SelectItem value="F">Female</SelectItem>
-                                    <SelectItem value="O">Other</SelectItem>
-                                    <SelectItem value="U">Unknown</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Secondary Insurance Cost Sharing */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t">
-                          <div>
-                            <Label htmlFor="secondaryCoPay">Secondary Co-pay</Label>
-                            <Input
-                              id="secondaryCoPay"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.secondaryCoPay}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoPay: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryDeductible">Secondary Deductible</Label>
-                            <Input
-                              id="secondaryDeductible"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.secondaryDeductible}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductible: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryDeductibleMet">Deductible Met</Label>
-                            <Input
-                              id="secondaryDeductibleMet"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.secondaryDeductibleMet}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductibleMet: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="secondaryCoInsurance">Secondary Co-insurance (%)</Label>
-                            <Input
-                              id="secondaryCoInsurance"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.secondaryCoInsurance}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoInsurance: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Coverage Details */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          Coverage Details & Cost Sharing
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* QMB and Coverage Service Flags - Radio Buttons */}
-                        <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-                          <div>
-                            <Label className="text-base font-semibold mb-3 block">
-                              QMB Status (Qualified Medicare Beneficiary)
-                            </Label>
-                            <div className="flex items-center space-x-6">
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="radio"
-                                  id="qmb-yes"
-                                  name="qmb-status"
-                                  checked={verificationForm.isQMB === true}
-                                  onChange={() => setVerificationForm(prev => ({ ...prev, isQMB: true }))}
-                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                />
-                                <Label htmlFor="qmb-yes" className="cursor-pointer font-medium">
-                                  Yes (QMB Patient)
-                                </Label>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <input
-                                  type="radio"
-                                  id="qmb-no"
-                                  name="qmb-status"
-                                  checked={verificationForm.isQMB === false}
-                                  onChange={() => setVerificationForm(prev => ({ ...prev, isQMB: false }))}
-                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                />
-                                <Label htmlFor="qmb-no" className="cursor-pointer font-medium">
-                                  No
-                                </Label>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {(() => {
-                            const strIncludesMedicare = (s?: string) => (s || '').toLowerCase().includes('medicare');
-                            const medicareRecognized = verificationForm.planType === 'Medicare' 
-                              || strIncludesMedicare(verificationForm.primaryInsurance)
-                              || strIncludesMedicare(verificationForm.insurancePlan)
-                              || strIncludesMedicare(verificationForm.groupNumber);
-                            return verificationForm.isQMB ? (
-                            <>
-                              <div>
-                                <Label className="text-base font-semibold mb-3 block">
-                                  Is this a Medicare Covered Service?
-                                </Label>
-                                <div className="flex items-center space-x-6">
-                                  <div className="flex items-center space-x-2">
-                                    <input
-                                      type="radio"
-                                      id="covered-yes"
-                                      name="covered-service"
-                                      checked={verificationForm.isCoveredService === true}
-                                      onChange={() => setVerificationForm(prev => ({ ...prev, isCoveredService: true }))}
-                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <Label htmlFor="covered-yes" className="cursor-pointer font-medium">
-                                      Yes (Covered)
-                                    </Label>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <input
-                                      type="radio"
-                                      id="covered-no"
-                                      name="covered-service"
-                                      checked={verificationForm.isCoveredService === false}
-                                      onChange={() => setVerificationForm(prev => ({ ...prev, isCoveredService: false }))}
-                                      className="h-4 w-4 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <Label htmlFor="covered-no" className="cursor-pointer font-medium">
-                                      No (Not Covered)
-                                    </Label>
-                                  </div>
-                                </div>
-                              </div>
-                              <Alert className="mt-3">
-                                <AlertTriangle className="h-4 w-4" />
-                                <AlertDescription className="text-xs">
-                                  <strong>Federal Law:</strong> QMB patients cannot be billed for Medicare-covered services. If service is covered, patient responsibility will automatically be $0.00.
-                                </AlertDescription>
-                              </Alert>
-                              {!medicareRecognized && (
-                                <Alert className="mt-2 bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800">
-                                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                                  <AlertDescription className="text-xs text-yellow-800 dark:text-yellow-200">
-                                    QMB is selected, but the primary plan is not recognized as Medicare. Select Plan Type "Medicare" or choose the Medicare payer so the $0 responsibility rule can apply.
-                                  </AlertDescription>
-                                </Alert>
-                              )}
-                            </>
-                            ) : null;
-                          })()}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div>
-                            <Label htmlFor="coPay">Co-pay</Label>
-                            <Input
-                              id="coPay"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.coPay}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, coPay: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="coInsurance">Co-Insurance (%)</Label>
-                            <Input
-                              id="coInsurance"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.coInsurance}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, coInsurance: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="deductibleStatus">Deductible Status</Label>
-                            <Select
-                              value={verificationForm.deductibleStatus}
-                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, deductibleStatus: value as "Met" | "Not Met", deductibleAmount: value === "Met" ? "0" : prev.deductibleAmount }))}
-                            >
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Select status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Met">Met</SelectItem>
-                                <SelectItem value="Not Met">Not Met</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <Label htmlFor="deductibleAmount">Deductible Amount</Label>
-                            <Input
-                              id="deductibleAmount"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.deductibleAmount || (verificationForm.deductibleStatus === "Met" ? "0" : "")}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, deductibleAmount: e.target.value }))}
-                              placeholder="0.00"
-                              disabled={verificationForm.deductibleStatus === "Met"}
-                              className="h-9"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {verificationForm.deductibleStatus === "Met" ? "Deductible met – amount locked at $0" : "Enter a positive amount"}
-                            </p>
-                          </div>
-                          <div>
-                            <Label htmlFor="outOfPocketRemaining">Out Of Pocket Remaining</Label>
-                            <Input
-                              id="outOfPocketRemaining"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.outOfPocketRemaining}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setVerificationForm(prev => {
-                                  const updated = { ...prev, outOfPocketRemaining: value };
-                                  // If out of pocket remaining is 0, set patient responsibility to 0 (insurance pays all)
-                                  const oopRemaining = parseFloat(value) || 0;
-                                  if (oopRemaining === 0) {
-                                    updated.patientResponsibility = '0.00';
-                                  }
-                                  return updated;
-                                });
-                              }}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="outOfPocketMax">Out Of Pocket Max</Label>
-                            <Input
-                              id="outOfPocketMax"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.outOfPocketMax}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, outOfPocketMax: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-
-                    {/* Referral & Authorization */}
-              <Card>
-                <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <AlertTriangle className="h-5 w-5 text-blue-600" />
-                          Referral & Authorization
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="referralRequired"
-                            checked={verificationForm.referralRequired}
-                            onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, referralRequired: checked as boolean }))}
-                          />
-                          <Label htmlFor="referralRequired" className="cursor-pointer">Referral Required</Label>
-                        </div>
-
-                        {verificationForm.referralRequired && (
-                          <div className="ml-6 space-y-4 border-l-2 pl-4">
-                  <div>
-                              <Label htmlFor="referralObtainedFrom">Obtain From</Label>
-                              <Select 
-                                value={verificationForm.referralObtainedFrom} 
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, referralObtainedFrom: value }))}
-                              >
-                      <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Select option" />
-                      </SelectTrigger>
-                      <SelectContent>
-                                  <SelectItem value="PCP">Obtain from PCP</SelectItem>
-                                  <SelectItem value="InsuranceApprovedPCP">Insurance Approved PCP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                            {verificationForm.referralObtainedFrom === "PCP" && (
-                  <div>
-                                <Label htmlFor="referralPCPStatus">PCP Status</Label>
-                                <Select 
-                                  value={verificationForm.referralPCPStatus} 
-                                  onValueChange={(value) => setVerificationForm(prev => ({ ...prev, referralPCPStatus: value }))}
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select status" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="onFile">On File</SelectItem>
-                                    <SelectItem value="required">Required</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                  </div>
-                            )}
-                            <div>
-                              <Label htmlFor="referralNumber">Referral Number</Label>
-                              <Input
-                                id="referralNumber"
-                                value={verificationForm.referralNumber}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, referralNumber: e.target.value }))}
-                                placeholder="Enter referral number if available"
-                                className="h-9"
-                              />
-                            </div>
-                </div>
-                        )}
-
-                        <div className="flex items-center space-x-2">
-                          <Checkbox
-                            id="preAuthorizationRequired"
-                            checked={verificationForm.preAuthorizationRequired}
-                            onCheckedChange={(checked) => {
-                              setVerificationForm(prev => ({ ...prev, preAuthorizationRequired: checked as boolean }));
-                              // Open authorization dialog when checked
-                              if (checked && verificationForm.patientId) {
-                                setShowAuthDialog(true);
-                              } else if (checked && !verificationForm.patientId) {
-                                toast({
-                                  title: "Patient Required",
-                                  description: "Please select a patient first before creating a prior authorization request.",
-                                  variant: "destructive"
-                                });
-                              }
-                            }}
-                          />
-                          <Label htmlFor="preAuthorizationRequired" className="cursor-pointer">Pre-Authorization Required</Label>
-                          {verificationForm.preAuthorizationRequired && verificationForm.patientId && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setShowAuthDialog(true)}
-                              className="ml-2"
-                            >
-                              Create Authorization Request
-                            </Button>
-                          )}
-                        </div>
-
-                        {verificationForm.preAuthorizationRequired && (
-                          <div className="ml-6 space-y-4 border-l-2 pl-4 border-blue-200 dark:border-blue-800">
-                            {/* Prior Authorization Status & Basic Info */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                              <div>
-                                <Label htmlFor="priorAuthStatus">Prior Auth Status *</Label>
-                                <Select
-                                  value={verificationForm.priorAuthStatus}
-                                  onValueChange={(value) => {
-                                    const updates: any = { priorAuthStatus: value };
-                                    // Auto-set dates based on status (only if not already set)
-                                    if (value === "request_submitted" && !verificationForm.priorAuthSubmissionDate) {
-                                      updates.priorAuthSubmissionDate = new Date().toISOString().split('T')[0];
-                                    }
-                                    if (value === "request_submitted" && !verificationForm.priorAuthRequestDate) {
-                                      updates.priorAuthRequestDate = new Date().toISOString().split('T')[0];
-                                    }
-                                    if (value === "approved" && !verificationForm.priorAuthResponseDate) {
-                                      updates.priorAuthResponseDate = new Date().toISOString().split('T')[0];
-                                    }
-                                    // If status changes to denied, clear approval-related fields
-                                    if (value === "denied") {
-                                      updates.priorAuthNumber = "";
-                                      updates.priorAuthEffectiveDate = "";
-                                      updates.priorAuthExpirationDate = "";
-                                    }
-                                    // If status changes to expired, update expiration flag
-                                    if (value === "expired") {
-                                      // Keep existing dates but mark as expired
-                                    }
-                                    setVerificationForm(prev => ({ ...prev, ...updates }));
-                                  }}
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select status" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="not_started">Not Started</SelectItem>
-                                    <SelectItem value="request_submitted">Request Submitted</SelectItem>
-                                    <SelectItem value="pending">Pending Review</SelectItem>
-                                    <SelectItem value="under_review">Under Review</SelectItem>
-                                    <SelectItem value="additional_info_requested">Additional Info Requested</SelectItem>
-                                    <SelectItem value="approved">Approved</SelectItem>
-                                    <SelectItem value="denied">Denied</SelectItem>
-                                    <SelectItem value="expired">Expired</SelectItem>
-                                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthNumber">Authorization Number</Label>
-                                <Input
-                                  id="priorAuthNumber"
-                                  value={verificationForm.priorAuthNumber}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthNumber: e.target.value }))}
-                                  placeholder="Enter authorization number"
-                                  className="h-9"
-                                  disabled={verificationForm.priorAuthStatus !== "approved"}
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthSubmissionMethod">Submission Method</Label>
-                                <Select
-                                  value={verificationForm.priorAuthSubmissionMethod}
-                                  onValueChange={(value) => setVerificationForm(prev => ({ ...prev, priorAuthSubmissionMethod: value }))}
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select method" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="electronic">Electronic (X12 278)</SelectItem>
-                                    <SelectItem value="portal">Payer Portal</SelectItem>
-                                    <SelectItem value="fax">Fax</SelectItem>
-                                    <SelectItem value="email">Email</SelectItem>
-                                    <SelectItem value="phone">Phone (Verbal)</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthPayerConfirmationNumber">Payer Confirmation #</Label>
-                                <Input
-                                  id="priorAuthPayerConfirmationNumber"
-                                  value={verificationForm.priorAuthPayerConfirmationNumber}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthPayerConfirmationNumber: e.target.value }))}
-                                  placeholder="Payer confirmation number"
-                                  className="h-9"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Prior Authorization Dates */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                              <div>
-                                <Label htmlFor="priorAuthRequestDate">Request Date</Label>
-                                <Input
-                                  id="priorAuthRequestDate"
-                                  type="date"
-                                  value={verificationForm.priorAuthRequestDate}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthRequestDate: e.target.value }))}
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthSubmissionDate">Submission Date</Label>
-                                <Input
-                                  id="priorAuthSubmissionDate"
-                                  type="date"
-                                  value={verificationForm.priorAuthSubmissionDate}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthSubmissionDate: e.target.value }))}
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthExpectedResponseDate">Expected Response Date</Label>
-                                <Input
-                                  id="priorAuthExpectedResponseDate"
-                                  type="date"
-                                  value={verificationForm.priorAuthExpectedResponseDate}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthExpectedResponseDate: e.target.value }))}
-                                  className="h-9"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="priorAuthResponseDate">Response Date</Label>
-                                <Input
-                                  id="priorAuthResponseDate"
-                                  type="date"
-                                  value={verificationForm.priorAuthResponseDate}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthResponseDate: e.target.value }))}
-                                  className="h-9"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Authorization Effective & Expiration Dates */}
-                            {(verificationForm.priorAuthStatus === "approved" || verificationForm.priorAuthNumber) && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
-                                <div>
-                                  <Label htmlFor="priorAuthEffectiveDate">Authorization Effective Date *</Label>
-                                  <Input
-                                    id="priorAuthEffectiveDate"
-                                    type="date"
-                                    value={verificationForm.priorAuthEffectiveDate}
-                                    onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthEffectiveDate: e.target.value }))}
-                                    className="h-9"
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="priorAuthExpirationDate">Authorization Expiration Date *</Label>
-                                  <Input
-                                    id="priorAuthExpirationDate"
-                                    type="date"
-                                    value={verificationForm.priorAuthExpirationDate}
-                                    onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthExpirationDate: e.target.value }))}
-                                    className="h-9"
-                                  />
-                                  {verificationForm.priorAuthExpirationDate && new Date(verificationForm.priorAuthExpirationDate) < new Date() && (
-                                    <p className="text-xs text-red-600 mt-1">⚠️ Authorization has expired</p>
-                                  )}
-                                </div>
-                                <div>
-                                  <Label htmlFor="priorAuthApprovedQuantity">Approved Quantity</Label>
-                                  <Input
-                                    id="priorAuthApprovedQuantity"
-                                    value={verificationForm.priorAuthApprovedQuantity}
-                                    onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthApprovedQuantity: e.target.value }))}
-                                    placeholder="e.g., 1, 10, etc."
-                                    className="h-9"
-                                  />
-                                </div>
-                                <div>
-                                  <Label htmlFor="priorAuthApprovedFrequency">Approved Frequency</Label>
-                                  <Input
-                                    id="priorAuthApprovedFrequency"
-                                    value={verificationForm.priorAuthApprovedFrequency}
-                                    onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthApprovedFrequency: e.target.value }))}
-                                    placeholder="e.g., Once, Daily, Weekly"
-                                    className="h-9"
-                                  />
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Denial Information */}
-                            {verificationForm.priorAuthStatus === "denied" && (
-                              <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800 space-y-3">
-                                <Label className="text-sm font-semibold text-red-900 dark:text-red-100">Denial Information</Label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  <div>
-                                    <Label htmlFor="priorAuthDenialReasonCode">Denial Reason Code</Label>
-                                    <Input
-                                      id="priorAuthDenialReasonCode"
-                                      value={verificationForm.priorAuthDenialReasonCode}
-                                      onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthDenialReasonCode: e.target.value }))}
-                                      placeholder="e.g., MN (Medical Necessity)"
-                                      className="h-9"
-                                    />
-                                  </div>
-                                  <div className="sm:col-span-1">
-                                    <Label htmlFor="priorAuthDenialReason">Denial Reason Description</Label>
-                                    <Textarea
-                                      id="priorAuthDenialReason"
-                                      value={verificationForm.priorAuthDenialReason}
-                                      onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthDenialReason: e.target.value }))}
-                                      placeholder="Enter denial reason..."
-                                      rows={2}
-                                      className="resize-none"
-                                    />
-                                  </div>
-                                </div>
-                                
-                                {/* Appeal Section */}
-                                <div className="border-t pt-3 mt-3">
-                                  <div className="flex items-center space-x-2 mb-2">
-                                    <Checkbox
-                                      id="priorAuthAppealSubmitted"
-                                      checked={verificationForm.priorAuthAppealSubmitted}
-                                      onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, priorAuthAppealSubmitted: checked as boolean }))}
-                                    />
-                                    <Label htmlFor="priorAuthAppealSubmitted" className="cursor-pointer">Appeal Submitted</Label>
-                                  </div>
-                                  {verificationForm.priorAuthAppealSubmitted && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 ml-6">
-                                      <div>
-                                        <Label htmlFor="priorAuthAppealDate">Appeal Date</Label>
-                                        <Input
-                                          id="priorAuthAppealDate"
-                                          type="date"
-                                          value={verificationForm.priorAuthAppealDate}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthAppealDate: e.target.value }))}
-                                          className="h-9"
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label htmlFor="priorAuthAppealStatus">Appeal Status</Label>
-                                        <Select
-                                          value={verificationForm.priorAuthAppealStatus}
-                                          onValueChange={(value) => setVerificationForm(prev => ({ ...prev, priorAuthAppealStatus: value }))}
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Select status" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="approved">Approved</SelectItem>
-                                    <SelectItem value="denied">Denied</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                                      <div>
-                                        <Label htmlFor="priorAuthAppealDecisionDate">Appeal Decision Date</Label>
-                                        <Input
-                                          id="priorAuthAppealDecisionDate"
-                                          type="date"
-                                          value={verificationForm.priorAuthAppealDecisionDate}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthAppealDecisionDate: e.target.value }))}
-                                          className="h-9"
-                                        />
-                            </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Service Date (if approved) */}
-                            {verificationForm.priorAuthStatus === "approved" && (
-                              <div>
-                                <Label htmlFor="priorAuthServiceDate">Service Date (When service was/will be provided)</Label>
-                                <Input
-                                  id="priorAuthServiceDate"
-                                  type="date"
-                                  value={verificationForm.priorAuthServiceDate}
-                                  onChange={(e) => setVerificationForm(prev => ({ ...prev, priorAuthServiceDate: e.target.value }))}
-                                  className="h-9"
-                                />
-                                {verificationForm.priorAuthExpirationDate && verificationForm.priorAuthServiceDate && 
-                                 new Date(verificationForm.priorAuthServiceDate) > new Date(verificationForm.priorAuthExpirationDate) && (
-                                  <p className="text-xs text-yellow-600 mt-1">⚠️ Service date is after authorization expiration</p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Status Alerts */}
-                            {verificationForm.priorAuthStatus === "pending" && verificationForm.priorAuthExpectedResponseDate && 
-                             new Date(verificationForm.priorAuthExpectedResponseDate) < new Date() && (
-                              <Alert className="bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800">
-                                <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                                <AlertDescription className="text-yellow-800 dark:text-yellow-200 text-sm">
-                                  Expected response date has passed. Follow up with payer.
-                                </AlertDescription>
-                              </Alert>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    {/* Additional Information & QA */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          Additional Information & QA
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div>
-                            <Label htmlFor="dateChecked">Date Checked</Label>
-                            <Input
-                              id="dateChecked"
-                              type="date"
-                              value={verificationForm.dateChecked}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, dateChecked: e.target.value }))}
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="checkBy">Check By (Current User)</Label>
-                            <Input
-                              id="checkBy"
-                              value={verificationForm.checkBy || user?.email || ''}
-                              readOnly
-                              className="bg-muted h-9"
-                              placeholder="Auto-filled with current user"
-                            />
-                          </div>
-                          <div className="flex items-center space-x-2 pt-8">
-                            <Checkbox
-                              id="qa"
-                              checked={verificationForm.qa}
-                              onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, qa: checked as boolean }))}
-                            />
-                            <Label htmlFor="qa" className="cursor-pointer">QA</Label>
-                          </div>
-                          <div className="flex items-center space-x-2 pt-8">
-                            <Checkbox
-                              id="demographicChangesMade"
-                              checked={verificationForm.demographicChangesMade}
-                              onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, demographicChangesMade: checked as boolean }))}
-                            />
-                            <Label htmlFor="demographicChangesMade" className="cursor-pointer">Demographics Changes Made</Label>
-                          </div>
-                        </div>
-                        <div>
-                          <Label htmlFor="remarks">Remarks</Label>
-                          <Textarea
-                            id="remarks"
-                            value={verificationForm.remarks}
-                            onChange={(e) => setVerificationForm(prev => ({ ...prev, remarks: e.target.value }))}
-                            placeholder="Enter any additional remarks or notes..."
-                            rows={3}
-                            className="resize-none"
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-
+*/}
                     {/* Financial Calculation & Breakdown */}
                     <Card>
                       <CardHeader>
@@ -6401,6 +6149,60 @@ const EligibilityVerification = () => {
                           </div>
                         </div>
 
+                        {/* Coverage Details & Cost Sharing */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4 border-t pt-6">
+                          <div>
+                            <Label htmlFor="isQMB">QMB Status (Qualified Medicare Beneficiary)</Label>
+                            <Select
+                              value={verificationForm.isQMB ? "Yes" : "No"}
+                              onValueChange={(value) => setVerificationForm(prev => ({ ...prev, isQMB: value === "Yes" }))}
+                            >
+                              <SelectTrigger id="isQMB" className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Yes">Yes (QMB Patient)</SelectItem>
+                                <SelectItem value="No">No</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="outOfPocketRemaining">Out Of Pocket Remaining</Label>
+                            <Input
+                              id="outOfPocketRemaining"
+                              type="number"
+                              step="0.01"
+                              value={verificationForm.outOfPocketRemaining}
+                              onChange={(e) => setVerificationForm(prev => ({ ...prev, outOfPocketRemaining: e.target.value }))}
+                              placeholder="0.00"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="outOfPocketMax">Out Of Pocket Max</Label>
+                            <Input
+                              id="outOfPocketMax"
+                              type="number"
+                              step="0.01"
+                              value={verificationForm.outOfPocketMax}
+                              onChange={(e) => setVerificationForm(prev => ({ ...prev, outOfPocketMax: e.target.value }))}
+                              placeholder="0.00"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="patientResponsibility">Patient Responsibility (Calculated)</Label>
+                            <Input
+                              id="patientResponsibility"
+                              type="number"
+                              step="0.01"
+                              value={verificationForm.patientResponsibility}
+                              readOnly
+                              className="bg-muted font-semibold h-9"
+                            />
+                          </div>
+                        </div>
+
                         {/* Calculation Breakdown */}
                         {(() => {
                           // Calculate current visit charges from CPT codes
@@ -6458,9 +6260,10 @@ const EligibilityVerification = () => {
                             strIncludesMedicareCalc(verificationForm.insurancePlan) ||
                             strIncludesMedicareCalc(verificationForm.groupNumber);
                           
-                          // Out-of-Pocket Remaining Check: If OOP remaining is 0, patient responsibility is 0 (insurance pays all)
+                          // Out-of-Pocket Remaining Check: If OOP remaining is explicitly set to 0, patient responsibility is 0 (insurance pays all)
                           // This means the patient has already met their out-of-pocket maximum for the year
-                          if (oopYtd === 0) {
+                          // Only apply this rule if the field has been explicitly set (not empty)
+                          if (verificationForm.outOfPocketRemaining !== "" && oopYtd === 0) {
                             // Patient has already met out-of-pocket maximum - insurance pays everything
                             const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
                             patientResponsibility = 0;
@@ -6483,11 +6286,14 @@ const EligibilityVerification = () => {
                             const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
                             calculationBreakdown.allowedAmount = baseAmount;
 
-                            // Step 2: Apply Copay first
+                            // Step 2: Apply Copay first (for services where copay applies)
+                            // In many health plans, copay is applied for specific service types regardless of deductible status
                             calculationBreakdown.copay = Math.min(copay, baseAmount);
                             let remainingAfterCopay = Math.max(0, baseAmount - calculationBreakdown.copay);
 
-                            // Step 3: Apply Deductible
+                            // Step 3: Apply Deductible on remaining amount
+                            // Deductible is typically applied after copay for services that have copay
+                            // For services without copay, the full amount goes toward deductible
                             if (deductibleAmount > 0) {
                               calculationBreakdown.deductibleApplied = Math.min(remainingAfterCopay, deductibleAmount);
                               calculationBreakdown.remainingAfterDeductible = Math.max(0, remainingAfterCopay - calculationBreakdown.deductibleApplied);
@@ -6496,12 +6302,9 @@ const EligibilityVerification = () => {
                             }
 
                             // Step 4: Apply Coinsurance
-                            if (coinsurancePercent > 0 && calculationBreakdown.remainingAfterDeductible > 0) {
-                              calculationBreakdown.coinsurance = (calculationBreakdown.remainingAfterDeductible * coinsurancePercent) / 100;
-                              calculationBreakdown.insurancePays = calculationBreakdown.remainingAfterDeductible - calculationBreakdown.coinsurance;
-                            } else {
-                              calculationBreakdown.insurancePays = calculationBreakdown.remainingAfterDeductible;
-                            }
+                            // According to the formula: Patient Responsibility = Co-pay + Deductible Applied + (Allowed Amount × Co-insurance %)
+                            calculationBreakdown.coinsurance = (baseAmount * coinsurancePercent) / 100;
+                            calculationBreakdown.insurancePays = baseAmount - calculationBreakdown.copay - calculationBreakdown.deductibleApplied - calculationBreakdown.coinsurance;
 
                             // Calculate patient responsibility before OOP max
                             calculationBreakdown.patientResponsibilityBeforeOOP = 
@@ -6809,6 +6612,235 @@ const EligibilityVerification = () => {
                         })()}
                       </CardContent>
                     </Card>
+                    {/* Additional Information & QA */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-blue-600" />
+                          Additional Information & QA
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div>
+                            <Label htmlFor="dateChecked">Date Checked</Label>
+                            <Input
+                              id="dateChecked"
+                              type="date"
+                              value={verificationForm.dateChecked}
+                              onChange={(e) => setVerificationForm(prev => ({ ...prev, dateChecked: e.target.value }))}
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="checkBy">Check By (Current User)</Label>
+                            <Input
+                              id="checkBy"
+                              value={verificationForm.checkBy || user?.email || ''}
+                              readOnly
+                              className="bg-muted h-9"
+                              placeholder="Auto-filled with current user"
+                            />
+                          </div>
+                          <div className="flex items-center space-x-2 pt-8">
+                            <Checkbox
+                              id="qa"
+                              checked={verificationForm.qa}
+                              onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, qa: checked as boolean }))}
+                            />
+                            <Label htmlFor="qa" className="cursor-pointer">QA</Label>
+                          </div>
+                       </div>
+                        <div>
+                          <Label htmlFor="remarks">Remarks</Label>
+                          <Textarea
+                            id="remarks"
+                            value={verificationForm.remarks}
+                            onChange={(e) => setVerificationForm(prev => ({ ...prev, remarks: e.target.value }))}
+                            placeholder="Enter any additional remarks or notes..."
+                            rows={3}
+                            className="resize-none"
+                          />
+                        </div>
+                        
+                        {/* Comments & Attachments */}
+                        <div className="space-y-4 pt-4 border-t">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <Label>Comments & Attachments</Label>
+                              <p className="text-xs text-muted-foreground">
+                                Organize this eligibility into clear steps with notes and files, similar to an Asana activity feed.
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // Add a new comment entry
+                                setVerificationForm(prev => ({
+                                  ...prev,
+                                  comments: prev.comments || "",
+                                  commentEntries: [
+                                    ...prev.commentEntries,
+                                    {
+                                      id: Math.random().toString(36).substring(2, 9),
+                                      text: "",
+                                      attachments: [],
+                                      timestamp: new Date().toISOString(),
+                                      author: user?.email || "Current User"
+                                    }
+                                  ]
+                                }));
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add Step
+                            </Button>
+                          </div>
+                          
+                          {/* Display existing comment entries */}
+                          <div className="space-y-4">
+                            {verificationForm.commentEntries && verificationForm.commentEntries.map((commentEntry, index) => {
+                              const isLast = index === verificationForm.commentEntries.length - 1;
+                              return (
+                                <div key={commentEntry.id} className="flex gap-3">
+                                  {/* Timeline rail / step indicator */}
+                                  <div className="flex flex-col items-center">
+                                    <div className="flex items-center justify-center h-7 w-7 rounded-full bg-blue-600 text-white text-xs font-semibold shadow-sm">
+                                      {index + 1}
+                                    </div>
+                                    {!isLast && (
+                                      <div className="flex-1 w-px bg-border mt-1" />
+                                    )}
+                                  </div>
+
+                                  {/* Comment card */}
+                                  <div className="flex-1">
+                                    <div className="border rounded-lg p-3 bg-background shadow-sm">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="flex flex-col">
+                                          <span className="text-xs font-semibold text-blue-700">
+                                            Step {index + 1}
+                                          </span>
+                                          <span className="text-[11px] text-muted-foreground">
+                                            {new Date(commentEntry.timestamp).toLocaleString()} • {commentEntry.author}
+                                          </span>
+                                        </div>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => {
+                                            setVerificationForm(prev => {
+                                              const newEntries = [...prev.commentEntries];
+                                              newEntries.splice(index, 1);
+                                              return { ...prev, commentEntries: newEntries };
+                                            });
+                                          }}
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+
+                                      <Textarea
+                                        value={commentEntry.text}
+                                        onChange={(e) => {
+                                          setVerificationForm(prev => {
+                                            const newEntries = [...prev.commentEntries];
+                                            newEntries[index] = { ...commentEntry, text: e.target.value };
+                                            return { ...prev, commentEntries: newEntries };
+                                          });
+                                        }}
+                                        placeholder="Describe this step, what was checked, or any action taken..."
+                                        rows={2}
+                                        className="resize-none mb-2"
+                                      />
+                                      
+                                      {/* Individual comment attachments */}
+                                      <div className="space-y-2">
+                                        <Input
+                                          type="file"
+                                          multiple
+                                          onChange={(e) => {
+                                            const files = e.target.files;
+                                            if (files && files.length > 0) {
+                                              Array.from(files).forEach(file => {
+                                                const reader = new FileReader();
+                                                reader.onload = (event) => {
+                                                  const fileData = {
+                                                    id: Math.random().toString(36).substring(2, 9),
+                                                    name: file.name,
+                                                    type: file.type,
+                                                    size: file.size,
+                                                    content: event.target?.result as string,
+                                                    uploadedAt: new Date().toISOString(),
+                                                  };
+                                                  setVerificationForm(prev => {
+                                                    const newEntries = [...prev.commentEntries];
+                                                    const updatedEntry = {
+                                                      ...newEntries[index],
+                                                      attachments: [...newEntries[index].attachments, fileData]
+                                                    };
+                                                    newEntries[index] = updatedEntry;
+                                                    return { ...prev, commentEntries: newEntries };
+                                                  });
+                                                };
+                                                reader.readAsDataURL(file);
+                                              });
+                                              e.target.value = '';
+                                            }
+                                          }}
+                                          className="h-8 text-xs"
+                                        />
+                                        
+                                        {/* Display comment attachments */}
+                                        {commentEntry.attachments.length > 0 && (
+                                          <div className="mt-1 space-y-1 max-h-32 overflow-y-auto">
+                                            {commentEntry.attachments.map((attachment, attIndex) => (
+                                              <div key={attachment.id} className="flex items-center justify-between px-2 py-1 bg-muted rounded text-[11px]">
+                                                <div className="flex items-center space-x-2">
+                                                  <FileText className="h-3 w-3 text-muted-foreground" />
+                                                  <span className="truncate max-w-[180px]">{attachment.name}</span>
+                                                  <span className="text-[10px] text-muted-foreground">
+                                                    {(attachment.size / 1024).toFixed(1)} KB
+                                                  </span>
+                                                </div>
+                                                <Button
+                                                  type="button"
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={() => {
+                                                    setVerificationForm(prev => {
+                                                      const newEntries = [...prev.commentEntries];
+                                                      const updatedAttachments = newEntries[index].attachments.filter((_, i) => i !== attIndex);
+                                                      newEntries[index] = {
+                                                        ...newEntries[index],
+                                                        attachments: updatedAttachments
+                                                      };
+                                                      return { ...prev, commentEntries: newEntries };
+                                                    });
+                                                  }}
+                                                  className="h-5 w-5 p-0"
+                                                >
+                                                  <X className="h-3 w-3" />
+                                                </Button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+
 
               {/* Action Buttons */}
                     <div className="flex justify-between items-center gap-3">
@@ -6834,23 +6866,143 @@ const EligibilityVerification = () => {
                         <Button
                           variant="outline"
                           onClick={() => {
-                            // Calculate button - trigger calculation and update patient responsibility
+                            // Calculate button - trigger calculation using the same complex logic as the breakdown
+                            // Calculate current visit charges from CPT codes
                             const baseCharges = verificationForm.cptCodes.reduce((sum, cpt) => {
                               const charge = isNaN(parseFloat(cpt.charge)) ? 0 : parseFloat(cpt.charge);
                               const units = isNaN(parseFloat(cpt.units)) || !parseFloat(cpt.units) ? 1 : parseFloat(cpt.units);
                               return sum + (charge * units);
                             }, 0);
+                            const hasPendingRow = (verificationForm.currentCpt.code?.trim?.() || "") !== "" || (verificationForm.currentCpt.charge ?? "") !== "";
+                            const pendingCharge = hasPendingRow
+                              ? ((isNaN(parseFloat(verificationForm.currentCpt.charge)) ? 0 : parseFloat(verificationForm.currentCpt.charge)) *
+                                 (isNaN(parseFloat(verificationForm.currentCpt.units)) || !parseFloat(verificationForm.currentCpt.units) ? 1 : parseFloat(verificationForm.currentCpt.units)))
+                              : 0;
+                            const currentVisitCharges = baseCharges + pendingCharge;
+
+                            // Get values
                             const allowedAmount = parseFloat(verificationForm.allowedAmount) || 0;
                             const copay = parseFloat(verificationForm.coPay) || 0;
                             const coinsurancePercent = parseFloat(verificationForm.coInsurance) || 0;
                             const deductibleAmount = verificationForm.deductibleStatus === "Met" ? 0 : (parseFloat(verificationForm.deductibleAmount) || 0);
                             const insurancePayment = parseFloat(verificationForm.primaryPayment) || 0;
+                            const oopYtd = parseFloat(verificationForm.outOfPocketRemaining) || 0;
+                            const oopMax = parseFloat(verificationForm.outOfPocketMax) || 0;
+                            const previousBalance = parseFloat(verificationForm.previousBalanceCredit) || 0;
+                            const hasSecondary = (verificationForm.secondaryInsuranceName || "").trim() !== "";
+                            const secondaryPercent = parseFloat(verificationForm.secondaryCoveragePercent) || 0;
+
+                            // QMB Check: If QMB patient AND Medicare covered service, patient pays $0
+                            const strIncludesMedicareCalc = (s?: string) => (s || '').toLowerCase().includes('medicare');
+                            const isMedicarePlan = verificationForm.planType === "Medicare" ||
+                              strIncludesMedicareCalc(verificationForm.primaryInsurance) ||
+                              strIncludesMedicareCalc(verificationForm.insurancePlan) ||
+                              strIncludesMedicareCalc(verificationForm.groupNumber);
                             
-                            // Simple calculation: Allowed Amount - Insurance Payment - Copay - Deductible - Coinsurance
-                            let patientResp = allowedAmount > 0 ? allowedAmount : baseCharges;
-                            patientResp = Math.max(0, patientResp - insurancePayment - copay - deductibleAmount);
-                            if (coinsurancePercent > 0) {
-                              patientResp = patientResp * (coinsurancePercent / 100);
+                            // Out-of-Pocket Remaining Check: If OOP remaining is explicitly set to 0, patient responsibility is 0 (insurance pays all)
+                            // This means the patient has already met their out-of-pocket maximum for the year
+                            // Only apply this rule if the field has been explicitly set (not empty)
+                            let patientResp = 0;
+                            if (verificationForm.outOfPocketRemaining !== "" && oopYtd === 0) {
+                              // Patient has already met out-of-pocket maximum - insurance pays everything
+                              const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
+                              patientResp = 0;
+                              // Set the calculated values in the breakdown object
+                              // For the button calculation, we just need the final result
+                            } else if (verificationForm.isQMB && verificationForm.isCoveredService && isMedicarePlan) {
+                              // QMB Patient - Federal law: $0 responsibility for Medicare covered services
+                              patientResp = 0;
+                            } else {
+                              // Normal Calculation Flow
+                              // Step 1: Start with Allowed Amount (or billed if no allowed amount)
+                              const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
+                              
+                              // Step 2: Apply Copay first (for services where copay applies)
+                              // In many health plans, copay is applied for specific service types regardless of deductible status
+                              const calculatedCopay = Math.min(copay, baseAmount);
+                              let remainingAfterCopay = Math.max(0, baseAmount - calculatedCopay);
+                              
+                              // Step 3: Apply Deductible on remaining amount
+                              // Deductible is typically applied after copay for services that have copay
+                              // For services without copay, the full amount goes toward deductible
+                              let remainingAfterDeductible = remainingAfterCopay;
+                              let deductibleApplied = 0;
+                              if (deductibleAmount > 0) {
+                                deductibleApplied = Math.min(remainingAfterCopay, deductibleAmount);
+                                remainingAfterDeductible = Math.max(0, remainingAfterCopay - deductibleApplied);
+                              }
+                              
+                              // Step 4: Apply Coinsurance
+                              // According to the formula: Patient Responsibility = Co-pay + Deductible Applied + (Allowed Amount × Co-insurance %)
+                              let coinsuranceAmount = (baseAmount * coinsurancePercent) / 100;
+                              
+                              // Calculate patient responsibility before OOP max
+                              const patientResponsibilityBeforeOOP = calculatedCopay + deductibleApplied + coinsuranceAmount;
+                              
+                              // Step 5: Apply Out-of-Pocket Maximum Cap
+                              let finalPatientResponsibility = patientResponsibilityBeforeOOP;
+                              if (oopMax > 0) {
+                                const oopAfterThisVisit = oopYtd + patientResponsibilityBeforeOOP;
+                                
+                                if (oopAfterThisVisit >= oopMax) {
+                                  // OOP Max reached or exceeded
+                                  if (oopYtd >= oopMax) {
+                                    // Already at max - patient pays $0
+                                    finalPatientResponsibility = 0;
+                                  } else {
+                                    // Reaching max this visit - only pay difference
+                                    const remainingToMax = oopMax - oopYtd;
+                                    finalPatientResponsibility = Math.min(patientResponsibilityBeforeOOP, remainingToMax);
+                                  }
+                                } else {
+                                  finalPatientResponsibility = patientResponsibilityBeforeOOP;
+                                }
+                              } else {
+                                finalPatientResponsibility = patientResponsibilityBeforeOOP;
+                              }
+
+                              patientResp = finalPatientResponsibility;
+                              
+                              // Step 6: Apply Secondary Insurance (COB) on remaining patient responsibility
+                              if (hasSecondary && patientResp > 0) {
+                                // Get secondary insurance details
+                                const secondaryCoPay = parseFloat(verificationForm.secondaryCoPay) || 0;
+                                const secondaryDeductible = parseFloat(verificationForm.secondaryDeductible) || 0;
+                                const secondaryDeductibleMet = parseFloat(verificationForm.secondaryDeductibleMet) || 0;
+                                const secondaryCoInsurance = parseFloat(verificationForm.secondaryCoInsurance) || 0;
+                                
+                                // Start with remaining patient responsibility
+                                let secondaryRemaining = patientResp;
+                                
+                                // Step 6a: Apply Secondary Co-pay (if applicable)
+                                if (secondaryCoPay > 0) {
+                                  const secondaryCopayApplied = Math.min(secondaryCoPay, secondaryRemaining);
+                                  secondaryRemaining = Math.max(0, secondaryRemaining - secondaryCopayApplied);
+                                }
+                                
+                                // Step 6b: Apply Secondary Deductible (if not met)
+                                if (secondaryDeductible > 0 && secondaryDeductibleMet < secondaryDeductible) {
+                                  const remainingDeductible = secondaryDeductible - secondaryDeductibleMet;
+                                  const deductibleAppliedSecondary = Math.min(remainingDeductible, secondaryRemaining);
+                                  secondaryRemaining = Math.max(0, secondaryRemaining - deductibleAppliedSecondary);
+                                }
+                                
+                                // Step 6c: Apply Secondary Co-insurance or Coverage Percentage
+                                let secondaryPayment = 0;
+                                if (secondaryCoInsurance > 0) {
+                                  // Use co-insurance percentage if provided
+                                  secondaryPayment = (secondaryRemaining * secondaryCoInsurance) / 100;
+                                } else if (secondaryPercent > 0) {
+                                  // Fall back to coverage percentage
+                                  secondaryPayment = (secondaryRemaining * secondaryPercent) / 100;
+                                }
+                                
+                                // Ensure secondary payment doesn't exceed remaining balance
+                                secondaryPayment = Math.min(secondaryPayment, secondaryRemaining);
+                                secondaryRemaining = Math.max(0, secondaryRemaining - secondaryPayment);
+                                
+                                patientResp = secondaryRemaining;
+                              }
                             }
                             
                             setVerificationForm(prev => ({
@@ -7007,22 +7159,32 @@ const EligibilityVerification = () => {
                               setShowFormDialog(false);
                               setVerificationForm({
                                 serialNo: "",
-                                description: "",
-                                providerId: "",
-                                providerName: "",
-                                nppId: "",
-                                nppName: "",
+                                description: "", // Service description
+                                providerId: "", // Provider selection
+                                providerName: "", // Provider display name
+                                nppId: "", // Non-Physician Practitioner ID
+                                nppName: "", // Non-Physician Practitioner name
                                 appointmentLocation: "",
                                 appointmentDate: "",
                                 dateOfService: "",
                                 demographic: "",
                                 typeOfVisit: "",
-                                serviceType: "",
-                                status: "pending",
+                                serviceType: "", // Inpatient, Outpatient, Emergency, etc.
+                                status: "pending" as "pending" | "verified" | "completed" | "cancelled",
                                 isSelfPay: false,
                                 patientName: "",
-                                patientId: "",
+                                patientId: "", // External patient ID (PAT-001) for display
+                                patientUuid: "", // Internal UUID from patients.id for database
+                                firstName: "",
+                                lastName: "",
                                 dob: "",
+                                gender: "",
+                                phone: "",
+                                email: "",
+                                address: "",
+                                city: "",
+                                state: "",
+                                zip: "",
                                 patientGender: "",
                                 patientAddress: "",
                                 patientCity: "",
@@ -7036,12 +7198,13 @@ const EligibilityVerification = () => {
                                 subscriberMiddleInitial: "",
                                 subscriberDOB: "",
                                 subscriberGender: "",
-                                subscriberRelationship: "",
+                                subscriberRelationship: "", // Self, Spouse, Child, Parent, etc.
                                 subscriberAddress: "",
                                 subscriberCity: "",
                                 subscriberState: "",
                                 subscriberZip: "",
                                 primaryInsurance: "",
+                                primaryInsuranceId: "",
                                 insuranceId: "",
                                 groupNumber: "",
                                 insurancePlan: "",
@@ -7057,33 +7220,49 @@ const EligibilityVerification = () => {
                                 inNetworkStatus: "",
                                 allowedAmount: "",
                                 copayBeforeDeductible: true,
-                                deductibleStatus: "Met",
+                                deductibleStatus: "Met" as "Met" | "Not Met",
                                 deductibleAmount: "",
-                                cptCodes: [],
-                                icdCodes: [],
+                                cptCodes: [] as Array<{
+                                  code: string;
+                                  modifier1: string;
+                                  modifier2: string;
+                                  icd: string; // Linked ICD code
+                                  pos: string; // Place of Service
+                                  tos: string; // Type of Service
+                                  units: string;
+                                  charge: string;
+                                }>,
+                                icdCodes: [] as Array<{
+                                  code: string;
+                                  description: string;
+                                  type: string;
+                                  isPrimary: boolean;
+                                }>,
                                 currentCpt: {
                                   code: "",
                                   modifier1: "",
                                   modifier2: "",
-                                  modifier3: "",
+                                  icd: "", // ICD code linked to this CPT
                                   pos: "",
                                   tos: "",
                                   units: "",
                                   charge: "",
-                                  renderingNpi: "",
-                                  ndc: "",
                                 },
+                                // Current ICD row being edited (kept for compatibility)
                                 currentIcd: {
                                   code: "",
                                   description: "",
-                                  type: "DX",
+                                  type: "DX", // DX = Diagnosis, PX = Procedure
                                   isPrimary: false,
                                 },
+                                
+                                // Secondary Insurance
                                 secondaryInsuranceName: "",
+                                secondaryInsurance: "",
                                 secondaryInsuranceCoverage: "",
-                                secondaryInsuranceId: "",
+                                secondaryInsuranceId: "", // Subscriber/Member ID
                                 secondaryGroupNumber: "",
-                                secondaryRelationshipCode: "",
+                                secondaryRelationshipCode: "", // Self, Spouse, Child, Parent, Other
                                 secondaryEffectiveDate: "",
                                 secondaryTerminationDate: "",
                                 secondarySubscriberFirstName: "",
@@ -7094,18 +7273,23 @@ const EligibilityVerification = () => {
                                 secondaryDeductible: "",
                                 secondaryDeductibleMet: "",
                                 secondaryCoInsurance: "",
-                                cobRule: "",
-                                cobIndicator: "S" as "P" | "S" | "T" | "A",
+                                secondaryPolicyHolderName: "",
+                                secondaryPolicyHolderRelationship: "",
+                                cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
+                                cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
+                                
+                                // Referral & Authorization
                                 referralRequired: false,
-                                referralObtainedFrom: "",
-                                referralPCPStatus: "",
+                                referralStatus: "active", // Active or Inactive
+                                referralObtainedFrom: "", // "PCP" or "Insurance Approved PCP"
+                                referralPCPStatus: "", // "On File" or "Required" (only if obtained from PCP)
                                 referralNumber: "",
                                 preAuthorizationRequired: false,
                                 priorAuthNumber: "",
-                                priorAuthStatus: "",
+                                priorAuthStatus: "", // Not Started, Request Submitted, Pending, Under Review, Approved, Denied, Expired, Cancelled
                                 priorAuthRequestDate: "",
                                 priorAuthSubmissionDate: "",
-                                priorAuthSubmissionMethod: "",
+                                priorAuthSubmissionMethod: "", // Electronic (X12 278), Portal, Fax, Email, Phone
                                 priorAuthPayerConfirmationNumber: "",
                                 priorAuthExpectedResponseDate: "",
                                 priorAuthResponseDate: "",
@@ -7118,26 +7302,51 @@ const EligibilityVerification = () => {
                                 priorAuthServiceDate: "",
                                 priorAuthAppealSubmitted: false,
                                 priorAuthAppealDate: "",
-                                priorAuthAppealStatus: "",
+                                priorAuthAppealStatus: "", // Pending, Approved, Denied
                                 priorAuthAppealDecisionDate: "",
+                                
+                                // Financial Information
                                 previousBalanceCredit: "",
                                 patientResponsibility: "",
                                 collection: "",
                                 estimatedCost: "",
+                                // Visit amounts
                                 billedAmount: "",
-                                isQMB: false,
-                                isCoveredService: true,
-                                primaryPayment: "",
-                                secondaryPayment: "",
+                                // QMB and Coverage
+                                isQMB: false, // Qualified Medicare Beneficiary
+                                isCoveredService: true, // Is service Medicare covered
+                                // Insurance Payments
+                                primaryPayment: "", // Amount paid by primary insurance
+                                secondaryPayment: "", // Amount paid by secondary insurance (if any)
+                                // Coverage percents (prototype-driven)
                                 primaryCoveragePercent: "",
                                 secondaryCoveragePercent: "",
+                                
+                                // Additional Information
                                 remarks: "",
+                                comments: "",
+                                commentEntries: [] as Array<{id: string, text: string, attachments: Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>, timestamp: string, author: string}>,
+                                attachments: [] as Array<{id: string, name: string, type: string, size: number, content: string, uploadedAt: string}>,
                                 dateChecked: new Date().toISOString().split('T')[0],
-                                verifiedBy: "",
-                                checkBy: "",
-                                verificationMethod: "manual",
+                                verifiedBy: "", // User who performed verification
+                                checkBy: "", // Current user who checked (QA/Review)
+                                verificationMethod: "manual", // manual, automated, portal
                                 demographicChangesMade: false,
                                 qa: false,
+                                // Emergency Contact
+                                emergencyContactName: "",
+                                emergencyContactPhone: "",
+                                emergencyContactRelation: "",
+                                // Policy Holder Information
+                                policyHolderName: "",
+                                policyHolderRelationship: "",
+                                // Medical Information
+                                knownAllergies: "",
+                                currentMedications: "",
+                                medicalConditions: "",
+                                previousSurgeries: "",
+                                familyHistory: "",
+                                // Demographic display (read-only, populated when patient selected)
                                 demographicDisplay: {
                                   patientId: "",
                                   firstName: "",
@@ -7153,7 +7362,28 @@ const EligibilityVerification = () => {
                                   state: "",
                                   zip: "",
                                   ssn: "",
-                                },
+                                  emergencyContactName: "",
+                                  emergencyContactPhone: "",
+                                  emergencyContactRelation: "",
+                                } as {
+                                  patientId: string;
+                                  firstName: string;
+                                  lastName: string;
+                                  middleInitial: string;
+                                  suffix: string;
+                                  dob: string;
+                                  gender: string;
+                                  phone: string;
+                                  email: string;
+                                  address: string;
+                                  city: string;
+                                  state: string;
+                                  zip: string;
+                                  ssn: string;
+                                  emergencyContactName: string;
+                                  emergencyContactPhone: string;
+                                  emergencyContactRelation: string;
+                                }
                               });
                               toast({
                                 title: "Voided",
@@ -7769,7 +7999,9 @@ const EligibilityVerification = () => {
                                 size="sm"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openEdit(entry);
+                                  duplicateToForm(entry);
+                                  // Optionally open the form dialog if it's not already visible
+                                  setShowFormDialog(true);
                                 }}
                                 title="Edit"
                               >
@@ -8742,6 +8974,672 @@ const EligibilityVerification = () => {
           facilityName: facilities.find(f => f.id === verificationForm.appointmentLocation)?.name || undefined,
           appointmentDate: verificationForm.appointmentDate || verificationForm.dateOfService || undefined,
           appointmentType: verificationForm.typeOfVisit || undefined,
+        }}
+      />
+
+      {/* Patient Edit Modal */}
+      <Dialog open={showPatientEditModal} onOpenChange={setShowPatientEditModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5 text-blue-600" />
+              Edit Patient Information
+            </DialogTitle>
+            <DialogDescription>
+              Update patient information including demographics, contact, insurance, and medical details
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                <User className="h-4 w-4 mr-2 text-blue-600" />
+                Basic Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="modal-patient-id">Patient ID</Label>
+                  <Input 
+                    id="modal-patient-id" 
+                    value={verificationForm.patientId || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      patientId: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        patientId: e.target.value
+                      }
+                    }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-first-name">First Name *</Label>
+                  <Input 
+                    id="modal-first-name" 
+                    value={verificationForm.firstName || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      firstName: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        firstName: e.target.value
+                      }
+                    }))}
+                    placeholder="Enter first name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-last-name">Last Name *</Label>
+                  <Input 
+                    id="modal-last-name" 
+                    value={verificationForm.lastName || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      lastName: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        lastName: e.target.value
+                      }
+                    }))}
+                    placeholder="Enter last name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-dob">Date of Birth *</Label>
+                  <Input 
+                    id="modal-dob" 
+                    type="date" 
+                    value={verificationForm.dob || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      dob: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        dob: e.target.value
+                      }
+                    }))}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-gender">Gender *</Label>
+                  <Select 
+                    value={verificationForm.gender || ''}
+                    onValueChange={(value) => setVerificationForm(prev => ({
+                      ...prev,
+                      gender: value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        gender: value
+                      }
+                    }))}
+                  >
+                    <SelectTrigger id="modal-gender">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="M">Male</SelectItem>
+                      <SelectItem value="F">Female</SelectItem>
+                      <SelectItem value="O">Other</SelectItem>
+                      <SelectItem value="U">Unknown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            
+            {/* Contact Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                <Phone className="h-4 w-4 mr-2 text-green-600" />
+                Contact Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="modal-phone">Phone Number *</Label>
+                  <Input 
+                    id="modal-phone" 
+                    value={verificationForm.phone || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      phone: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        phone: e.target.value
+                      }
+                    }))}
+                    placeholder="(555) 123-4567"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-email">Email Address *</Label>
+                  <Input 
+                    id="modal-email" 
+                    value={verificationForm.email || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      email: e.target.value
+                    }))}
+                    placeholder="patient@example.com"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="modal-address">Street Address *</Label>
+                  <Input 
+                    id="modal-address" 
+                    value={verificationForm.address || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      address: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        address: e.target.value
+                      }
+                    }))}
+                    placeholder="123 Main Street"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-city">City *</Label>
+                  <Input 
+                    id="modal-city" 
+                    value={verificationForm.city || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      city: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        city: e.target.value
+                      }
+                    }))}
+                    placeholder="Anytown"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-state">State *</Label>
+                  <Select 
+                    value={verificationForm.state || ''}
+                    onValueChange={(value) => setVerificationForm(prev => ({
+                      ...prev,
+                      state: value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        state: value
+                      }
+                    }))}
+                  >
+                    <SelectTrigger id="modal-state">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {states.map(state => (
+                        <SelectItem key={state} value={state}>{state}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="modal-zip">Zip Code *</Label>
+                  <Input 
+                    id="modal-zip" 
+                    value={verificationForm.zip || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      zip: e.target.value,
+                      demographicDisplay: {
+                        ...prev.demographicDisplay,
+                        zip: e.target.value
+                      }
+                    }))}
+                    placeholder="12345"
+                  />
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+                  <AlertTriangle className="h-4 w-4 mr-2 text-orange-500" />
+                  Emergency Contact
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="modal-emergency-contact-name">Contact Name</Label>
+                    <Input
+                      id="modal-emergency-contact-name"
+                      value={verificationForm.emergencyContactName || ''}
+                      onChange={(e) => setVerificationForm(prev => ({
+                        ...prev,
+                        emergencyContactName: e.target.value,
+                        demographicDisplay: {
+                          ...prev.demographicDisplay,
+                          emergencyContactName: e.target.value
+                        }
+                      }))}
+                      placeholder="Emergency contact name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-emergency-contact-phone">Contact Phone</Label>
+                    <Input
+                      id="modal-emergency-contact-phone"
+                      value={verificationForm.emergencyContactPhone || ''}
+                      onChange={(e) => setVerificationForm(prev => ({
+                        ...prev,
+                        emergencyContactPhone: e.target.value,
+                        demographicDisplay: {
+                          ...prev.demographicDisplay,
+                          emergencyContactPhone: e.target.value
+                        }
+                      }))}
+                      placeholder="(555) 987-6543"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-emergency-contact-relation">Relationship</Label>
+                    <Select
+                      value={verificationForm.emergencyContactRelation || ''}
+                      onValueChange={(value) => setVerificationForm(prev => ({
+                        ...prev,
+                        emergencyContactRelation: value,
+                        demographicDisplay: {
+                          ...prev.demographicDisplay,
+                          emergencyContactRelation: value
+                        }
+                      }))}
+                    >
+                      <SelectTrigger id="modal-emergency-contact-relation">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="spouse">Spouse</SelectItem>
+                        <SelectItem value="parent">Parent</SelectItem>
+                        <SelectItem value="child">Child</SelectItem>
+                        <SelectItem value="sibling">Sibling</SelectItem>
+                        <SelectItem value="friend">Friend</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Insurance Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                <Shield className="h-4 w-4 mr-2 text-emerald-600" />
+                Insurance Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="modal-primary-insurance-company">Primary Insurance Company *</Label>
+                  <Select
+                    value={verificationForm.primaryInsuranceId || ''}
+                    onValueChange={(value) => {
+                      const payer = mockPayers.find(p => p.id === value);
+                      setVerificationForm(prev => ({
+                        ...prev,
+                        primaryInsuranceId: value,
+                        primaryInsurance: payer?.name || '',
+                      }));
+                    }}
+                    disabled={isLoadingPayers}
+                  >
+                    <SelectTrigger id="modal-primary-insurance-company" className="min-w-[200px]">
+                      <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance company"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mockPayers.length === 0 && !isLoadingPayers ? (
+                        <SelectItem value="none" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                      ) : (
+                        mockPayers.map(payer => (
+                          <SelectItem key={payer.id} value={payer.id}>
+                            {payer.name} {payer.type ? `- ${payer.type}` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="modal-insurance-id">Insurance ID *</Label>
+                  <Input
+                    id="modal-insurance-id"
+                    value={verificationForm.insuranceId || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      insuranceId: e.target.value
+                    }))}
+                    placeholder="ABC123456789"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-group-number">Group Number</Label>
+                  <Input
+                    id="modal-group-number"
+                    value={verificationForm.groupNumber || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      groupNumber: e.target.value
+                    }))}
+                    placeholder="Group number"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-policy-holder-name">Policy Holder Name</Label>
+                  <Input
+                    id="modal-policy-holder-name"
+                    value={verificationForm.policyHolderName || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      policyHolderName: e.target.value
+                    }))}
+                    placeholder="Policy holder name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="modal-policy-holder-relationship">Policy Holder Relationship</Label>
+                  <Select
+                    value={verificationForm.policyHolderRelationship || ''}
+                    onValueChange={(value) => setVerificationForm(prev => ({
+                      ...prev,
+                      policyHolderRelationship: value
+                    }))}
+                  >
+                    <SelectTrigger id="modal-policy-holder-relationship">
+                      <SelectValue placeholder="Select relationship" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="self">Self</SelectItem>
+                      <SelectItem value="spouse">Spouse</SelectItem>
+                      <SelectItem value="parent">Parent</SelectItem>
+                      <SelectItem value="child">Child</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t">
+                <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+                  <Shield className="h-4 w-4 mr-2 text-blue-500" />
+                  Secondary Insurance (Optional)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="modal-secondary-insurance-company">Secondary Insurance Company</Label>
+                    <Select
+                      value={verificationForm.secondaryInsuranceId || ''}
+                      onValueChange={(value) => {
+                        const payer = mockPayers.find(p => p.id === value);
+                        setVerificationForm(prev => ({
+                          ...prev,
+                          secondaryInsuranceId: value,
+                          secondaryInsurance: payer?.name || '',
+                        }));
+                      }}
+                      disabled={isLoadingPayers}
+                    >
+                      <SelectTrigger id="modal-secondary-insurance-company">
+                        <SelectValue placeholder={isLoadingPayers ? "Loading payers..." : "Select insurance company"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {mockPayers.length === 0 && !isLoadingPayers ? (
+                          <SelectItem value="no-payers" disabled>No payers found. Please add payers in Customer Setup.</SelectItem>
+                        ) : (
+                          mockPayers.map(payer => (
+                            <SelectItem key={payer.id} value={payer.id}>
+                              {payer.name} {payer.type ? `- ${payer.type}` : ''}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-secondary-insurance-id">Secondary Insurance ID</Label>
+                    <Input
+                      id="modal-secondary-insurance-id"
+                      value={verificationForm.secondaryInsuranceId || ''}
+                      onChange={(e) => setVerificationForm(prev => ({
+                        ...prev,
+                        secondaryInsuranceId: e.target.value
+                      }))}
+                      placeholder="ABC123456789"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-secondary-group-number">Group Number</Label>
+                    <Input
+                      id="modal-secondary-group-number"
+                      value={verificationForm.secondaryGroupNumber || ''}
+                      onChange={(e) => setVerificationForm(prev => ({
+                        ...prev,
+                        secondaryGroupNumber: e.target.value
+                      }))}
+                      placeholder="Group number"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-secondary-policy-holder-name">Policy Holder Name</Label>
+                    <Input
+                      id="modal-secondary-policy-holder-name"
+                      value={verificationForm.secondaryPolicyHolderName || ''}
+                      onChange={(e) => setVerificationForm(prev => ({
+                        ...prev,
+                        secondaryPolicyHolderName: e.target.value
+                      }))}
+                      placeholder="Policy holder name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-secondary-policy-holder-relationship">Policy Holder Relationship</Label>
+                    <Select
+                      value={verificationForm.secondaryPolicyHolderRelationship || ''}
+                      onValueChange={(value) => setVerificationForm(prev => ({
+                        ...prev,
+                        secondaryPolicyHolderRelationship: value
+                      }))}
+                    >
+                      <SelectTrigger id="modal-secondary-policy-holder-relationship">
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="self">Self</SelectItem>
+                        <SelectItem value="spouse">Spouse</SelectItem>
+                        <SelectItem value="parent">Parent</SelectItem>
+                        <SelectItem value="child">Child</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Medical Information Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                <Stethoscope className="h-4 w-4 mr-2 text-purple-600" />
+                Medical Information
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="modal-known-allergies">Known Allergies</Label>
+                  <Textarea
+                    id="modal-known-allergies"
+                    value={verificationForm.knownAllergies || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      knownAllergies: e.target.value
+                    }))}
+                    placeholder="List any known allergies (separate with commas)"
+                    rows={3}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="modal-current-medications">Current Medications</Label>
+                  <Textarea
+                    id="modal-current-medications"
+                    value={verificationForm.currentMedications || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      currentMedications: e.target.value
+                    }))}
+                    placeholder="List current medications (separate with commas)"
+                    rows={3}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="modal-medical-conditions">Medical Conditions</Label>
+                  <Textarea
+                    id="modal-medical-conditions"
+                    value={verificationForm.medicalConditions || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      medicalConditions: e.target.value
+                    }))}
+                    placeholder="List any medical conditions (separate with commas)"
+                    rows={3}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="modal-previous-surgeries">Previous Surgeries</Label>
+                  <Textarea
+                    id="modal-previous-surgeries"
+                    value={verificationForm.previousSurgeries || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      previousSurgeries: e.target.value
+                    }))}
+                    placeholder="List any previous surgeries"
+                    rows={3}
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="modal-family-history">Family Medical History</Label>
+                  <Textarea
+                    id="modal-family-history"
+                    value={verificationForm.familyHistory || ''}
+                    onChange={(e) => setVerificationForm(prev => ({
+                      ...prev,
+                      familyHistory: e.target.value
+                    }))}
+                    placeholder="List relevant family medical history"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-2 pt-4">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowPatientEditModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                // Optionally, you can add validation or save logic here
+                toast({
+                  title: "Patient Information Updated",
+                  description: "Patient information has been updated successfully."
+                });
+                setShowPatientEditModal(false);
+              }}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Patient Registration Form Modal */}
+      <PatientRegistrationForm 
+        isOpen={showPatientRegistrationModal}
+        onClose={() => setShowPatientRegistrationModal(false)}
+        onSubmit={(patientData) => {
+          // Handle patient registration submission
+          toast({
+            title: "Patient Registered Successfully",
+            description: `${patientData.firstName} ${patientData.lastName} has been registered.`
+          });
+          
+          // Optionally populate the main form with the new patient data
+          setVerificationForm(prev => ({
+            ...prev,
+            patientId: patientData.id,
+            patientName: `${patientData.firstName} ${patientData.lastName}`,
+            firstName: patientData.firstName,
+            lastName: patientData.lastName,
+            dob: patientData.dateOfBirth,
+            gender: patientData.gender,
+            phone: patientData.phone,
+            email: patientData.email,
+            address: patientData.address,
+            city: patientData.city,
+            state: patientData.state,
+            zip: patientData.zipCode,
+            insuranceId: patientData.insuranceId,
+            primaryInsurance: patientData.insuranceCompany,
+            // Map insurance company ID if available
+            primaryInsuranceId: patientData.insuranceCompanyId,
+            // Set subscriber information to match patient
+            subscriberFirstName: patientData.firstName,
+            subscriberLastName: patientData.lastName,
+            subscriberDob: patientData.dateOfBirth,
+            subscriberGender: patientData.gender,
+            subscriberId: patientData.insuranceId,
+            subscriberRelationship: "Self", // Since patient is self
+            // Medical information
+            medicalInfo: patientData.medicalInfo,
+            emergencyContact: patientData.emergencyContact,
+            // Insurance details
+            groupNumber: patientData.groupNumber,
+            policyHolderName: patientData.policyHolderName,
+            policyHolderRelationship: patientData.policyHolderRelationship,
+            // Secondary insurance if available
+            secondaryInsurance: patientData.secondaryInsurance,
+            secondaryInsuranceId: patientData.secondaryInsuranceId,
+            secondaryGroupNumber: patientData.secondaryGroupNumber,
+            secondaryPolicyHolderName: patientData.secondaryPolicyHolderName,
+            secondaryPolicyHolderRelationship: patientData.secondaryPolicyHolderRelationship,
+            // Medical history
+            knownAllergies: patientData.allergies,
+            currentMedications: patientData.currentMedications,
+            medicalConditions: patientData.medicalConditions,
+            previousSurgeries: patientData.previousSurgeries,
+            familyHistory: patientData.familyHistory,
+            // Update demographic display as well
+            demographicDisplay: {
+              ...prev.demographicDisplay,
+              patientId: patientData.id,
+              firstName: patientData.firstName,
+              lastName: patientData.lastName,
+              dob: patientData.dateOfBirth,
+              gender: patientData.gender,
+              phone: patientData.phone,
+              address: patientData.address,
+              city: patientData.city,
+              state: patientData.state,
+              zip: patientData.zipCode,
+              ssn: patientData.ssn,
+              maritalStatus: patientData.maritalStatus,
+              language: patientData.language,
+              emergencyContactName: patientData.emergencyContact?.name,
+              emergencyContactPhone: patientData.emergencyContact?.phone,
+              emergencyContactRelation: patientData.emergencyContact?.relation,
+            }
+          }));
+          
+          setShowPatientRegistrationModal(false);
         }}
       />
     </div>

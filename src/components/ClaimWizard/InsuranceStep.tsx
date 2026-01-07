@@ -101,7 +101,8 @@ export function InsuranceStep({ data, onUpdate }: InsuranceStepProps) {
         return;
       }
 
-      const transformedProviders = (providersData || []).map((p: any) => ({
+      const transformedProviders = (providersData || []).map((p: any) => 
+        ({
         id: p.id,
         name: `${p.first_name || ''} ${p.last_name || ''}`.trim(),
         firstName: p.first_name || '',

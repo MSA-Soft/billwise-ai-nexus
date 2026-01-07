@@ -109,9 +109,11 @@ import {
   LayoutPanelTop
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const AuthorizationWorkflow = () => {
   const { toast } = useToast();
+  const { currentCompany, isSuperAdmin } = useAuth();
   const [activeStep, setActiveStep] = useState("new-request");
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [selectedPayer, setSelectedPayer] = useState<any>(null);
@@ -227,13 +229,27 @@ const AuthorizationWorkflow = () => {
         }
 
         // Fetch authorization requests
-        const { data: authData, error: authError } = await supabase
+        // CRITICAL: Filter by company_id for multi-tenant isolation
+        let authQuery = supabase
           .from('authorization_requests' as any)
           .select(`
             *,
             patients:patient_id (id, first_name, last_name),
             insurance_payers:payer_id (id, name)
-          `)
+          `);
+        
+        // Super admins can see all authorizations, regular users see only their company's authorizations
+        if (isSuperAdmin) {
+          console.log('👑 Super admin - fetching all authorization requests (no company filter)');
+          // Super admin sees everything - no filter needed
+        } else if (currentCompany?.id) {
+          console.log('🏢 Filtering authorization requests by company_id:', currentCompany.id);
+          authQuery = authQuery.eq('company_id', currentCompany.id);
+        } else {
+          console.warn('⚠️ No company_id filter applied for authorization requests - relying on RLS only');
+        }
+        
+        const { data: authData, error: authError } = await authQuery
           .order('created_at', { ascending: false })
           .limit(50);
 
