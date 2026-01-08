@@ -26,6 +26,7 @@ import {
   CheckCircle, 
   XCircle, 
   AlertTriangle, 
+  AlertCircle,
   Clock, 
   User, 
   CreditCard, 
@@ -153,6 +154,7 @@ const EligibilityVerification = () => {
   // State for POS and TOS codes (configured from database, not hardcoded)
   const [placeOfServiceCodes, setPlaceOfServiceCodes] = useState<Array<{code: string; description: string}>>([]);
   const [typeOfServiceCodes, setTypeOfServiceCodes] = useState<Array<{code: string; description: string}>>([]);
+  const [visitTypes, setVisitTypes] = useState<Array<{id: string; name: string; requires_prior_auth: boolean}>>([]);
   
   // Fetch POS and TOS codes from database
   useEffect(() => {
@@ -177,13 +179,69 @@ const EligibilityVerification = () => {
         if (!tosError && tosData && Array.isArray(tosData)) {
           setTypeOfServiceCodes(tosData as any);
         }
+        
+        // Try to fetch Visit Types from database
+        const { data: visitData, error: visitError } = await supabase
+          .from('visit_types' as any)
+          .select('id, name, requires_prior_auth')
+          .eq('is_active', true)
+          .order('name', { ascending: true });
+          
+        if (!visitError && visitData && Array.isArray(visitData)) {
+          setVisitTypes(visitData as any);
+        }
       } catch (error) {
-        console.warn('Could not fetch POS/TOS codes from database. Please configure place_of_service_codes and type_of_service_codes tables:', error);
+        console.warn('Could not fetch POS/TOS/Visit Type codes from database:', error);
       }
     };
     
     fetchCodes();
   }, []);
+  
+  // Fetch payers from database
+  useEffect(() => {
+    const fetchPayers = async () => {
+      try {
+        setIsLoadingPayers(true);
+        const { data: payersData, error } = await supabase
+          .from('insurance_payers' as any)
+          .select('*')
+          .eq('is_active', true)
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching payers:', error);
+          toast({
+            title: 'Error loading payers',
+            description: error.message,
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const transformedPayers = (payersData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name || '',
+          type: p.payer_type || 'Commercial',
+          planName: p.plan_name || '',
+        }));
+
+        setPayers(transformedPayers);
+        console.log('✅ Loaded payers:', transformedPayers.length);
+      } catch (error: any) {
+        console.error('Error fetching payers:', error);
+        toast({
+          title: 'Error loading payers',
+          description: error.message || 'Failed to load payers',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoadingPayers(false);
+      }
+    };
+    
+    fetchPayers();
+  }, [toast]);
   
   // SQL to create tables if needed (for reference):
   /*
@@ -360,6 +418,7 @@ const EligibilityVerification = () => {
     planType: "",
     effectiveDate: "",
     terminationDate: "",
+    primaryEligibilityStatus: "", // Separate status for primary insurance
     coPay: "",
     coInsurance: "",
     deductible: "",
@@ -369,7 +428,7 @@ const EligibilityVerification = () => {
     inNetworkStatus: "",
     allowedAmount: "",
     copayBeforeDeductible: true,
-    deductibleStatus: "Met" as "Met" | "Not Met",
+    deductibleStatus: "Mat" as "Mat" | "Not Mat",
     deductibleAmount: "",
     cptCodes: [] as Array<{
       code: string;
@@ -379,7 +438,12 @@ const EligibilityVerification = () => {
       pos: string; // Place of Service
       tos: string; // Type of Service
       units: string;
-      charge: string;
+      charge: string; // Legacy, kept for compatibility
+      allowed: string; // Insurance allowed amount
+      copay: string;
+      coinsurance: string;
+      deductibleStatus: string; // "Mate" or "Not Mate"
+      deductibleAmount: string;
     }>,
     icdCodes: [] as Array<{
       code: string;
@@ -394,8 +458,13 @@ const EligibilityVerification = () => {
       icd: "", // ICD code linked to this CPT
       pos: "",
       tos: "",
-      units: "",
+      units: "1",
       charge: "",
+      allowed: "",
+      copay: "",
+      coinsurance: "",
+      deductibleStatus: "Not Mat",
+      deductibleAmount: "",
     },
     // Current ICD row being edited (kept for compatibility)
     currentIcd: {
@@ -404,6 +473,11 @@ const EligibilityVerification = () => {
       type: "DX", // DX = Diagnosis, PX = Procedure
       isPrimary: false,
     },
+    
+    // Primary Insurance Financial Fields
+    primaryTotalCharges: "",
+    primaryInsuranceAllowed: "",
+    primaryAdjustment: "",
     
     // Secondary Insurance
     secondaryInsuranceName: "",
@@ -414,6 +488,7 @@ const EligibilityVerification = () => {
     secondaryRelationshipCode: "", // Self, Spouse, Child, Parent, Other
     secondaryEffectiveDate: "",
     secondaryTerminationDate: "",
+    secondaryEligibilityStatus: "", // Separate status for secondary insurance
     secondarySubscriberFirstName: "",
     secondarySubscriberLastName: "",
     secondarySubscriberDOB: "",
@@ -426,6 +501,22 @@ const EligibilityVerification = () => {
     secondaryPolicyHolderRelationship: "",
     cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
     cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
+    
+    // Secondary Insurance Financial Fields
+    secondaryTotalCharges: "",
+    secondaryInsuranceAllowed: "",
+    secondaryAdjustment: "",
+    secondaryAllowedAmount: "",
+    secondaryOutOfPocketRemaining: "",
+    secondaryOutOfPocketMax: "",
+    
+    // Secondary ICD Codes (duplicated from primary)
+    secondaryIcdCodes: [] as Array<{
+      code: string;
+      description: string;
+      type: string;
+      isPrimary: boolean;
+    }>,
     
     // Referral & Authorization
     referralRequired: false,
@@ -1132,8 +1223,13 @@ Termination: ${entry.terminationDate || '-'}`;
               icd: "",
               pos: "",
               tos: "",
-              units: "",
+              units: "1",
               charge: "",
+              allowed: "",
+              copay: "",
+              coinsurance: "",
+              deductibleStatus: "Not Mat",
+              deductibleAmount: "",
             }))
           : v.cptCodes),
       icdCodes: entry.icdCodes
@@ -3112,7 +3208,7 @@ Termination: ${entry.terminationDate || '-'}`;
         deductible: deductibleValue,
         copay: copayValue,
         outOfPocketMax: verificationForm.outOfPocketMax || result.coverage?.outOfPocketMax || '',
-        deductibleMet: verificationForm.deductibleStatus === 'Met',
+        deductibleMet: verificationForm.deductibleStatus === 'Mat',
         outOfPocketRemaining: verificationForm.outOfPocketRemaining || '',
       };
 
@@ -3245,7 +3341,7 @@ Termination: ${entry.terminationDate || '-'}`;
                     deductible: parseFloat(record.deductible || 0),
                     copay: parseFloat(record.copay || 0),
                     outOfPocketMax: record.out_of_pocket_max || '',
-                    deductibleMet: record.deductible_status === 'Met' || record.deductible_met === true,
+                    deductibleMet: record.deductible_status === 'Mate' || record.deductible_met === true,
                     outOfPocketRemaining: record.out_of_pocket_remaining || ''
                   };
                 });
@@ -3336,6 +3432,7 @@ Termination: ${entry.terminationDate || '-'}`;
         planType: "",
         effectiveDate: "",
         terminationDate: "",
+        primaryEligibilityStatus: "",
         coPay: "",
         coInsurance: "",
         deductible: "",
@@ -3345,7 +3442,7 @@ Termination: ${entry.terminationDate || '-'}`;
         inNetworkStatus: "",
         allowedAmount: "",
         copayBeforeDeductible: true,
-        deductibleStatus: "Met" as "Met" | "Not Met",
+        deductibleStatus: "Mat" as "Mat" | "Not Mat",
         deductibleAmount: "",
         cptCodes: [] as Array<{
           code: string;
@@ -3356,6 +3453,11 @@ Termination: ${entry.terminationDate || '-'}`;
           tos: string; // Type of Service
           units: string;
           charge: string;
+          allowed: string;
+          copay: string;
+          coinsurance: string;
+          deductibleStatus: string;
+          deductibleAmount: string;
         }>,
         icdCodes: [] as Array<{
           code: string;
@@ -3370,8 +3472,13 @@ Termination: ${entry.terminationDate || '-'}`;
           icd: "", // ICD code linked to this CPT
           pos: "",
           tos: "",
-          units: "",
+          units: "1",
           charge: "",
+          allowed: "",
+          copay: "",
+          coinsurance: "",
+          deductibleStatus: "Not Mat",
+          deductibleAmount: "",
         },
         // Current ICD row being edited (kept for compatibility)
         currentIcd: {
@@ -3390,6 +3497,7 @@ Termination: ${entry.terminationDate || '-'}`;
         secondaryRelationshipCode: "", // Self, Spouse, Child, Parent, Other
         secondaryEffectiveDate: "",
         secondaryTerminationDate: "",
+        secondaryEligibilityStatus: "",
         secondarySubscriberFirstName: "",
         secondarySubscriberLastName: "",
         secondarySubscriberDOB: "",
@@ -3402,6 +3510,27 @@ Termination: ${entry.terminationDate || '-'}`;
         secondaryPolicyHolderRelationship: "",
         cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
         cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
+        
+        // Primary Insurance Financial Fields
+        primaryTotalCharges: "",
+        primaryInsuranceAllowed: "",
+        primaryAdjustment: "",
+        
+        // Secondary Insurance Financial Fields
+        secondaryTotalCharges: "",
+        secondaryInsuranceAllowed: "",
+        secondaryAdjustment: "",
+        secondaryAllowedAmount: "",
+        secondaryOutOfPocketRemaining: "",
+        secondaryOutOfPocketMax: "",
+        
+        // Secondary ICD Codes (duplicated from primary)
+        secondaryIcdCodes: [] as Array<{
+          code: string;
+          description: string;
+          type: string;
+          isPrimary: boolean;
+        }>,
         
         // Referral & Authorization
         referralRequired: false,
@@ -4532,7 +4661,7 @@ Termination: ${entry.terminationDate || '-'}`;
         <TabsContent value="verify" className="space-y-6">
                   <div className="space-y-6">
                     {/* Verification Info - Compact Single Row */}
-                    <div className="grid grid-cols-4 gap-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border">
+                    <div className="grid grid-cols-5 gap-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg border">
                       <div>
                         <Label htmlFor="serialNo">Verification No (Auto)</Label>
                         <Input
@@ -4583,6 +4712,44 @@ Termination: ${entry.terminationDate || '-'}`;
                         />
                       </div>
                       <div>
+                        <Label htmlFor="typeOfVisit">Type of Visit *</Label>
+                        <Select 
+                          value={verificationForm.typeOfVisit} 
+                          onValueChange={(value) => {
+                            const selectedVisitType = visitTypes.find(v => v.id === value);
+                            // Auto-redirect to Prior Auth if Surgery type
+                            if (selectedVisitType && selectedVisitType.requires_prior_auth) {
+                              setVerificationForm(prev => ({ 
+                                ...prev, 
+                                typeOfVisit: value,
+                                preAuthorizationRequired: true
+                              }));
+                              toast({
+                                title: "Prior Authorization Required",
+                                description: `${selectedVisitType.name} requires prior authorization. Please complete the Prior Auth form.`,
+                                duration: 6000,
+                              });
+                            } else {
+                              setVerificationForm(prev => ({ ...prev, typeOfVisit: value }));
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Select visit type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {visitTypes.map((visitType) => (
+                              <SelectItem key={visitType.id} value={visitType.id}>
+                                {visitType.name}{visitType.requires_prior_auth && " 🔐"}
+                              </SelectItem>
+                            ))}
+                            {visitTypes.length === 0 && (
+                              <SelectItem value="none" disabled>No visit types found</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
                         <Label htmlFor="provider">Provider *</Label>
                         <Select 
                           value={verificationForm.providerId} 
@@ -4622,8 +4789,8 @@ Termination: ${entry.terminationDate || '-'}`;
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                  {/* Single Row: Select Patient, Patient Name, DOB */}
-                  <div className="grid grid-cols-3 gap-3">
+                  {/* Single Row: Select Patient, Patient Name, DOB, Previous Balance */}
+                  <div className="grid grid-cols-4 gap-3">
                     <div>
                       <Label htmlFor="patientSelect">Select Patient *</Label>
                       <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
@@ -4700,386 +4867,25 @@ Termination: ${entry.terminationDate || '-'}`;
                         readOnly
                         className="bg-muted h-9"
                       />
+                    </div>
+                    <div>
+                      <Label htmlFor="previousBalanceCredit">Previous Balance / Credit</Label>
+                      <Input
+                        id="previousBalanceCredit"
+                        type="number"
+                        step="0.01"
+                        value={verificationForm.previousBalanceCredit}
+                        onChange={(e) => setVerificationForm(prev => ({ ...prev, previousBalanceCredit: e.target.value }))}
+                        placeholder="0.00"
+                        className="h-9"
+                        title="Enter previous balance (positive) or credit (negative)"
+                      />
                       {/* Primary Insurance - Collapsible */}
 
                     </div>
                   </div>
-                  
-                    <Collapsible defaultOpen={false} className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-                          <div className="flex items-center gap-2">
-                            <CreditCard className="h-5 w-5 text-blue-600" />
-                            <span className="text-lg font-semibold">Primary Insurance</span>
-                          </div>
-                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="p-4 pt-0 space-y-3">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <Checkbox
-                              id="isSelfPay"
-                              checked={verificationForm.isSelfPay}
-                              onCheckedChange={(checked) => {
-                                setVerificationForm(prev => ({ 
-                                  ...prev, 
-                                  isSelfPay: checked as boolean,
-                                  primaryInsurance: checked ? "" : prev.primaryInsurance,
-                                  insuranceId: checked ? "" : prev.insuranceId,
-                                  providerId: checked ? "" : prev.providerId,
-                                  nppId: checked ? "" : prev.nppId,
-                                }));
-                              }}
-                            />
-                            <Label htmlFor="isSelfPay" className="cursor-pointer font-medium">Self Pay (No Insurance)</Label>
-                          </div>
-                          {/* Row 1: Insurance Name, ID, Plan, Plan Type */}
-                          <div className="grid grid-cols-4 gap-3">
-                            <div>
-                              <Label htmlFor="primaryInsurance">Insurance Name *</Label>
-                              <Select 
-                                value={verificationForm.primaryInsurance} 
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, primaryInsurance: value }))}
-                                disabled={verificationForm.isSelfPay}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder={verificationForm.isSelfPay ? "N/A - Self Pay" : "Select insurance"} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {payers.map((payer) => (
-                                    <SelectItem key={payer.id} value={payer.id}>
-                                      {payer.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label htmlFor="insuranceId">Insurance ID *</Label>
-                              <Input
-                                id="insuranceId"
-                                value={verificationForm.insuranceId}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, insuranceId: e.target.value }))}
-                                placeholder="Subscriber/Member ID"
-                                disabled={verificationForm.isSelfPay}
-                                className="h-9"
-                              />
-                            </div>
-                          
-                            <div>
-                              <Label htmlFor="planType">Plan Type</Label>
-                              <Select 
-                                value={verificationForm.planType} 
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, planType: value }))}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="HMO">HMO</SelectItem>
-                                  <SelectItem value="PPO">PPO</SelectItem>
-                                  <SelectItem value="EPO">EPO</SelectItem>
-                                  <SelectItem value="POS">POS</SelectItem>
-                                  <SelectItem value="HDHP">HDHP</SelectItem>
-                                  <SelectItem value="Medicare">Medicare</SelectItem>
-                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
-                                  <SelectItem value="Other">Other</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Primary Insurance Cost Sharing */}
-                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
-                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Primary Insurance Cost Sharing</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div>
-                              <Label htmlFor="coPay">Co-pay</Label>
-                              <Input
-                                id="coPay"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.coPay}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, coPay: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="coInsurance">Co-insurance (%)</Label>
-                              <Input
-                                id="coInsurance"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.coInsurance}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, coInsurance: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="deductibleStatus">Deductible Status</Label>
-                              <Select
-                                value={verificationForm.deductibleStatus}
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, deductibleStatus: value as "Met" | "Not Met" }))}
-                              >
-                                <SelectTrigger id="deductibleStatus" className="h-9">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Met">Met</SelectItem>
-                                  <SelectItem value="Not Met">Not Met</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label htmlFor="deductibleAmount">Deductible Amount</Label>
-                              <Input
-                                id="deductibleAmount"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.deductibleAmount}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, deductibleAmount: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                                disabled={verificationForm.deductibleStatus === "Met"}
-                              />
-                              {verificationForm.deductibleStatus === "Met" && (
-                                <p className="text-xs text-muted-foreground mt-1">Deductible met - amount locked at $0</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
 
-                    {/* Secondary Insurance - Collapsible */}
-                    <Collapsible defaultOpen={false} className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
-                          <div className="flex items-center gap-2">
-                            <Building className="h-5 w-5 text-blue-600" />
-                            <span className="text-lg font-semibold">Secondary Insurance (Optional)</span>
-                          </div>
-                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="p-4 pt-0 space-y-3">
-                          {/* Row 1: Insurance Name, ID, Plan, Plan Type */}
-                          <div className="grid grid-cols-4 gap-3">
-                            <div>
-                              <Label htmlFor="secondaryInsuranceName">Insurance Name</Label>
-                              <Select 
-                                value={verificationForm.secondaryInsuranceName} 
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceName: value }))}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Select insurance" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {payers.map((payer) => (
-                                    <SelectItem key={payer.id} value={payer.id}>
-                                      {payer.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label htmlFor="secondaryInsuranceId">Insurance ID</Label>
-                              <Input
-                                id="secondaryInsuranceId"
-                                value={verificationForm.secondaryInsuranceId}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceId: e.target.value }))}
-                                placeholder="Subscriber/Member ID"
-                                className="h-9"
-                              />
-                            </div>
-                           
-                            <div>
-                              <Label htmlFor="secondaryRelationshipCode">Plan Type</Label>
-                              <Select
-                                value={verificationForm.secondaryRelationshipCode}
-                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryRelationshipCode: value }))}
-                              >
-                                <SelectTrigger className="h-9">
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="HMO">HMO</SelectItem>
-                                  <SelectItem value="PPO">PPO</SelectItem>
-                                  <SelectItem value="EPO">EPO</SelectItem>
-                                  <SelectItem value="POS">POS</SelectItem>
-                                  <SelectItem value="Medicare">Medicare</SelectItem>
-                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
-                                  <SelectItem value="Other">Other</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Secondary Insurance Cost Sharing */}
-                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
-                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Secondary Insurance Cost Sharing</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div>
-                              <Label htmlFor="secondaryCoPay">Secondary Co-pay</Label>
-                              <Input
-                                id="secondaryCoPay"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.secondaryCoPay}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoPay: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="secondaryDeductible">Secondary Deductible</Label>
-                              <Input
-                                id="secondaryDeductible"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.secondaryDeductible}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductible: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="secondaryDeductibleMet">Secondary Deductible Met</Label>
-                              <Input
-                                id="secondaryDeductibleMet"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.secondaryDeductibleMet}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductibleMet: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="secondaryCoInsurance">Secondary Co-insurance (%)</Label>
-                              <Input
-                                id="secondaryCoInsurance"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.secondaryCoInsurance}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoInsurance: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="secondaryCoveragePercent">Secondary Coverage %</Label>
-                              <Input
-                                id="secondaryCoveragePercent"
-                                type="number"
-                                step="0.01"
-                                value={verificationForm.secondaryCoveragePercent}
-                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoveragePercent: e.target.value }))}
-                                placeholder="0.00"
-                                className="h-9"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-
-                  {/* Demographic Read-Only Section - Only shows when patient is selected */}
-                  {verificationForm.patientId && verificationForm.demographicDisplay.patientId && (
-                    <Card className="mt-4 border-blue-200 dark:border-blue-800">
-                      <CardHeader className="flex flex-row items-center justify-between">
-                        <div>
-                          <CardTitle className="text-lg flex items-center gap-2">
-                            <User className="h-5 w-5 text-blue-600" />
-                            Demographic (Read-Only)
-                          </CardTitle>
-                          <p className="text-sm text-muted-foreground">Patient demographic information from database</p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            // Open the patient edit modal
-                            setShowPatientEditModal(true);
-                          }}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Patient ID</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.patientId || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">First Name</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.firstName || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Last Name</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.lastName || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Middle Initial</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.middleInitial || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Suffix</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.suffix || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Date of Birth</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.dob || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Gender</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.gender || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Phone</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.phone || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Email</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.email || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Address</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.address || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">City</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.city || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">State</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.state || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Zip Code</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.zip || '—'}</p>
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">SSN</Label>
-                            <p className="font-medium">{verificationForm.demographicDisplay.ssn ? '***-**-' + verificationForm.demographicDisplay.ssn.slice(-4) : '—'}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                      </CardContent>
-                    </Card>
- 
-                    {/* Referral & Authorization - MOVED TO BE AFTER PATIENT INFORMATION */}
+                    {/* Referral & Authorization - BEFORE PRIMARY INSURANCE */}
                     <Card className={verificationForm.referralRequired ? "border-2 border-amber-500 shadow-md shadow-amber-200" : ""}>
                       <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-lg flex items-center gap-2">
@@ -5093,79 +4899,13 @@ Termination: ${entry.terminationDate || '-'}`;
                         )}
                       </CardHeader>
                       <CardContent className="space-y-4">
-                              <div className="flex items-center justify-between pb-2">
-                                <div className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id="referralRequired"
-                                    checked={verificationForm.referralRequired}
-                                    onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, referralRequired: checked as boolean }))}
-                                  />
-                                  <Label htmlFor="referralRequired" className="cursor-pointer">Referral Required</Label>
-                                </div>
-                                
-                                <div className="flex space-x-6">
-                                  {/* Referral Status - Active/Inactive */}
-                                  <div className="flex items-center space-x-2">
-                                    <Label className="text-sm font-medium">Status:</Label>
-                                    <div className="flex items-center space-x-2">
-                                      <div className="flex items-center space-x-1">
-                                        <input
-                                          type="radio"
-                                          id="referralStatusActive"
-                                          name="referralStatus"
-                                          value="active"
-                                          checked={verificationForm.referralStatus === 'active'}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, referralStatus: e.target.value }))}
-                                          className="h-4 w-4"
-                                        />
-                                        <Label htmlFor="referralStatusActive" className="text-xs cursor-pointer">Active</Label>
-                                      </div>
-                                      <div className="flex items-center space-x-1">
-                                        <input
-                                          type="radio"
-                                          id="referralStatusInactive"
-                                          name="referralStatus"
-                                          value="inactive"
-                                          checked={verificationForm.referralStatus === 'inactive'}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, referralStatus: e.target.value }))}
-                                          className="h-4 w-4"
-                                        />
-                                        <Label htmlFor="referralStatusInactive" className="text-xs cursor-pointer">Inactive</Label>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* In Network Status - Yes/No */}
-                                  <div className="flex items-center space-x-2">
-                                    <Label className="text-sm font-medium">In-Network:</Label>
-                                    <div className="flex items-center space-x-2">
-                                      <div className="flex items-center space-x-1">
-                                        <input
-                                          type="radio"
-                                          id="inNetworkYes"
-                                          name="inNetworkStatus"
-                                          value="yes"
-                                          checked={verificationForm.inNetworkStatus === 'yes'}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: e.target.value }))}
-                                          className="h-4 w-4"
-                                        />
-                                        <Label htmlFor="inNetworkYes" className="text-xs cursor-pointer">Yes</Label>
-                                      </div>
-                                      <div className="flex items-center space-x-1">
-                                        <input
-                                          type="radio"
-                                          id="inNetworkNo"
-                                          name="inNetworkStatus"
-                                          value="no"
-                                          checked={verificationForm.inNetworkStatus === 'no'}
-                                          onChange={(e) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: e.target.value }))}
-                                          className="h-4 w-4"
-                                        />
-                                        <Label htmlFor="inNetworkNo" className="text-xs cursor-pointer">No</Label>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
+                              <div className="flex items-center space-x-2 pb-2">
+                                <Checkbox
+                                  id="referralRequired"
+                                  checked={verificationForm.referralRequired}
+                                  onCheckedChange={(checked) => setVerificationForm(prev => ({ ...prev, referralRequired: checked as boolean }))}
+                                />
+                                <Label htmlFor="referralRequired" className="cursor-pointer">Referral Required</Label>
                               </div>
 
                               {verificationForm.referralRequired && (
@@ -5545,22 +5285,350 @@ Termination: ${entry.terminationDate || '-'}`;
                                 )}
                               </CardContent>
                             </Card>
+                  
+                    <Collapsible defaultOpen={false} className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-5 w-5 text-blue-600" />
+                            <span className="text-lg font-semibold">Primary Insurance</span>
+                          </div>
+                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="p-4 pt-0 space-y-3">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Checkbox
+                              id="isSelfPay"
+                              checked={verificationForm.isSelfPay}
+                              onCheckedChange={(checked) => {
+                                setVerificationForm(prev => ({ 
+                                  ...prev, 
+                                  isSelfPay: checked as boolean,
+                                  primaryInsurance: checked ? "" : prev.primaryInsurance,
+                                  insuranceId: checked ? "" : prev.insuranceId,
+                                  providerId: checked ? "" : prev.providerId,
+                                  nppId: checked ? "" : prev.nppId,
+                                }));
+                              }}
+                            />
+                            <Label htmlFor="isSelfPay" className="cursor-pointer font-medium">Self Pay (No Insurance)</Label>
+                          </div>
+                          {/* Row 1: Insurance Name, ID, Plan Type, Effective From, Termination Date, Status, In Network */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                            <div>
+                              <Label htmlFor="primaryInsurance">Insurance Name *</Label>
+                              <Select 
+                                value={verificationForm.primaryInsurance} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, primaryInsurance: value }))}
+                                disabled={verificationForm.isSelfPay}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder={verificationForm.isSelfPay ? "N/A - Self Pay" : "Select insurance"} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {payers.map((payer) => (
+                                    <SelectItem key={payer.id} value={payer.id}>
+                                      {payer.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="insuranceId">Insurance ID *</Label>
+                              <Input
+                                id="insuranceId"
+                                value={verificationForm.insuranceId}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, insuranceId: e.target.value }))}
+                                placeholder="Subscriber/Member ID"
+                                disabled={verificationForm.isSelfPay}
+                                className="h-9"
+                              />
+                            </div>
+                          
+                            <div>
+                              <Label htmlFor="planType">Plan Type</Label>
+                              <Select 
+                                value={verificationForm.planType} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, planType: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="HMO">HMO</SelectItem>
+                                  <SelectItem value="PPO">PPO</SelectItem>
+                                  <SelectItem value="EPO">EPO</SelectItem>
+                                  <SelectItem value="POS">POS</SelectItem>
+                                  <SelectItem value="HDHP">HDHP</SelectItem>
+                                  <SelectItem value="Medicare">Medicare</SelectItem>
+                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryEffectiveDate">Effective From</Label>
+                              <Input
+                                id="primaryEffectiveDate"
+                                type="date"
+                                value={verificationForm.effectiveDate || ""}
+                                onChange={(e) => {
+                                  const effectiveDate = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const today = new Date();
+                                    const effective = effectiveDate ? new Date(effectiveDate) : null;
+                                    const termination = prev.terminationDate ? new Date(prev.terminationDate) : null;
+                                    
+                                    // Auto-determine PRIMARY eligibility status
+                                    let newStatus = prev.primaryEligibilityStatus;
+                                    if (effective && termination) {
+                                      // Check if today is within the coverage period
+                                      const isEligible = today >= effective && today <= termination;
+                                      newStatus = isEligible ? "eligible" : "not_eligible";
+                                    } else if (effective && !termination) {
+                                      // Only effective date set - check if coverage has started
+                                      newStatus = today >= effective ? "eligible" : "not_eligible";
+                                    }
+                                    
+                                    return { 
+                                      ...prev, 
+                                      effectiveDate: effectiveDate,
+                                      primaryEligibilityStatus: newStatus
+                                    };
+                                  });
+                                }}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                                className="h-9 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryTerminationDate">Termination Date</Label>
+                              <Input
+                                id="primaryTerminationDate"
+                                type="date"
+                                value={verificationForm.terminationDate || ""}
+                                onChange={(e) => {
+                                  const terminationDate = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const today = new Date();
+                                    const effective = prev.effectiveDate ? new Date(prev.effectiveDate) : null;
+                                    const termination = terminationDate ? new Date(terminationDate) : null;
+                                    
+                                    // Auto-determine PRIMARY eligibility status
+                                    let newStatus = prev.primaryEligibilityStatus;
+                                    if (effective && termination) {
+                                      // Check if today is within the coverage period
+                                      const isEligible = today >= effective && today <= termination;
+                                      newStatus = isEligible ? "eligible" : "not_eligible";
+                                    } else if (effective && !termination) {
+                                      // Only effective date set - check if coverage has started
+                                      newStatus = today >= effective ? "eligible" : "not_eligible";
+                                    } else if (termination && !effective) {
+                                      // Only termination date set - check if coverage has expired
+                                      newStatus = today <= termination ? "eligible" : "not_eligible";
+                                    }
+                                    
+                                    return { 
+                                      ...prev, 
+                                      terminationDate: terminationDate,
+                                      primaryEligibilityStatus: newStatus
+                                    };
+                                  });
+                                }}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                                className="h-9 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryReferralStatus">Status</Label>
+                              <Select
+                                value={verificationForm.primaryEligibilityStatus}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, primaryEligibilityStatus: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="eligible">Eligible</SelectItem>
+                                  <SelectItem value="not_eligible">Not Eligible</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryInNetwork">In Network</Label>
+                              <Select
+                                value={verificationForm.inNetworkStatus}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Primary Insurance Service Codes (CPT & ICD) */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Service Codes (CPT & ICD) - Required for Calculations</h4>
+                          <p className="text-xs text-muted-foreground">Add CPT codes with charges and ICD diagnosis codes for accurate financial calculations</p>
+                          
+                          {/* ICD Codes Section */}
+                          <div className="space-y-3 mt-4">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-semibold">ICD-10 Diagnosis Codes</Label>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const code = verificationForm.currentIcd.code.trim();
+                                  if (!code) {
+                                    toast({
+                                      title: "ICD Code Required",
+                                      description: "Please enter an ICD code before adding.",
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
+                                  
+                                  // Check if code already exists
+                                  const codeExists = verificationForm.icdCodes.some(
+                                    icd => icd.code.trim().toUpperCase() === code.toUpperCase()
+                                  );
+                                  
+                                  if (codeExists) {
+                                    toast({
+                                      title: "Duplicate ICD Code",
+                                      description: `ICD code ${code} is already in the list.`,
+                                      variant: "destructive",
+                                    });
+                                    return;
+                                  }
 
-                    {/* Service Codes (CPT/ICD) - Optional but recommended for specific service verification */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          Service Codes (Optional)
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground">Add CPT and ICD codes for specific service verification</p>
-                      </CardHeader>
-                      <CardContent className="space-y-6">
-                        {/* CPT Section */}
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-base font-semibold">CPT Section</Label>
-                            <div className="flex gap-2">
+                                  // Add the ICD code
+                                  setVerificationForm(prev => ({
+                                    ...prev,
+                                    icdCodes: [...prev.icdCodes, { ...prev.currentIcd }],
+                                    currentIcd: {
+                                      code: "",
+                                      description: "",
+                                      type: "DX",
+                                      isPrimary: false,
+                                    }
+                                  }));
+
+                                  toast({
+                                    title: "ICD Code Added",
+                                    description: `ICD code ${code} has been added successfully.`,
+                                  });
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add ICD Code
+                              </Button>
+                            </div>
+                            
+                            {/* ICD Codes List */}
+                            {verificationForm.icdCodes.length > 0 && (
+                              <div className="space-y-2">
+                                {verificationForm.icdCodes.map((icd, index) => (
+                                  <div key={index} className="flex items-center justify-between p-2 bg-muted rounded-md">
+                                    <div className="flex-1">
+                                      <span className="font-medium">{icd.code}</span>
+                                      {icd.description && <span className="text-sm text-muted-foreground ml-2">- {icd.description}</span>}
+                                      {icd.isPrimary && <Badge variant="default" className="ml-2 text-xs">Primary</Badge>}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setVerificationForm(prev => ({
+                                        ...prev,
+                                        icdCodes: prev.icdCodes.filter((_, i) => i !== index)
+                                      }))}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {/* Add New ICD Row */}
+                            <div className="grid grid-cols-12 gap-2 p-3 bg-muted/30 rounded-md">
+                              <div className="col-span-3">
+                                <Label className="text-xs">ICD Code</Label>
+                                <Input
+                                  placeholder="E11.9"
+                                  value={verificationForm.currentIcd.code}
+                                  onChange={(e) => setVerificationForm(prev => ({
+                                    ...prev,
+                                    currentIcd: { ...prev.currentIcd, code: e.target.value }
+                                  }))}
+                                  className="h-8"
+                                  maxLength={10}
+                                />
+                              </div>
+                              <div className="col-span-6">
+                                <Label className="text-xs">Description</Label>
+                                <Input
+                                  placeholder="Type 2 diabetes mellitus"
+                                  value={verificationForm.currentIcd.description}
+                                  onChange={(e) => setVerificationForm(prev => ({
+                                    ...prev,
+                                    currentIcd: { ...prev.currentIcd, description: e.target.value }
+                                  }))}
+                                  className="h-8"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <Label className="text-xs">Type</Label>
+                                <Select
+                                  value={verificationForm.currentIcd.type}
+                                  onValueChange={(value) => setVerificationForm(prev => ({
+                                    ...prev,
+                                    currentIcd: { ...prev.currentIcd, type: value }
+                                  }))}
+                                >
+                                  <SelectTrigger className="h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="DX">DX</SelectItem>
+                                    <SelectItem value="PX">PX</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="col-span-1 flex items-end">
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id="isPrimary"
+                                    checked={verificationForm.currentIcd.isPrimary}
+                                    onCheckedChange={(checked) => setVerificationForm(prev => ({
+                                      ...prev,
+                                      currentIcd: { ...prev.currentIcd, isPrimary: checked as boolean }
+                                    }))}
+                                  />
+                                  <Label htmlFor="isPrimary" className="text-xs cursor-pointer">Primary</Label>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <Separator className="my-4" />
+                          
+                          {/* CPT Codes Section */}
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-semibold">CPT Procedure Codes</Label>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -5570,13 +5638,13 @@ Termination: ${entry.terminationDate || '-'}`;
                                   if (!code) {
                                     toast({
                                       title: "CPT Code Required",
-                                      description: "Please enter a CPT code in the table row below before adding.",
+                                      description: "Please enter a CPT code before adding.",
                                       variant: "destructive",
                                     });
                                     return;
                                   }
                                   
-                                  // Validate that code is at least 5 digits
+                                  // Validate code length
                                   if (code.length < 5) {
                                     toast({
                                       title: "Invalid CPT Code",
@@ -5586,7 +5654,7 @@ Termination: ${entry.terminationDate || '-'}`;
                                     return;
                                   }
 
-                                  // Check if code already exists in the list
+                                  // Check if code already exists
                                   const codeExists = verificationForm.cptCodes.some(
                                     cpt => cpt.code.trim() === code
                                   );
@@ -5600,21 +5668,43 @@ Termination: ${entry.terminationDate || '-'}`;
                                     return;
                                   }
 
-                                  // Add the CPT code
-                                  setVerificationForm(prev => ({
-                                    ...prev,
-                                    cptCodes: [...prev.cptCodes, { ...prev.currentCpt }],
-                                    currentCpt: {
-                                      code: "",
-                                      modifier1: "",
-                                      modifier2: "",
-                                      icd: "",
-                                      pos: "",
-                                      tos: "",
-                                      units: "",
-                                      charge: "",
-                                    }
-                                  }));
+                                  // Add the CPT code and auto-calculate total charges
+                                  setVerificationForm(prev => {
+                                    const newCptCodes = [...prev.cptCodes, { ...prev.currentCpt }];
+                                    // Calculate total charges from all CPT codes using allowed (or fallback to charge)
+                                    const totalCharges = newCptCodes.reduce((sum, cpt) => {
+                                      const allowed = parseFloat(cpt.allowed || cpt.charge) || 0;
+                                      const units = parseFloat(cpt.units) || 1;
+                                      return sum + (allowed * units);
+                                    }, 0).toFixed(2);
+                                    
+                                    // Calculate adjustment if insurance allowed is set
+                                    const insAllowed = parseFloat(prev.primaryInsuranceAllowed) || 0;
+                                    const adjustment = (parseFloat(totalCharges) - insAllowed).toFixed(2);
+                                    
+                                    return {
+                                      ...prev,
+                                      cptCodes: newCptCodes,
+                                      primaryTotalCharges: totalCharges,
+                                      secondaryTotalCharges: totalCharges, // Also update secondary
+                                      primaryAdjustment: prev.primaryInsuranceAllowed ? adjustment : "",
+                                      currentCpt: {
+                                        code: "",
+                                        modifier1: "",
+                                        modifier2: "",
+                                        icd: "",
+                                        pos: "",
+                                        tos: "",
+                                        units: "1",
+                                        charge: "",
+                                        allowed: "",
+                                        copay: "",
+                                        coinsurance: "",
+                                        deductibleStatus: "Not Met",
+                                        deductibleAmount: "",
+                                      }
+                                    };
+                                  });
 
                                   toast({
                                     title: "CPT Code Added",
@@ -5623,58 +5713,117 @@ Termination: ${entry.terminationDate || '-'}`;
                                 }}
                               >
                                 <Plus className="h-4 w-4 mr-2" />
-                                Add CPT
+                                Add CPT Code
                               </Button>
                             </div>
-                          </div>
-                          
-                          {/* CPT Table */}
-                          <div className="border rounded-lg overflow-hidden">
-                            <div className="overflow-x-auto max-w-full">
-                              <table className="w-full text-sm max-w-full">
-                                <thead className="bg-muted">
-                                  <tr>
-                                    <th className="p-2 text-left font-medium">CPT Code</th>
-                                    <th className="p-2 text-left font-medium">Mod 1</th>
-                                    <th className="p-2 text-left font-medium">Mod 2</th>
-                                    <th className="p-2 text-left font-medium">ICD</th>
-                                    <th className="p-2 text-left font-medium">POS</th>
-                                    <th className="p-2 text-left font-medium">TOS</th>
-                                    <th className="p-2 text-left font-medium">Units</th>
-                                    <th className="p-2 text-left font-medium">Charge</th>
-                                    <th className="p-2 text-left font-medium">Actions</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {verificationForm.cptCodes.map((cpt, index) => (
-                                    <tr key={index} className="border-t">
-                                      <td className="p-2">{cpt.code}</td>
-                                      <td className="p-2">{cpt.modifier1 || "-"}</td>
-                                      <td className="p-2">{cpt.modifier2 || "-"}</td>
-                                      <td className="p-2">{cpt.icd || "-"}</td>
-                                      <td className="p-2">{placeOfServiceCodes.find(p => p.code === cpt.pos)?.description?.substring(0, 15) || cpt.pos || "-"}</td>
-                                      <td className="p-2">{typeOfServiceCodes.find(t => t.code === cpt.tos)?.description?.substring(0, 15) || cpt.tos || "-"}</td>
-                                      <td className="p-2">{cpt.units || "-"}</td>
-                                      <td className="p-2">${cpt.charge || "0.00"}</td>
-                                      <td className="p-2">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setVerificationForm(prev => ({
-                                            ...prev,
-                                            cptCodes: prev.cptCodes.filter((_, i) => i !== index)
-                                          }))}
-                                        >
-                                          <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                      </td>
+                            
+                            {/* CPT Codes Table */}
+                            <div className="border rounded-lg overflow-hidden">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead className="bg-muted">
+                                    <tr>
+                                      <th className="p-1 text-left font-medium">CPT</th>
+                                      <th className="p-1 text-left font-medium">M1</th>
+                                      <th className="p-1 text-left font-medium">M2</th>
+                                      <th className="p-1 text-left font-medium">POS</th>
+                                      <th className="p-1 text-left font-medium">TOS</th>
+                                      <th className="p-1 text-left font-medium">Units</th>
+                                      <th className="p-1 text-left font-medium">Billed</th>
+                                      <th className="p-1 text-left font-medium">Co-pay</th>
+                                      <th className="p-1 text-left font-medium">Co-ins</th>
+                                      <th className="p-1 text-left font-medium">Ded</th>
+                                      <th className="p-1 text-left font-medium">Ded Amt</th>
+                                      <th className="p-1 text-left font-medium">Actions</th>
                                     </tr>
-                                  ))}
-                                  {/* Add New CPT Row */}
-                                  <tr className="border-t bg-muted/30">
-                                    <td className="p-2">
-                                      <div className="relative">
+                                  </thead>
+                                  <tbody>
+                                    {verificationForm.cptCodes.map((cpt, index) => (
+                                      <tr key={index} className="border-t">
+                                        <td className="p-1 font-medium">{cpt.code}</td>
+                                        <td className="p-1">{cpt.modifier1 || "-"}</td>
+                                        <td className="p-1">{cpt.modifier2 || "-"}</td>
+                                        <td className="p-1 text-xs">{cpt.pos || "-"}</td>
+                                        <td className="p-1 text-xs">{cpt.tos || "-"}</td>
+                                        <td className="p-1">{cpt.units || "1"}</td>
+                                        <td className="p-1 font-semibold">${cpt.allowed || cpt.charge || "0.00"}</td>
+                                        <td className="p-1">${cpt.copay || "0.00"}</td>
+                                        <td className="p-1">{cpt.coinsurance || "0"}%</td>
+                                        <td className="p-1">
+                                          <Select
+                                            value={cpt.deductibleStatus}
+                                            onValueChange={(value) => setVerificationForm(prev => ({
+                                              ...prev,
+                                              cptCodes: prev.cptCodes.map((c, i) => 
+                                                i === index ? { 
+                                                  ...c, 
+                                                  deductibleStatus: value,
+                                                  // Clear deductibleAmount when Mate is selected
+                                                  deductibleAmount: value === "Mate" ? "" : c.deductibleAmount
+                                                } : c
+                                              )
+                                            }))}
+                                          >
+                                            <SelectTrigger className="h-6 w-24 text-xs">
+                                              <SelectValue placeholder="Select" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="Mat">Mat</SelectItem>
+                                              <SelectItem value="Not Mat">Not Mat</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </td>
+                                        <td className="p-1">
+                                          <Input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={cpt.deductibleAmount}
+                                            onChange={(e) => setVerificationForm(prev => ({
+                                              ...prev,
+                                              cptCodes: prev.cptCodes.map((c, i) => 
+                                                i === index ? { ...c, deductibleAmount: e.target.value } : c
+                                              )
+                                            }))}
+                                            disabled={cpt.deductibleStatus === "Mate"}
+                                            className={`h-6 w-20 text-xs ${cpt.deductibleStatus === "Mate" ? "bg-muted cursor-not-allowed" : ""}`}
+                                          />
+                                        </td>
+                                        <td className="p-1">
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setVerificationForm(prev => {
+                                              const newCptCodes = prev.cptCodes.filter((_, i) => i !== index);
+                                              // Recalculate total charges after deletion
+                                              const totalCharges = newCptCodes.reduce((sum, cpt) => {
+                                                const charge = parseFloat(cpt.allowed || cpt.charge) || 0;
+                                                const units = parseFloat(cpt.units) || 1;
+                                                return sum + (charge * units);
+                                              }, 0).toFixed(2);
+                                              
+                                              // Recalculate adjustment
+                                              const insAllowed = parseFloat(prev.primaryInsuranceAllowed) || 0;
+                                              const adjustment = (parseFloat(totalCharges) - insAllowed).toFixed(2);
+                                              
+                                              return {
+                                                ...prev,
+                                                cptCodes: newCptCodes,
+                                                primaryTotalCharges: totalCharges,
+                                                secondaryTotalCharges: totalCharges,
+                                                primaryAdjustment: prev.primaryInsuranceAllowed ? adjustment : ""
+                                              };
+                                            })}
+                                          >
+                                            <Trash2 className="h-3 w-3 text-destructive" />
+                                          </Button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    {/* Add New CPT Row */}
+                                    <tr className="border-t bg-muted/30">
+                                      <td className="p-1">
                                         <Input
                                           placeholder="99213"
                                           value={verificationForm.currentCpt.code}
@@ -5682,35 +5831,11 @@ Termination: ${entry.terminationDate || '-'}`;
                                             ...prev,
                                             currentCpt: { ...prev.currentCpt, code: e.target.value }
                                           }))}
-                                          className={`h-8 w-20 pr-6 ${cptValidation?.isValid === false ? 'border-red-500' : cptValidation?.isValid === true ? 'border-green-500' : ''}`}
+                                          className="h-6 w-16 text-xs"
                                           maxLength={5}
                                         />
-                                        {cptValidation && (
-                                          <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                            {cptValidation.isValid ? (
-                                              <CheckCircle className="h-4 w-4 text-green-500" />
-                                            ) : (
-                                              <XCircle className="h-4 w-4 text-red-500" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {cptValidation && (
-                                        <div className="mt-1 text-xs">
-                                          {cptValidation.isValid && cptValidation.description && (
-                                            <div className="text-green-600">{cptValidation.description}</div>
-                                          )}
-                                          {cptValidation.errors.length > 0 && (
-                                            <div className="text-red-600">{cptValidation.errors[0]}</div>
-                                          )}
-                                          {cptValidation.warnings.length > 0 && (
-                                            <div className="text-yellow-600">{cptValidation.warnings[0]}</div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="p-2">
-                                      <div className="relative">
+                                      </td>
+                                      <td className="p-1">
                                         <Input
                                           placeholder="25"
                                           value={verificationForm.currentCpt.modifier1}
@@ -5718,90 +5843,44 @@ Termination: ${entry.terminationDate || '-'}`;
                                             ...prev,
                                             currentCpt: { ...prev.currentCpt, modifier1: e.target.value }
                                           }))}
-                                          className={`h-8 w-16 pr-6 ${modifierValidation.modifier1?.isValid === false ? 'border-red-500' : modifierValidation.modifier1?.isValid === true ? 'border-green-500' : ''}`}
+                                          className="h-6 w-12 text-xs"
                                           maxLength={2}
                                         />
-                                        {modifierValidation.modifier1 && (
-                                          <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                            {modifierValidation.modifier1.isValid ? (
-                                              <CheckCircle className="h-4 w-4 text-green-500" />
-                                            ) : (
-                                              <XCircle className="h-4 w-4 text-red-500" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {modifierValidation.modifier1 && !modifierValidation.modifier1.isValid && (
-                                        <div className="mt-1 text-xs text-red-600">{modifierValidation.modifier1.message}</div>
-                                      )}
-                                    </td>
-                                    <td className="p-2">
-                                      <div className="relative">
+                                      </td>
+                                      <td className="p-1">
                                         <Input
-                                          placeholder="25"
+                                          placeholder="59"
                                           value={verificationForm.currentCpt.modifier2}
                                           onChange={(e) => setVerificationForm(prev => ({
                                             ...prev,
                                             currentCpt: { ...prev.currentCpt, modifier2: e.target.value }
                                           }))}
-                                          className={`h-8 w-16 pr-6 ${modifierValidation.modifier2?.isValid === false ? 'border-red-500' : modifierValidation.modifier2?.isValid === true ? 'border-green-500' : ''}`}
+                                          className="h-6 w-12 text-xs"
                                           maxLength={2}
                                         />
-                                        {modifierValidation.modifier2 && (
-                                          <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                                            {modifierValidation.modifier2.isValid ? (
-                                              <CheckCircle className="h-4 w-4 text-green-500" />
-                                            ) : (
-                                              <XCircle className="h-4 w-4 text-red-500" />
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                      {modifierValidation.modifier2 && !modifierValidation.modifier2.isValid && (
-                                        <div className="mt-1 text-xs text-red-600">{modifierValidation.modifier2.message}</div>
-                                      )}
-                                    </td>
-
-                                    <td className="p-2">
-                                      <Input
-                                        placeholder="E11.9"
-                                        value={verificationForm.currentCpt.icd}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, icd: e.target.value }
-                                        }))}
-                                        className="h-8 w-20"
-                                        maxLength={10}
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <Popover open={posComboboxOpen} onOpenChange={setPosComboboxOpen}>
-                                        <PopoverTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            role="combobox"
-                                            aria-expanded={posComboboxOpen}
-                                            className="h-8 w-24 justify-between text-xs font-normal px-2"
-                                          >
-                                            {verificationForm.currentCpt.pos
-                                              ? verificationForm.currentCpt.pos
-                                              : "POS"}
-                                            <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-                                          </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-[300px] p-0" align="start">
-                                          <Command>
-                                            <CommandInput placeholder="Search POS..." value={posSearchQuery} onValueChange={setPosSearchQuery} />
-                                            <CommandList>
-                                              <CommandEmpty>No place of service found.</CommandEmpty>
-                                              <CommandGroup>
-                                                {placeOfServiceCodes
-                                                  .filter(pos => {
-                                                    const query = posSearchQuery.toLowerCase();
-                                                    if (!query) return true;
-                                                    return pos.code.includes(query) || pos.description.toLowerCase().includes(query);
-                                                  })
-                                                  .map((pos) => (
+                                      </td>
+                                      <td className="p-1">
+                                        <Popover open={posComboboxOpen} onOpenChange={setPosComboboxOpen}>
+                                          <PopoverTrigger asChild>
+                                            <Button
+                                              variant="outline"
+                                              role="combobox"
+                                              aria-expanded={posComboboxOpen}
+                                              className="h-6 w-20 justify-between text-xs font-normal px-1"
+                                            >
+                                              {verificationForm.currentCpt.pos
+                                                ? verificationForm.currentCpt.pos
+                                                : "POS"}
+                                              <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                            </Button>
+                                          </PopoverTrigger>
+                                          <PopoverContent className="w-[300px] p-0" align="start">
+                                            <Command>
+                                              <CommandInput placeholder="Search POS..." />
+                                              <CommandList>
+                                                <CommandEmpty>No place of service found.</CommandEmpty>
+                                                <CommandGroup>
+                                                  {placeOfServiceCodes.map((pos) => (
                                                     <CommandItem
                                                       key={pos.code}
                                                       value={`${pos.code} ${pos.description}`}
@@ -5811,171 +5890,720 @@ Termination: ${entry.terminationDate || '-'}`;
                                                           currentCpt: { ...prev.currentCpt, pos: pos.code }
                                                         }));
                                                         setPosComboboxOpen(false);
-                                                        setPosSearchQuery("");
                                                       }}
                                                     >
                                                       <CheckCircle className={`mr-2 h-4 w-4 ${verificationForm.currentCpt.pos === pos.code ? "opacity-100" : "opacity-0"}`} />
                                                       {pos.code} - {pos.description}
                                                     </CommandItem>
                                                   ))}
-                                              </CommandGroup>
-                                            </CommandList>
-                                          </Command>
-                                        </PopoverContent>
-                                      </Popover>
-                                    </td>
-                                    <td className="p-2">
-                                      <Popover open={tosComboboxOpen} onOpenChange={setTosComboboxOpen}>
-                                        <PopoverTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            role="combobox"
-                                            aria-expanded={tosComboboxOpen}
-                                            className="h-8 w-20 justify-between text-xs font-normal px-2"
-                                          >
-                                            {verificationForm.currentCpt.tos
-                                              ? verificationForm.currentCpt.tos
-                                              : "TOS"}
-                                            <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-                                          </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-[300px] p-0" align="start">
-                                          <Command>
-                                            <CommandInput placeholder="Search TOS..." value={tosSearchQuery} onValueChange={setTosSearchQuery} />
-                                            <CommandList>
-                                              <CommandEmpty>No type of service found.</CommandEmpty>
-                                              <CommandGroup>
-                                                {typeOfServiceCodes
-                                                  .filter(tos => {
-                                                    const query = tosSearchQuery.toLowerCase();
-                                                    if (!query) return true;
-                                                    return tos.code.toLowerCase().includes(query) || tos.description.toLowerCase().includes(query);
-                                                  })
-                                                  .map((tos) => (
+                                                </CommandGroup>
+                                              </CommandList>
+                                            </Command>
+                                          </PopoverContent>
+                                        </Popover>
+                                      </td>
+                                      <td className="p-1">
+                                        <Popover open={tosComboboxOpen} onOpenChange={setTosComboboxOpen}>
+                                          <PopoverTrigger asChild>
+                                            <Button
+                                              variant="outline"
+                                              role="combobox"
+                                              aria-expanded={tosComboboxOpen}
+                                              className="h-6 w-16 justify-between text-xs font-normal px-1"
+                                            >
+                                              {verificationForm.currentCpt.tos
+                                                ? verificationForm.currentCpt.tos
+                                                : "TOS"}
+                                              <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                            </Button>
+                                          </PopoverTrigger>
+                                          <PopoverContent className="w-[300px] p-0" align="start">
+                                            <Command>
+                                              <CommandInput placeholder="Search TOS..." />
+                                              <CommandList>
+                                                <CommandEmpty>No type of service found.</CommandEmpty>
+                                                <CommandGroup>
+                                                  {typeOfServiceCodes.map((tos) => (
                                                     <CommandItem
                                                       key={tos.code}
                                                       value={`${tos.code} ${tos.description}`}
                                                       onSelect={() => {
                                                         setVerificationForm(prev => ({
                                                           ...prev,
-                                                          currentCpt: { ...prev.currentCpt, tos: tos.code },
-                                                          // Automatically set prior authorization required if Surgery (code "2") is selected
-                                                          preAuthorizationRequired: tos.code === "2" ? true : prev.preAuthorizationRequired
+                                                          currentCpt: { ...prev.currentCpt, tos: tos.code }
                                                         }));
                                                         setTosComboboxOpen(false);
-                                                        setTosSearchQuery("");
                                                       }}
                                                     >
                                                       <CheckCircle className={`mr-2 h-4 w-4 ${verificationForm.currentCpt.tos === tos.code ? "opacity-100" : "opacity-0"}`} />
                                                       {tos.code} - {tos.description}
                                                     </CommandItem>
                                                   ))}
-                                              </CommandGroup>
-                                            </CommandList>
-                                          </Command>
-                                        </PopoverContent>
-                                      </Popover>
-                                    </td>
-                                    <td className="p-2">
-                                      <Input
-                                        type="number"
-                                        placeholder="1"
-                                        value={verificationForm.currentCpt.units}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, units: e.target.value }
-                                        }))}
-                                        className="h-8 w-16"
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <Input
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="150.00"
-                                        value={verificationForm.currentCpt.charge}
-                                        onChange={(e) => setVerificationForm(prev => ({
-                                          ...prev,
-                                          currentCpt: { ...prev.currentCpt, charge: e.target.value }
-                                        }))}
-                                        className="h-8 w-20"
-                                      />
-                                    </td>
-
-
-                                    <td className="p-2">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          const code = verificationForm.currentCpt.code.trim();
-                                          if (!code) {
-                                            toast({
-                                              title: "CPT Code Required",
-                                              description: "Please enter a CPT code before adding.",
-                                              variant: "destructive",
-                                            });
-                                            return;
-                                          }
-                                          
-                                          // Validate that code is at least 5 digits
-                                          if (code.length < 5) {
-                                            toast({
-                                              title: "Invalid CPT Code",
-                                              description: "CPT code must be at least 5 characters.",
-                                              variant: "destructive",
-                                            });
-                                            return;
-                                          }
-
-                                          // Check if code already exists in the list
-                                          const codeExists = verificationForm.cptCodes.some(
-                                            cpt => cpt.code.trim() === code
-                                          );
-                                          
-                                          if (codeExists) {
-                                            toast({
-                                              title: "Duplicate CPT Code",
-                                              description: `CPT code ${code} is already in the list.`,
-                                              variant: "destructive",
-                                            });
-                                            return;
-                                          }
-
-                                          // Add the CPT code and check if any CPT code has Surgery TOS (code "2") to automatically set prior authorization
-                                          setVerificationForm(prev => ({
+                                                </CommandGroup>
+                                              </CommandList>
+                                            </Command>
+                                          </PopoverContent>
+                                        </Popover>
+                                      </td>
+                                      <td className="p-1">
+                                        <Input
+                                          placeholder="1"
+                                          value={verificationForm.currentCpt.units}
+                                          onChange={(e) => setVerificationForm(prev => ({
                                             ...prev,
-                                            cptCodes: [...prev.cptCodes, { ...prev.currentCpt }],
-                                            // Check if any CPT code in the list has Surgery TOS ("2") to automatically set prior authorization required
-                                            preAuthorizationRequired: [...prev.cptCodes, { ...prev.currentCpt }].some(cpt => cpt.tos === "2") ? true : prev.preAuthorizationRequired,
-                                            currentCpt: {
-                                              code: "",
-                                              modifier1: "",
-                                              modifier2: "",
-                                              icd: "",
-                                              pos: "",
-                                              tos: "",
-                                              units: "",
-                                              charge: "",
+                                            currentCpt: { ...prev.currentCpt, units: e.target.value }
+                                          }))}
+                                          className="h-6 w-12 text-xs"
+                                          type="number"
+                                        />
+                                      </td>
+                                      <td className="p-1">
+                                        <Input
+                                          placeholder="150.00"
+                                          value={verificationForm.currentCpt.allowed || verificationForm.currentCpt.charge}
+                                          onChange={(e) => setVerificationForm(prev => ({
+                                            ...prev,
+                                            currentCpt: { ...prev.currentCpt, allowed: e.target.value, charge: e.target.value }
+                                          }))}
+                                          className="h-6 w-20 text-xs"
+                                          type="number"
+                                          step="0.01"
+                                        />
+                                      </td>
+                                      <td className="p-1">
+                                        <Input
+                                          placeholder="0.00"
+                                          value={verificationForm.currentCpt.copay}
+                                          onChange={(e) => setVerificationForm(prev => ({
+                                            ...prev,
+                                            currentCpt: { ...prev.currentCpt, copay: e.target.value }
+                                          }))}
+                                          className="h-6 w-16 text-xs"
+                                          type="number"
+                                          step="0.01"
+                                        />
+                                      </td>
+                                      <td className="p-1">
+                                        <Input
+                                          placeholder="0"
+                                          value={verificationForm.currentCpt.coinsurance}
+                                          onChange={(e) => setVerificationForm(prev => ({
+                                            ...prev,
+                                            currentCpt: { ...prev.currentCpt, coinsurance: e.target.value }
+                                          }))}
+                                          className="h-6 w-12 text-xs"
+                                          type="number"
+                                          step="1"
+                                        />
+                                      </td>
+                                      <td className="p-1">
+                                        <Select
+                                          value={verificationForm.currentCpt.deductibleStatus}
+                                          onValueChange={(value) => setVerificationForm(prev => ({
+                                            ...prev,
+                                            currentCpt: { 
+                                              ...prev.currentCpt, 
+                                              deductibleStatus: value,
+                                              deductibleAmount: value === "Mate" ? "" : prev.currentCpt.deductibleAmount
                                             }
-                                          }));
-
-                                          toast({
-                                            title: "CPT Code Added",
-                                            description: `CPT code ${code} has been added successfully.`,
-                                          });
-                                        }}
-                                      >
-                                        <Plus className="h-4 w-4" />
-                                      </Button>
-                                    </td>
-                                  </tr>
-                                </tbody>
-                              </table>
+                                          }))}
+                                        >
+                                          <SelectTrigger className="h-6 w-24 text-xs">
+                                            <SelectValue placeholder="Select" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="Mat">Mat</SelectItem>
+                                            <SelectItem value="Not Mat">Not Mat</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </td>
+                                      <td className="p-1">
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          value={verificationForm.currentCpt.deductibleAmount}
+                                          onChange={(e) => setVerificationForm(prev => ({
+                                            ...prev,
+                                            currentCpt: { ...prev.currentCpt, deductibleAmount: e.target.value }
+                                          }))}
+                                          disabled={verificationForm.currentCpt.deductibleStatus === "Mate"}
+                                          className={`h-6 w-20 text-xs ${verificationForm.currentCpt.deductibleStatus === "Mate" ? "bg-muted cursor-not-allowed" : ""}`}
+                                        />
+                                      </td>
+                                      <td className="p-1"></td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                            
+                            {/* Total Charges Summary */}
+                            {verificationForm.cptCodes.length > 0 && (
+                              <div className="flex justify-end p-2 bg-blue-50 dark:bg-blue-950 rounded-md">
+                                <div className="text-right">
+                                  <div className="text-xs text-muted-foreground">Total CPT Charges ({verificationForm.cptCodes.length} codes)</div>
+                                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                                    ${verificationForm.cptCodes.reduce((sum, cpt) => {
+                                      const allowed = parseFloat(cpt.allowed || cpt.charge) || 0;
+                                      const units = parseFloat(cpt.units) || 1;
+                                      return sum + (allowed * units);
+                                    }, 0).toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Primary Insurance Financial Calculations */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Primary Insurance Financial Calculations</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div>
+                              <Label htmlFor="primaryTotalCharges">Total Charges (Auto-calculated from CPT)</Label>
+                              <Input
+                                id="primaryTotalCharges"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.primaryTotalCharges}
+                                readOnly
+                                placeholder="0.00"
+                                className="h-9 bg-gray-50 dark:bg-gray-900 font-semibold"
+                                title="Sum of all CPT code charges (Charge × Units)"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryInsuranceAllowed">Insurance Allowed</Label>
+                              <Input
+                                id="primaryInsuranceAllowed"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.primaryInsuranceAllowed}
+                                onChange={(e) => {
+                                  const insAllowed = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const totalCharges = parseFloat(prev.primaryTotalCharges) || 0;
+                                    const adjustment = insAllowed ? (totalCharges - parseFloat(insAllowed)).toFixed(2) : "";
+                                    return {
+                                      ...prev,
+                                      primaryInsuranceAllowed: insAllowed,
+                                      primaryAdjustment: adjustment,
+                                      allowedAmount: insAllowed // Also update the main allowedAmount field for calculations
+                                    };
+                                  });
+                                }}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="primaryAdjustment">Adjustment (Auto-calculated)</Label>
+                              <Input
+                                id="primaryAdjustment"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.primaryAdjustment}
+                                readOnly
+                                placeholder="0.00"
+                                className="h-9 bg-gray-50 dark:bg-gray-900"
+                                title="Calculated as: Total Charges - Insurance Allowed"
+                              />
                             </div>
                           </div>
                         </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                    {/* Secondary Insurance - Collapsible */}
+                    <Collapsible defaultOpen={false} className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-5 w-5 text-blue-600" />
+                            <span className="text-lg font-semibold">Secondary Insurance (Optional)</span>
+                          </div>
+                          <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="p-4 pt-0 space-y-3">
+                          {/* Row 1: Insurance Name, ID, Plan Type, Effective From, Termination Date, Status, In Network */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                            <div>
+                              <Label htmlFor="secondaryInsuranceName">Insurance Name</Label>
+                              <Select 
+                                value={verificationForm.secondaryInsuranceName} 
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceName: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select insurance" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {payers.map((payer) => (
+                                    <SelectItem key={payer.id} value={payer.id}>
+                                      {payer.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryInsuranceId">Insurance ID</Label>
+                              <Input
+                                id="secondaryInsuranceId"
+                                value={verificationForm.secondaryInsuranceId}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryInsuranceId: e.target.value }))}
+                                placeholder="Subscriber/Member ID"
+                                className="h-9"
+                              />
+                            </div>
+                           
+                            <div>
+                              <Label htmlFor="secondaryRelationshipCode">Plan Type</Label>
+                              <Select
+                                value={verificationForm.secondaryRelationshipCode}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryRelationshipCode: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="HMO">HMO</SelectItem>
+                                  <SelectItem value="PPO">PPO</SelectItem>
+                                  <SelectItem value="EPO">EPO</SelectItem>
+                                  <SelectItem value="POS">POS</SelectItem>
+                                  <SelectItem value="Medicare">Medicare</SelectItem>
+                                  <SelectItem value="Medicaid">Medicaid</SelectItem>
+                                  <SelectItem value="Other">Other</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryEffectiveDate">Effective From</Label>
+                              <Input
+                                id="secondaryEffectiveDate"
+                                type="date"
+                                value={verificationForm.secondaryEffectiveDate || ""}
+                                onChange={(e) => {
+                                  const effectiveDate = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const today = new Date();
+                                    const effective = effectiveDate ? new Date(effectiveDate) : null;
+                                    const termination = prev.secondaryTerminationDate ? new Date(prev.secondaryTerminationDate) : null;
+                                    
+                                    // Auto-determine SECONDARY eligibility status
+                                    let newStatus = prev.secondaryEligibilityStatus;
+                                    if (effective && termination) {
+                                      const isEligible = today >= effective && today <= termination;
+                                      newStatus = isEligible ? "eligible" : "not_eligible";
+                                    } else if (effective && !termination) {
+                                      newStatus = today >= effective ? "eligible" : "not_eligible";
+                                    }
+                                    
+                                    return { 
+                                      ...prev, 
+                                      secondaryEffectiveDate: effectiveDate,
+                                      secondaryEligibilityStatus: newStatus
+                                    };
+                                  });
+                                }}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                                className="h-9 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryTerminationDate">Termination Date</Label>
+                              <Input
+                                id="secondaryTerminationDate"
+                                type="date"
+                                value={verificationForm.secondaryTerminationDate || ""}
+                                onChange={(e) => {
+                                  const terminationDate = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const today = new Date();
+                                    const effective = prev.secondaryEffectiveDate ? new Date(prev.secondaryEffectiveDate) : null;
+                                    const termination = terminationDate ? new Date(terminationDate) : null;
+                                    
+                                    // Auto-determine SECONDARY eligibility status
+                                    let newStatus = prev.secondaryEligibilityStatus;
+                                    if (effective && termination) {
+                                      const isEligible = today >= effective && today <= termination;
+                                      newStatus = isEligible ? "eligible" : "not_eligible";
+                                    } else if (effective && !termination) {
+                                      newStatus = today >= effective ? "eligible" : "not_eligible";
+                                    } else if (termination && !effective) {
+                                      newStatus = today <= termination ? "eligible" : "not_eligible";
+                                    }
+                                    
+                                    return { 
+                                      ...prev, 
+                                      secondaryTerminationDate: terminationDate,
+                                      secondaryEligibilityStatus: newStatus
+                                    };
+                                  });
+                                }}
+                                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+                                className="h-9 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryReferralStatus">Status</Label>
+                              <Select
+                                value={verificationForm.secondaryEligibilityStatus}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, secondaryEligibilityStatus: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="eligible">Eligible</SelectItem>
+                                  <SelectItem value="not_eligible">Not Eligible</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryInNetwork">In Network</Label>
+                              <Select
+                                value={verificationForm.inNetworkStatus}
+                                onValueChange={(value) => setVerificationForm(prev => ({ ...prev, inNetworkStatus: value }))}
+                              >
+                                <SelectTrigger className="h-9">
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Secondary Insurance Cost Sharing */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <h4 className="font-medium text-gray-700 dark:text-gray-300">Secondary Insurance Cost Sharing</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <Label htmlFor="secondaryCoPay">Secondary Co-pay</Label>
+                              <Input
+                                id="secondaryCoPay"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoPay}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoPay: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryDeductible">Secondary Deductible</Label>
+                              <Input
+                                id="secondaryDeductible"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryDeductible}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductible: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryDeductibleMet">Secondary Deductible Met</Label>
+                              <Input
+                                id="secondaryDeductibleMet"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryDeductibleMet}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryDeductibleMet: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryCoInsurance">Secondary Co-insurance (%)</Label>
+                              <Input
+                                id="secondaryCoInsurance"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoInsurance}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoInsurance: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryCoveragePercent">Secondary Coverage %</Label>
+                              <Input
+                                id="secondaryCoveragePercent"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryCoveragePercent}
+                                onChange={(e) => setVerificationForm(prev => ({ ...prev, secondaryCoveragePercent: e.target.value }))}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Secondary Insurance Financial Calculations */}
+                        <div className="p-4 pt-0 space-y-3 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-gray-700 dark:text-gray-300">Secondary Insurance Financial Calculations</h4>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // Duplicate ICD codes from primary to secondary
+                                setVerificationForm(prev => ({
+                                  ...prev,
+                                  secondaryIcdCodes: [...prev.icdCodes]
+                                }));
+                                toast({
+                                  title: "ICD Codes Duplicated",
+                                  description: `${verificationForm.icdCodes.length} ICD code(s) copied to secondary insurance.`,
+                                });
+                              }}
+                              className="h-8"
+                            >
+                              <Copy className="h-3 w-3 mr-2" />
+                              Duplicate ICD Codes from Primary
+                            </Button>
+                          </div>
+                          
+                          {/* Display CPT Codes from Primary (Read-Only) */}
+                          {verificationForm.cptCodes.length > 0 && (
+                            <div className="mt-3 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-sm font-semibold">CPT Procedure Codes (from Primary)</Label>
+                                <Badge variant="outline" className="text-xs">
+                                  <FileText className="h-3 w-3 mr-1" />
+                                  Read-Only
+                                </Badge>
+                              </div>
+                              
+                              {/* CPT Codes Table - Read Only */}
+                              <div className="border rounded-lg overflow-hidden bg-muted/30">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-muted">
+                                      <tr>
+                                        <th className="p-1 text-left font-medium">CPT</th>
+                                        <th className="p-1 text-left font-medium">M1</th>
+                                        <th className="p-1 text-left font-medium">M2</th>
+                                        <th className="p-1 text-left font-medium">POS</th>
+                                        <th className="p-1 text-left font-medium">TOS</th>
+                                        <th className="p-1 text-left font-medium">Units</th>
+                                        <th className="p-1 text-left font-medium">Allowed</th>
+                                        <th className="p-1 text-left font-medium">Co-pay</th>
+                                        <th className="p-1 text-left font-medium">Co-ins</th>
+                                        <th className="p-1 text-left font-medium">Ded</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {verificationForm.cptCodes.map((cpt, index) => (
+                                        <>
+                                          <tr key={index} className="border-t">
+                                            <td className="p-1 font-medium">{cpt.code}</td>
+                                            <td className="p-1">{cpt.modifier1 || "-"}</td>
+                                            <td className="p-1">{cpt.modifier2 || "-"}</td>
+                                            <td className="p-1 text-xs">{cpt.pos || "-"}</td>
+                                            <td className="p-1 text-xs">{cpt.tos || "-"}</td>
+                                            <td className="p-1">{cpt.units || "1"}</td>
+                                            <td className="p-1 font-semibold">${cpt.allowed || cpt.charge || "0.00"}</td>
+                                            <td className="p-1">${cpt.copay || "0.00"}</td>
+                                            <td className="p-1">{cpt.coinsurance || "0"}%</td>
+                                            <td className="p-1 text-xs">
+                                              {cpt.deductibleStatus === "Mat" ? "Mat" : "Not Mat"}
+                                            </td>
+                                          </tr>
+                                          {cpt.deductibleStatus === "Not Mat" && cpt.deductibleAmount && (
+                                            <tr key={`${index}-ded`} className="border-t bg-amber-50 dark:bg-amber-950">
+                                              <td colSpan={10} className="p-1 text-xs">
+                                                <span className="font-medium">Deductible Pending:</span> ${cpt.deductibleAmount}
+                                              </td>
+                                            </tr>
+                                          )}
+                                        </>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                              
+                              {/* Total Charges Summary */}
+                              <div className="flex justify-end p-2 bg-blue-50 dark:bg-blue-950 rounded-md">
+                                <div className="text-right">
+                                  <div className="text-xs text-muted-foreground">Total CPT Charges ({verificationForm.cptCodes.length} codes)</div>
+                                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                                    ${verificationForm.cptCodes.reduce((sum, cpt) => {
+                                      const allowed = parseFloat(cpt.allowed || cpt.charge) || 0;
+                                      const units = parseFloat(cpt.units) || 1;
+                                      return sum + (allowed * units);
+                                    }, 0).toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div>
+                              <Label htmlFor="secondaryTotalCharges">Total Charges (Auto-calculated from CPT)</Label>
+                              <Input
+                                id="secondaryTotalCharges"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryTotalCharges}
+                                readOnly
+                                placeholder="0.00"
+                                className="h-9 bg-gray-50 dark:bg-gray-900 font-semibold"
+                                title="Sum of all CPT code charges (Charge × Units)"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryInsuranceAllowed">Insurance Allowed</Label>
+                              <Input
+                                id="secondaryInsuranceAllowed"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryInsuranceAllowed}
+                                onChange={(e) => {
+                                  const insAllowed = e.target.value;
+                                  setVerificationForm(prev => {
+                                    const totalCharges = parseFloat(prev.secondaryTotalCharges) || 0;
+                                    const adjustment = insAllowed ? (totalCharges - parseFloat(insAllowed)).toFixed(2) : "";
+                                    return {
+                                      ...prev,
+                                      secondaryInsuranceAllowed: insAllowed,
+                                      secondaryAdjustment: adjustment,
+                                      secondaryAllowedAmount: insAllowed // Also update secondary allowed amount
+                                    };
+                                  });
+                                }}
+                                placeholder="0.00"
+                                className="h-9"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="secondaryAdjustment">Adjustment (Auto-calculated)</Label>
+                              <Input
+                                id="secondaryAdjustment"
+                                type="number"
+                                step="0.01"
+                                value={verificationForm.secondaryAdjustment}
+                                readOnly
+                                placeholder="0.00"
+                                className="h-9 bg-gray-50 dark:bg-gray-900"
+                                title="Calculated as: Total Charges - Insurance Allowed"
+                              />
+                            </div>
+                          </div>
+                          
+                          {/* Display Secondary ICD Codes if any */}
+                          {verificationForm.secondaryIcdCodes.length > 0 && (
+                            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-md">
+                              <h5 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">Secondary ICD Codes ({verificationForm.secondaryIcdCodes.length})</h5>
+                              <div className="space-y-1">
+                                {verificationForm.secondaryIcdCodes.map((icd, idx) => (
+                                  <div key={idx} className="text-xs text-blue-800 dark:text-blue-200">
+                                    {icd.code} - {icd.description} {icd.isPrimary && <span className="font-semibold">(Primary)</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+
+                  {/* Demographic Read-Only Section - Only shows when patient is selected */}
+                  {verificationForm.patientId && verificationForm.demographicDisplay.patientId && (
+                    <Card className="mt-4 border-blue-200 dark:border-blue-800">
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <User className="h-5 w-5 text-blue-600" />
+                            Demographic (Read-Only)
+                          </CardTitle>
+                          <p className="text-sm text-muted-foreground">Patient demographic information from database</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // Open the patient edit modal
+                            setShowPatientEditModal(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Patient ID</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.patientId || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">First Name</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.firstName || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Last Name</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.lastName || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Middle Initial</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.middleInitial || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Suffix</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.suffix || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Date of Birth</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.dob || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Gender</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.gender || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Phone</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.phone || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Email</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.email || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Address</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.address || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">City</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.city || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">State</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.state || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Zip Code</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.zip || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">SSN</Label>
+                            <p className="font-medium">{verificationForm.demographicDisplay.ssn ? '***-**-' + verificationForm.demographicDisplay.ssn.slice(-4) : '—'}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                       </CardContent>
                     </Card>
 
@@ -6074,12 +6702,12 @@ Termination: ${entry.terminationDate || '-'}`;
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-6">
-                        {/* Input Fields */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {/* All Fields in Single Row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                           <div>
                             <Label htmlFor="currentVisitCharges" className="flex items-center gap-2">
                               <FileText className="h-4 w-4" />
-                              Current Visit Charges (Auto-calculated)
+                              Current Visit Charges
                             </Label>
                             <Input
                               id="currentVisitCharges"
@@ -6102,57 +6730,11 @@ Termination: ${entry.terminationDate || '-'}`;
                               })()}
                               readOnly
                               className="bg-muted font-semibold h-9"
-                            />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {(() => {
-                                const hasPending = (verificationForm.currentCpt.code?.trim?.() || "") !== "" || (verificationForm.currentCpt.charge ?? "") !== "";
-                                const count = verificationForm.cptCodes.length + (hasPending ? 1 : 0);
-                                return `Sum of all CPT charges (${count} ${count === 1 ? 'code' : 'codes'})`;
-                              })()}
-                            </p>
-                          </div>
-                          <div>
-                            <Label htmlFor="allowedAmount">Allowed Amount (Insurance)</Label>
-                            <Input
-                              id="allowedAmount"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.allowedAmount}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, allowedAmount: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
+                              title="Auto-calculated from CPT codes"
                             />
                           </div>
                           <div>
-                            <Label htmlFor="primaryPayment">Insurance Payment Amount</Label>
-                            <Input
-                              id="primaryPayment"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.primaryPayment}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, primaryPayment: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="previousBalanceCredit">Previous Balance / Credit</Label>
-                            <Input
-                              id="previousBalanceCredit"
-                              type="number"
-                              step="0.01"
-                              value={verificationForm.previousBalanceCredit}
-                              onChange={(e) => setVerificationForm(prev => ({ ...prev, previousBalanceCredit: e.target.value }))}
-                              placeholder="0.00"
-                              className="h-9"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Coverage Details & Cost Sharing */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4 border-t pt-6">
-                          <div>
-                            <Label htmlFor="isQMB">QMB Status (Qualified Medicare Beneficiary)</Label>
+                            <Label htmlFor="isQMB">QMB Status</Label>
                             <Select
                               value={verificationForm.isQMB ? "Yes" : "No"}
                               onValueChange={(value) => setVerificationForm(prev => ({ ...prev, isQMB: value === "Yes" }))}
@@ -6161,7 +6743,7 @@ Termination: ${entry.terminationDate || '-'}`;
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Yes">Yes (QMB Patient)</SelectItem>
+                                <SelectItem value="Yes">Yes (QMB)</SelectItem>
                                 <SelectItem value="No">No</SelectItem>
                               </SelectContent>
                             </Select>
@@ -6191,7 +6773,7 @@ Termination: ${entry.terminationDate || '-'}`;
                             />
                           </div>
                           <div>
-                            <Label htmlFor="patientResponsibility">Patient Responsibility (Calculated)</Label>
+                            <Label htmlFor="patientResponsibility">Patient Responsibility</Label>
                             <Input
                               id="patientResponsibility"
                               type="number"
@@ -6199,6 +6781,7 @@ Termination: ${entry.terminationDate || '-'}`;
                               value={verificationForm.patientResponsibility}
                               readOnly
                               className="bg-muted font-semibold h-9"
+                              title="Auto-calculated based on insurance and cost sharing"
                             />
                           </div>
                         </div>
@@ -6221,9 +6804,29 @@ Termination: ${entry.terminationDate || '-'}`;
 
                           // Get values
                           const allowedAmount = parseFloat(verificationForm.allowedAmount) || 0;
-                          const copay = parseFloat(verificationForm.coPay) || 0;
-                          const coinsurancePercent = parseFloat(verificationForm.coInsurance) || 0;
-                          const deductibleAmount = verificationForm.deductibleStatus === "Met" ? 0 : (parseFloat(verificationForm.deductibleAmount) || 0);
+                          
+                          // ✅ FIX: Aggregate copay and coinsurance from CPT codes (not insurance-level fields)
+                          // Sum copay from all CPT codes
+                          const copay = verificationForm.cptCodes.reduce((sum, cpt) => {
+                            return sum + (parseFloat(cpt.copay) || 0);
+                          }, 0);
+                          
+                          // Get coinsurance from first CPT code (typically same across all CPTs for a visit)
+                          // If multiple CPTs have different coinsurance, use the highest
+                          const coinsurancePercent = verificationForm.cptCodes.reduce((max, cpt) => {
+                            const cptCoins = parseFloat(cpt.coinsurance) || 0;
+                            return Math.max(max, cptCoins);
+                          }, 0);
+                          
+                          // Calculate total deductible from CPT codes (aggregate CPT-level deductibles)
+                          const cptDeductibleTotal = verificationForm.cptCodes.reduce((sum, cpt) => {
+                            if (cpt.deductibleStatus === "Not Mat" && cpt.deductibleAmount) {
+                              return sum + (parseFloat(cpt.deductibleAmount) || 0);
+                            }
+                            return sum;
+                          }, 0);
+                          const deductibleAmount = cptDeductibleTotal > 0 ? cptDeductibleTotal : (verificationForm.deductibleStatus === "Mat" ? 0 : (parseFloat(verificationForm.deductibleAmount) || 0));
+                          
                           const insurancePayment = parseFloat(verificationForm.primaryPayment) || 0;
                           const oopYtd = parseFloat(verificationForm.outOfPocketRemaining) || 0;
                           const oopMax = parseFloat(verificationForm.outOfPocketMax) || 0;
@@ -6250,20 +6853,22 @@ Termination: ${entry.terminationDate || '-'}`;
                             patientResponsibilityBeforeOOP: 0,
                             finalPatientResponsibility: 0,
                             isQMBZeroed: false,
+                            isSelfPay: false,
                             oopMaxReached: false
                           };
 
-                          // QMB Check: If QMB patient AND Medicare covered service, patient pays $0
-                          const strIncludesMedicareCalc = (s?: string) => (s || '').toLowerCase().includes('medicare');
-                          const isMedicarePlan = verificationForm.planType === "Medicare" ||
-                            strIncludesMedicareCalc(verificationForm.primaryInsurance) ||
-                            strIncludesMedicareCalc(verificationForm.insurancePlan) ||
-                            strIncludesMedicareCalc(verificationForm.groupNumber);
-                          
+                          // Self-Pay Check: If patient has no insurance, they pay full billed charges
+                          if (verificationForm.isSelfPay) {
+                            patientResponsibility = currentVisitCharges;
+                            calculationBreakdown.isSelfPay = true;
+                            calculationBreakdown.finalPatientResponsibility = currentVisitCharges;
+                            calculationBreakdown.allowedAmount = currentVisitCharges;
+                            calculationBreakdown.contractualWriteOff = 0;
+                          }
                           // Out-of-Pocket Remaining Check: If OOP remaining is explicitly set to 0, patient responsibility is 0 (insurance pays all)
                           // This means the patient has already met their out-of-pocket maximum for the year
                           // Only apply this rule if the field has been explicitly set (not empty)
-                          if (verificationForm.outOfPocketRemaining !== "" && oopYtd === 0) {
+                          else if (verificationForm.outOfPocketRemaining !== "" && oopYtd === 0) {
                             // Patient has already met out-of-pocket maximum - insurance pays everything
                             const baseAmount = allowedAmount > 0 ? allowedAmount : currentVisitCharges;
                             patientResponsibility = 0;
@@ -6275,7 +6880,11 @@ Termination: ${entry.terminationDate || '-'}`;
                             calculationBreakdown.coinsurance = 0;
                             calculationBreakdown.patientResponsibilityBeforeOOP = 0;
                             calculationBreakdown.oopCapApplied = 0;
-                          } else if (verificationForm.isQMB && verificationForm.isCoveredService && isMedicarePlan) {
+                          } else if (verificationForm.isQMB && verificationForm.isCoveredService && 
+                                     (verificationForm.planType === "Medicare" || 
+                                      (verificationForm.primaryInsurance || "").toLowerCase().includes('medicare') ||
+                                      (verificationForm.insurancePlan || "").toLowerCase().includes('medicare') ||
+                                      (verificationForm.groupNumber || "").toLowerCase().includes('medicare'))) {
                             // QMB Patient - Federal law: $0 responsibility for Medicare covered services
                             calculationBreakdown.isQMBZeroed = true;
                             patientResponsibility = 0;
@@ -6301,10 +6910,16 @@ Termination: ${entry.terminationDate || '-'}`;
                               calculationBreakdown.remainingAfterDeductible = remainingAfterCopay;
                             }
 
-                            // Step 4: Apply Coinsurance
-                            // According to the formula: Patient Responsibility = Co-pay + Deductible Applied + (Allowed Amount × Co-insurance %)
-                            calculationBreakdown.coinsurance = (baseAmount * coinsurancePercent) / 100;
-                            calculationBreakdown.insurancePays = baseAmount - calculationBreakdown.copay - calculationBreakdown.deductibleApplied - calculationBreakdown.coinsurance;
+                            // Step 4: Apply Coinsurance (CORRECTED)
+                            // Coinsurance is applied to the REMAINING amount after copay and deductible
+                            // NOT the full allowed amount (per CMS and NAIC standards)
+                            // Formula: Coinsurance = (Remaining After Deductible) × Coinsurance %
+                            calculationBreakdown.coinsurance = (calculationBreakdown.remainingAfterDeductible * coinsurancePercent) / 100;
+                            
+                            // Insurance pays the remaining percentage after patient's coinsurance
+                            // Formula: Insurance Payment = Remaining After Deductible × (100% - Coinsurance %)
+                            const insuranceCoinsurancePercent = 100 - coinsurancePercent;
+                            calculationBreakdown.insurancePays = (calculationBreakdown.remainingAfterDeductible * insuranceCoinsurancePercent) / 100;
 
                             // Calculate patient responsibility before OOP max
                             calculationBreakdown.patientResponsibilityBeforeOOP = 
@@ -6476,8 +7091,18 @@ Termination: ${entry.terminationDate || '-'}`;
                                     </Alert>
                                   )}
 
+                                  {/* Self-Pay Message */}
+                                  {calculationBreakdown.isSelfPay && (
+                                    <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                                      <AlertCircle className="h-4 w-4 text-blue-600" />
+                                      <AlertDescription className="text-blue-800 dark:text-blue-200">
+                                        <strong>Self-Pay Patient:</strong> No insurance coverage. Patient pays full billed charges: ${currentVisitCharges.toFixed(2)}
+                                      </AlertDescription>
+                                    </Alert>
+                                  )}
+
                                   {/* Normal Calculation Breakdown */}
-                                  {!calculationBreakdown.isQMBZeroed && (
+                                  {!calculationBreakdown.isQMBZeroed && !calculationBreakdown.isSelfPay && (
                                     <>
                                       {/* Copay */}
                                       {calculationBreakdown.copay > 0 && (
@@ -6882,9 +7507,29 @@ Termination: ${entry.terminationDate || '-'}`;
 
                             // Get values
                             const allowedAmount = parseFloat(verificationForm.allowedAmount) || 0;
-                            const copay = parseFloat(verificationForm.coPay) || 0;
-                            const coinsurancePercent = parseFloat(verificationForm.coInsurance) || 0;
-                            const deductibleAmount = verificationForm.deductibleStatus === "Met" ? 0 : (parseFloat(verificationForm.deductibleAmount) || 0);
+                            
+                            // ✅ FIX: Aggregate copay and coinsurance from CPT codes (not insurance-level fields)
+                            // Sum copay from all CPT codes
+                            const copay = verificationForm.cptCodes.reduce((sum, cpt) => {
+                              return sum + (parseFloat(cpt.copay) || 0);
+                            }, 0);
+                            
+                            // Get coinsurance from first CPT code (typically same across all CPTs for a visit)
+                            // If multiple CPTs have different coinsurance, use the highest
+                            const coinsurancePercent = verificationForm.cptCodes.reduce((max, cpt) => {
+                              const cptCoins = parseFloat(cpt.coinsurance) || 0;
+                              return Math.max(max, cptCoins);
+                            }, 0);
+                            
+                            // Calculate total deductible from CPT codes (aggregate CPT-level deductibles)
+                            const cptDeductibleTotal = verificationForm.cptCodes.reduce((sum, cpt) => {
+                              if (cpt.deductibleStatus === "Not Mat" && cpt.deductibleAmount) {
+                                return sum + (parseFloat(cpt.deductibleAmount) || 0);
+                              }
+                              return sum;
+                            }, 0);
+                            const deductibleAmount = cptDeductibleTotal > 0 ? cptDeductibleTotal : (verificationForm.deductibleStatus === "Mat" ? 0 : (parseFloat(verificationForm.deductibleAmount) || 0));
+                            
                             const insurancePayment = parseFloat(verificationForm.primaryPayment) || 0;
                             const oopYtd = parseFloat(verificationForm.outOfPocketRemaining) || 0;
                             const oopMax = parseFloat(verificationForm.outOfPocketMax) || 0;
@@ -6932,9 +7577,11 @@ Termination: ${entry.terminationDate || '-'}`;
                                 remainingAfterDeductible = Math.max(0, remainingAfterCopay - deductibleApplied);
                               }
                               
-                              // Step 4: Apply Coinsurance
-                              // According to the formula: Patient Responsibility = Co-pay + Deductible Applied + (Allowed Amount × Co-insurance %)
-                              let coinsuranceAmount = (baseAmount * coinsurancePercent) / 100;
+                              // Step 4: Apply Coinsurance (CORRECTED)
+                              // Coinsurance is applied to the REMAINING amount after copay and deductible
+                              // NOT the full allowed amount (per CMS and NAIC standards)
+                              // Formula: Patient Coinsurance = (Remaining After Deductible) × Coinsurance %
+                              let coinsuranceAmount = (remainingAfterDeductible * coinsurancePercent) / 100;
                               
                               // Calculate patient responsibility before OOP max
                               const patientResponsibilityBeforeOOP = calculatedCopay + deductibleApplied + coinsuranceAmount;
@@ -7211,6 +7858,7 @@ Termination: ${entry.terminationDate || '-'}`;
                                 planType: "",
                                 effectiveDate: "",
                                 terminationDate: "",
+                                primaryEligibilityStatus: "",
                                 coPay: "",
                                 coInsurance: "",
                                 deductible: "",
@@ -7220,7 +7868,7 @@ Termination: ${entry.terminationDate || '-'}`;
                                 inNetworkStatus: "",
                                 allowedAmount: "",
                                 copayBeforeDeductible: true,
-                                deductibleStatus: "Met" as "Met" | "Not Met",
+                                deductibleStatus: "Mat" as "Mat" | "Not Mat",
                                 deductibleAmount: "",
                                 cptCodes: [] as Array<{
                                   code: string;
@@ -7231,6 +7879,11 @@ Termination: ${entry.terminationDate || '-'}`;
                                   tos: string; // Type of Service
                                   units: string;
                                   charge: string;
+                                  allowed: string;
+                                  copay: string;
+                                  coinsurance: string;
+                                  deductibleStatus: string;
+                                  deductibleAmount: string;
                                 }>,
                                 icdCodes: [] as Array<{
                                   code: string;
@@ -7245,8 +7898,13 @@ Termination: ${entry.terminationDate || '-'}`;
                                   icd: "", // ICD code linked to this CPT
                                   pos: "",
                                   tos: "",
-                                  units: "",
+                                  units: "1",
                                   charge: "",
+                                  allowed: "",
+                                  copay: "",
+                                  coinsurance: "",
+                                  deductibleStatus: "Not Mat",
+                                  deductibleAmount: "",
                                 },
                                 // Current ICD row being edited (kept for compatibility)
                                 currentIcd: {
@@ -7265,6 +7923,7 @@ Termination: ${entry.terminationDate || '-'}`;
                                 secondaryRelationshipCode: "", // Self, Spouse, Child, Parent, Other
                                 secondaryEffectiveDate: "",
                                 secondaryTerminationDate: "",
+                                secondaryEligibilityStatus: "",
                                 secondarySubscriberFirstName: "",
                                 secondarySubscriberLastName: "",
                                 secondarySubscriberDOB: "",
@@ -7277,6 +7936,27 @@ Termination: ${entry.terminationDate || '-'}`;
                                 secondaryPolicyHolderRelationship: "",
                                 cobRule: "", // Auto-detect or manual: Birthday Rule, Employee Rule, Medicare Rule, etc.
                                 cobIndicator: "S" as "P" | "S" | "T" | "A", // Primary, Secondary, Tertiary, Unknown
+                                
+                                // Primary Insurance Financial Fields
+                                primaryTotalCharges: "",
+                                primaryInsuranceAllowed: "",
+                                primaryAdjustment: "",
+
+                                // Secondary Insurance Financial Fields
+                                secondaryTotalCharges: "",
+                                secondaryInsuranceAllowed: "",
+                                secondaryAdjustment: "",
+                                secondaryAllowedAmount: "",
+                                secondaryOutOfPocketRemaining: "",
+                                secondaryOutOfPocketMax: "",
+
+                                // Secondary ICD Codes (duplicated from primary)
+                                secondaryIcdCodes: [] as Array<{
+                                  code: string;
+                                  description: string;
+                                  type: string;
+                                  isPrimary: boolean;
+                                }>,
                                 
                                 // Referral & Authorization
                                 referralRequired: false,
